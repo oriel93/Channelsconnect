@@ -92,7 +92,7 @@ import ChannexDashboard from "./ChannexDashboard";
 
 import LeadCapture from "./LeadCapture";
 
-import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'react-router-dom';
 
 const PAGES = {
     
@@ -306,7 +306,9 @@ function PagesContent() {
                 <Route path="/ChannexDashboard" element={<ChannexDashboard />} />
                 
                 <Route path="/LeadCapture" element={<LeadCapture />} />
-                
+
+                <Route path="*" element={<Navigate to="/" replace />} />
+
             </Routes>
         </Layout>
     );

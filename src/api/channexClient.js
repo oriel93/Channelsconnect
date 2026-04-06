@@ -27,10 +27,39 @@ async function channexRequest(method, path, apiKey, body = null) {
   const json = await res.json();
 
   if (!res.ok) {
-    const errMsg = json?.errors?.title || json?.errors?.code || `HTTP ${res.status}`;
+    const firstError = Array.isArray(json?.errors) ? json.errors[0] : json?.errors;
+    const errMsg = firstError?.detail || firstError?.title || firstError?.code || `HTTP ${res.status}`;
     throw new Error(`Channex API error: ${errMsg}`);
   }
   return json;
+}
+
+// ─── Pagination helper ────────────────────────────────────────────────────────
+
+/**
+ * Fetches all pages of a paginated Channex endpoint.
+ * @param {string} basePath - path without pagination params (e.g. '/properties')
+ * @param {string} apiKey
+ * @param {number} [limit=100]
+ */
+async function fetchAllPages(basePath, apiKey, limit = 100) {
+  const separator = basePath.includes('?') ? '&' : '?';
+  let page = 1;
+  let allData = [];
+
+  while (true) {
+    const json = await channexRequest(
+      'GET',
+      `${basePath}${separator}pagination[limit]=${limit}&pagination[page]=${page}`,
+      apiKey
+    );
+    const pageData = json?.data || [];
+    allData = allData.concat(pageData);
+    if (pageData.length < limit) break;
+    page++;
+  }
+
+  return { data: allData };
 }
 
 // ─── Properties ──────────────────────────────────────────────────────────────
@@ -39,7 +68,7 @@ async function channexRequest(method, path, apiKey, body = null) {
  * List all properties under this API key account.
  */
 export async function listProperties(apiKey) {
-  return channexRequest('GET', '/properties?pagination[limit]=100', apiKey);
+  return fetchAllPages('/properties', apiKey);
 }
 
 /**
@@ -76,7 +105,7 @@ export async function updateProperty(apiKey, propertyId, propertyData) {
  * List room types for a property.
  */
 export async function listRoomTypes(apiKey, propertyId) {
-  return channexRequest('GET', `/room_types?filter[property_id]=${propertyId}&pagination[limit]=100`, apiKey);
+  return fetchAllPages(`/room_types?filter[property_id]=${propertyId}`, apiKey);
 }
 
 /**
@@ -104,7 +133,7 @@ export async function updateRoomType(apiKey, roomTypeId, roomTypeData) {
  * List rate plans for a property.
  */
 export async function listRatePlans(apiKey, propertyId) {
-  return channexRequest('GET', `/rate_plans?filter[property_id]=${propertyId}&pagination[limit]=100`, apiKey);
+  return fetchAllPages(`/rate_plans?filter[property_id]=${propertyId}`, apiKey);
 }
 
 /**
@@ -219,13 +248,14 @@ export async function getBooking(apiKey, bookingId) {
  * @param {object} filters - { property_id, date_from, date_to, status }
  */
 export async function listBookings(apiKey, filters = {}) {
-  const params = new URLSearchParams({ 'pagination[limit]': 100 });
+  const params = new URLSearchParams();
   if (filters.property_id) params.append('filter[property_id]', filters.property_id);
   if (filters.date_from) params.append('filter[date][gte]', filters.date_from);
   if (filters.date_to) params.append('filter[date][lte]', filters.date_to);
   if (filters.status) params.append('filter[status]', filters.status);
 
-  return channexRequest('GET', `/bookings?${params.toString()}`, apiKey);
+  const queryStr = params.toString();
+  return fetchAllPages(`/bookings${queryStr ? `?${queryStr}` : ''}`, apiKey);
 }
 
 /**
@@ -249,7 +279,7 @@ export async function listChannels(apiKey, propertyId) {
  * Get channel status across all properties.
  */
 export async function getChannelStatus(apiKey) {
-  return channexRequest('GET', '/channels?pagination[limit]=100', apiKey);
+  return fetchAllPages('/channels', apiKey);
 }
 
 // ─── Full Sync Helpers ────────────────────────────────────────────────────────

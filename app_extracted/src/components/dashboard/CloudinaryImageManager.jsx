@@ -222,29 +222,39 @@ export default function CloudinaryImageManager({ listingId }) {
                 await new Promise((resolve, reject) => {
                     xhr.onload = async () => {
                         if (xhr.status >= 200 && xhr.status < 300) {
-                            const cloudinaryResponse = JSON.parse(xhr.responseText);
-                            
+                            let cloudinaryResponse;
+                            try {
+                                cloudinaryResponse = JSON.parse(xhr.responseText);
+                            } catch (e) {
+                                return reject(new Error('Invalid response from Cloudinary'));
+                            }
+
                             // Update progress to 95%
-                            setFilesToUpload(prev => prev.map(f => 
+                            setFilesToUpload(prev => prev.map(f =>
                                 f.id === fileItem.id ? {...f, progress: 95} : f
                             ));
-                            
+
                             // 3. Save metadata to database
                             await saveImageMetadata({
                                 listingId,
                                 filename: fileItem.file.name,
                                 url: cloudinaryResponse.secure_url
                             });
-                            
+
                             // Mark as complete
-                            setFilesToUpload(prev => prev.map(f => 
+                            setFilesToUpload(prev => prev.map(f =>
                                 f.id === fileItem.id ? {...f, status: 'success', progress: 100} : f
                             ));
-                            
+
                             setUploadStats(prev => ({ ...prev, completed: prev.completed + 1 }));
                             resolve(cloudinaryResponse);
                         } else {
-                            const errorResponse = JSON.parse(xhr.responseText);
+                            let errorResponse;
+                            try {
+                                errorResponse = JSON.parse(xhr.responseText);
+                            } catch (e) {
+                                errorResponse = {};
+                            }
                             reject(new Error(errorResponse.error?.message || 'Upload failed'));
                         }
                     };
@@ -263,11 +273,14 @@ export default function CloudinaryImageManager({ listingId }) {
         
         await fetchImages();
         setUploadStatus('completed');
-        
+
+        // Capture current failed count to avoid stale closure
+        const failedCount = filesToUpload.filter(f => f.status === 'error').length;
+
         // Auto-clear successful uploads after 3 seconds
         setTimeout(() => {
             setFilesToUpload(prev => prev.filter(f => f.status !== 'success'));
-            if (uploadStats.failed === 0) {
+            if (failedCount === 0) {
                 setUploadStatus('idle');
             }
         }, 3000);
@@ -340,7 +353,7 @@ export default function CloudinaryImageManager({ listingId }) {
                         <span>Upload New Photos</span>
                         {uploadStatus === 'uploading' && (
                             <Badge variant="secondary">
-                                Uploading {uploadStats.completed + 1} of {uploadStats.total}
+                                Uploading {Math.min(uploadStats.completed + 1, uploadStats.total)} of {uploadStats.total}
                             </Badge>
                         )}
                     </CardTitle>
@@ -438,8 +451,8 @@ export default function CloudinaryImageManager({ listingId }) {
                             >
                                 {uploadStatus === 'uploading' ? (
                                     <>
-                                        <Loader2 className="w-5 h-5 mr-2 animate-spin" /> 
-                                        Uploading {uploadStats.completed + 1} of {uploadStats.total}...
+                                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                                        Uploading {Math.min(uploadStats.completed + 1, uploadStats.total)} of {uploadStats.total}...
                                     </>
                                 ) : (
                                     <>

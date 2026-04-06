@@ -145,7 +145,7 @@ function ComprehensiveICalManager({ listingId, listingTitle, onSyncComplete }) {
                 icalContent.push(
                     'BEGIN:VEVENT',
                     `UID:${block.id}@channelsconnect.com`,
-                    `DTSTAMP:${new Date().toISOString().replace(/[-:.]/g, '')}Z`,
+                    `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'}`,
                     `DTSTART;VALUE=DATE:${startDate}`,
                     `DTEND;VALUE=DATE:${endDate}`,
                     `SUMMARY:Blocked - ${listingTitle}`,
@@ -182,7 +182,7 @@ function ComprehensiveICalManager({ listingId, listingTitle, onSyncComplete }) {
             if (data.success) {
                 toast.success(data.message || "All connections synced successfully.");
                 onSyncComplete?.();
-                fetchConnections(); // Refresh connection statuses
+                await fetchConnections(); // Refresh connection statuses
             } else {
                 throw new Error(data.error || "An unknown error occurred during sync.");
             }

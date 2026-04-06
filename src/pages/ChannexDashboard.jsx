@@ -7,17 +7,25 @@ import ChannexPropertyGrid from '@/components/channels/ChannexPropertyGrid';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { importAllProperties } from '@/api/channexClient';
+import { ChannelConnection } from '@/api/entities';
 import { toast } from 'sonner';
 
-// Channex API key is stored in localStorage after first connect.
-// In production: move to a secure backend store via Base44 backend functions.
-const STORAGE_KEY = 'channex_api_key';
-
 export default function ChannexDashboard() {
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem(STORAGE_KEY) || '');
+  const [apiKey, setApiKey] = useState('');
   const [properties, setProperties] = useState([]);
   const [status, setStatus] = useState('loading'); // loading | disconnected | connected | error
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Load API key from ChannelConnection entity (server-side)
+  const loadApiKey = useCallback(async () => {
+    try {
+      const connections = await ChannelConnection.filter({ platform: 'channex' });
+      const active = connections.find(c => c.is_active);
+      return active?.api_key || '';
+    } catch {
+      return '';
+    }
+  }, []);
 
   const loadProperties = useCallback(async (key) => {
     const k = key || apiKey;
@@ -37,8 +45,17 @@ export default function ChannexDashboard() {
   }, [apiKey]);
 
   useEffect(() => {
-    loadProperties();
-  }, [loadProperties]);
+    const init = async () => {
+      const key = await loadApiKey();
+      if (key) {
+        setApiKey(key);
+        await loadProperties(key);
+      } else {
+        setStatus('disconnected');
+      }
+    };
+    init();
+  }, [loadApiKey, loadProperties]);
 
   const handleConnect = (key, initialProperties) => {
     setApiKey(key);
@@ -46,8 +63,15 @@ export default function ChannexDashboard() {
     setStatus('connected');
   };
 
-  const handleDisconnect = () => {
-    localStorage.removeItem(STORAGE_KEY);
+  const handleDisconnect = async () => {
+    try {
+      const connections = await ChannelConnection.filter({ platform: 'channex' });
+      for (const conn of connections) {
+        await ChannelConnection.update(conn.id, { is_active: false });
+      }
+    } catch {
+      // best-effort
+    }
     setApiKey('');
     setProperties([]);
     setStatus('disconnected');

@@ -55,6 +55,7 @@ export default function Dashboard() {
   const [listings, setListings] = useState([]);
   const [selectedListingId, setSelectedListingId] = useState(null);
   const [lastSyncTimestamp, setLastSyncTimestamp] = useState(null);
+  const hasAutoSelectedRef = useRef(false);
 
   // AI Chat Bubble State
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -83,7 +84,8 @@ export default function Dashboard() {
     try {
       const userListings = await Listing.list('-created_date');
       setListings(userListings);
-      if (userListings.length > 0 && !selectedListingId) {
+      if (userListings.length > 0 && !hasAutoSelectedRef.current) {
+        hasAutoSelectedRef.current = true;
         setSelectedListingId(userListings[0].id);
       }
       return userListings;
@@ -92,7 +94,7 @@ export default function Dashboard() {
       setError("Could not load your properties.");
       return [];
     }
-  }, [selectedListingId]);
+  }, []);
 
   useEffect(() => {
     const loadInitialData = async () => {

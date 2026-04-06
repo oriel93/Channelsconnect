@@ -215,13 +215,13 @@ export default function OptimizedCalendarLayout({ selectedListingId, listings = 
   // Only fetch when property, month, or a sync event occurs
   useEffect(() => {
     fetchCalendarDataDebounced();
-    
+
     return () => {
       if (fetchTimeout.current) {
         clearTimeout(fetchTimeout.current);
       }
     };
-  }, [selectedProperty, currentMonth, lastSyncTimestamp]);
+  }, [selectedProperty, currentMonth, lastSyncTimestamp, fetchCalendarDataDebounced]);
 
   // CRITICAL FIX: Separate pricing calculations from data fetching
   useEffect(() => {
@@ -244,13 +244,13 @@ export default function OptimizedCalendarLayout({ selectedListingId, listings = 
     setProcessedCalendarData(processed);
   }, [rawCalendarData, baseRate, isDynamicPricingEnabled, pricingRules, applyDynamicPricing]);
 
-  const handleBaseRateUpdate = async (newRate) => {
+  const handleBaseRateUpdate = useCallback(async (newRate) => {
     if (!selectedProperty) return;
     setIsSavingBaseRate(true);
     try {
       const currentListing = listings.find(l => l.id === selectedProperty);
       if (!currentListing) throw new Error('Listing not found');
-      await Listing.update(selectedProperty, { 
+      await Listing.update(selectedProperty, {
         default_net_rate: newRate,
         timezone: currentListing.timezone || 'UTC'
       });
@@ -261,12 +261,12 @@ export default function OptimizedCalendarLayout({ selectedListingId, listings = 
     } finally {
       setIsSavingBaseRate(false);
     }
-  };
+  }, [selectedProperty, listings]);
 
   useEffect(() => {
     if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
     const selectedListing = listings.find(l => l.id === selectedProperty);
-    if (selectedProperty && selectedListing && baseRate !== selectedListing.default_net_rate) {
+    if (selectedProperty && selectedListing && selectedListing.default_net_rate !== undefined && baseRate !== selectedListing.default_net_rate) {
         setIsSavingBaseRate(true);
         debounceTimeout.current = setTimeout(() => {
             handleBaseRateUpdate(baseRate);
@@ -275,7 +275,7 @@ export default function OptimizedCalendarLayout({ selectedListingId, listings = 
         setIsSavingBaseRate(false);
     }
     return () => clearTimeout(debounceTimeout.current);
-  }, [baseRate, selectedProperty, listings]);
+  }, [baseRate, selectedProperty, listings, handleBaseRateUpdate]);
 
   const handlePriceUpdate = async (date, price, minimumStay, notes) => {
     if (!selectedProperty) {

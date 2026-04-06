@@ -130,24 +130,27 @@ export default function PriceLabsIntegration() {
 
   const createPropertyMapping = async (listingId) => {
     try {
-      // Create a basic property pricing record
-      const mockPriceLabsId = `pl_${listingId.slice(-8)}`;
-      
+      // Fetch real pricelabs_id from API
+      const { data } = await priceLabsGetPricing({ listingId });
+      if (!data.success) throw new Error(data.error || 'Failed to fetch PriceLabs property ID');
+      const priceLabsId = data.pricelabs_id || data.data?.property?.pricelabs_id;
+      if (!priceLabsId) throw new Error('No PriceLabs property ID returned from API');
+
       await PropertyPricing.create({
         listing_id: listingId,
-        pricelabs_property_id: mockPriceLabsId,
-        current_rate: 0,
-        recommended_rate: 0,
-        guaranteed_rate: 0,
-        confidence_score: 0,
-        market_factors: [],
+        pricelabs_property_id: priceLabsId,
+        current_rate: data.data?.property?.currentRate || 0,
+        recommended_rate: data.data?.analytics?.averageRecommendedRate || 0,
+        guaranteed_rate: data.data?.analytics?.suggestedGuaranteedRate || 0,
+        confidence_score: data.data?.analytics?.confidence || 0,
+        market_factors: data.data?.analytics?.marketFactors || [],
         pricing_enabled: true
       });
-      
+
       toast.success('Property mapped to PriceLabs!');
       fetchListings(); // Refresh to show updated status
     } catch (error) {
-      toast.error('Failed to map property');
+      toast.error(`Failed to map property: ${error.message}`);
     }
   };
 

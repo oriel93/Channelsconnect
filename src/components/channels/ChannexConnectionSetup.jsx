@@ -5,11 +5,13 @@ import { Button } from '@/components/ui/button';
 import { Loader2, KeyRound, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { importAllProperties } from '@/api/channexClient';
+import { ChannelConnection } from '@/api/entities';
 
 /**
  * ChannexConnectionSetup
  * Shown when no Channex API key is stored yet.
- * On connect: validates the key by calling the Channex API, then stores it and imports properties.
+ * On connect: validates the key by calling the Channex API, then stores it
+ * server-side via the ChannelConnection entity and imports properties.
  */
 export default function ChannexConnectionSetup({ onConnect }) {
   const [apiKey, setApiKey] = useState('');
@@ -27,9 +29,13 @@ export default function ChannexConnectionSetup({ onConnect }) {
       // Validate the key by attempting a properties fetch
       const properties = await importAllProperties(key);
 
-      // Persist key in localStorage (for frontend use)
-      // In production this should be stored server-side via a Base44 backend function
-      localStorage.setItem('channex_api_key', key);
+      // Persist key server-side via ChannelConnection entity
+      const existing = await ChannelConnection.filter({ platform: 'channex' });
+      if (existing.length > 0) {
+        await ChannelConnection.update(existing[0].id, { api_key: key, is_active: true });
+      } else {
+        await ChannelConnection.create({ platform: 'channex', api_key: key, is_active: true });
+      }
 
       toast.success(`Connected! Found ${properties.length} propert${properties.length === 1 ? 'y' : 'ies'} in Channex.`);
       if (onConnect) onConnect(key, properties);
