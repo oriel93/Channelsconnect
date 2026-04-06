@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import {
   Loader2,
   Home,
+  Zap,
   FileSpreadsheet
 } from 'lucide-react';
 import AirbnbPlatformConnect from '../components/channels/AirbnbPlatformConnect';
@@ -41,7 +42,7 @@ const Breadcrumb = ({ crumbs }) => (
 const ImportListings = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('airbnb');
+  const [activeTab, setActiveTab] = useState('channex');
   const [importedListings, setImportedListings] = useState([]);
 
   const loadInitialData = useCallback(async () => {
@@ -97,16 +98,16 @@ const ImportListings = () => {
           <div className="border-b border-slate-200">
             <nav className="flex space-x-8 px-6">
               <button
-                onClick={() => setActiveTab('airbnb')}
+                onClick={() => setActiveTab('channex')}
                 className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'airbnb'
-                    ? 'border-[#FF5A5F] text-[#FF5A5F]'
+                  activeTab === 'channex'
+                    ? 'border-blue-600 text-blue-600'
                     : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <Home className="w-4 h-4" />
-                  Airbnb
+                  <Zap className="w-4 h-4" />
+                  Channex
                 </div>
               </button>
               <button
@@ -126,7 +127,7 @@ const ImportListings = () => {
           </div>
 
           <div className="p-6">
-            {activeTab === 'airbnb' && (
+            {activeTab === 'channex' && (
               <AirbnbPlatformConnect onImportComplete={handleImportComplete} />
             )}
 

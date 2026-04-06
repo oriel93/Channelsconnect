@@ -2,8 +2,11 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Loader2, RefreshCw } from 'lucide-react';
-import { importBeds24Properties } from '@/api/functions';
+import { Loader2, RefreshCw, ExternalLink } from 'lucide-react';
+import { ChannelConnection, Listing } from '@/api/entities';
+import { importAllProperties } from '@/api/channexClient';
+import { createPageUrl } from '@/utils';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
 export default function WelcomeSync({ onSyncComplete }) {
@@ -11,21 +14,52 @@ export default function WelcomeSync({ onSyncComplete }) {
 
   const handleSync = async () => {
     setIsSyncing(true);
-    toast.info("Attempting to import your properties from Beds24. This may take a moment...");
+    toast.info("Importing your properties from Channex...");
     try {
-      const { data } = await importBeds24Properties({});
-      if (data.success) {
-        if (data.properties && data.properties.length > 0) {
-          toast.success(`Successfully imported ${data.properties.length} new properties! Your dashboard is now loading.`);
-          if (onSyncComplete) onSyncComplete();
-        } else {
-          toast.info("No new properties found. The import from Airbnb may still be in progress. Please try again in a few minutes.");
-        }
+      const connections = await ChannelConnection.filter({ platform: 'channex' });
+      const active = connections.find(c => c.is_active && c.api_key);
+      if (!active) {
+        toast.error('No active Channex connection found. Please connect Channex first.');
+        setIsSyncing(false);
+        return;
+      }
+
+      const properties = await importAllProperties(active.api_key);
+      if (!properties.length) {
+        toast.info("No properties found in your Channex account.");
+        setIsSyncing(false);
+        return;
+      }
+
+      const existing = await Listing.list();
+      const existingExternalIds = new Set(existing.map(l => l.external_id).filter(Boolean));
+
+      let created = 0;
+      for (const prop of properties) {
+        if (existingExternalIds.has(prop.channexId)) continue;
+        await Listing.create({
+          name: prop.name,
+          address: prop.address || '',
+          city: prop.city || '',
+          country: prop.country || '',
+          currency: prop.currency || 'USD',
+          external_source: 'channex',
+          external_id: prop.channexId,
+          status: 'active',
+          default_net_rate: 0,
+        });
+        created++;
+      }
+
+      if (created > 0) {
+        toast.success(`Successfully imported ${created} new propert${created === 1 ? 'y' : 'ies'} from Channex!`);
+        if (onSyncComplete) onSyncComplete();
       } else {
-        throw new Error(data.error || 'Sync failed');
+        toast.info("All Channex properties are already imported.");
+        if (onSyncComplete) onSyncComplete();
       }
     } catch (error) {
-      console.error('Initial sync error:', error);
+      console.error('Channex sync error:', error);
       toast.error(error.message || 'Failed to sync properties. Please try again.');
     } finally {
       setIsSyncing(false);
@@ -41,12 +75,12 @@ export default function WelcomeSync({ onSyncComplete }) {
           </div>
           <CardTitle className="text-2xl font-bold">Welcome to Channels Connect!</CardTitle>
           <CardDescription className="text-lg text-slate-600">
-            Your account is connected. Let's import your properties.
+            Import your properties from Channex to get started.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-4">
           <p className="text-slate-500">
-            Click the button below to perform the initial sync with your connected distribution platform. This will pull in all the properties that have been imported from Airbnb.
+            Click below to import all properties from your Channex account. Make sure you've connected Channex first.
           </p>
           <Button
             size="lg"
@@ -55,13 +89,16 @@ export default function WelcomeSync({ onSyncComplete }) {
             className="w-full max-w-sm mx-auto"
           >
             {isSyncing ? (
-              <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Please wait...</>
+              <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Importing...</>
             ) : (
-              <><RefreshCw className="w-5 h-5 mr-2" /> Sync Properties Now</>
+              <><RefreshCw className="w-5 h-5 mr-2" /> Import from Channex</>
             )}
           </Button>
-          <p className="text-xs text-slate-400">
-            If no properties appear, please wait 5-10 minutes for Airbnb to finish syncing with our platform, then try again.
+          <p className="text-sm text-slate-400">
+            Haven't connected Channex yet?{' '}
+            <Link to={createPageUrl('ChannexDashboard')} className="text-blue-600 hover:underline inline-flex items-center gap-1">
+              Go to Channex Dashboard <ExternalLink className="w-3 h-3" />
+            </Link>
           </p>
         </CardContent>
       </Card>
