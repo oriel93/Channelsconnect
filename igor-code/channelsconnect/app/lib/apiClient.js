@@ -150,9 +150,11 @@ export const api = {
 
   // Channex (server-side integration - API key never exposed to frontend)
   channex: {
-    getStatus: () => apiClient.get('/channex/status'),
     listProperties: () => apiClient.get('/channex/properties'),
-    syncProperties: () => apiClient.post('/channex/sync-properties'),
+    importProperties: () => apiClient.post('/channex/properties/import'),
+    syncProperties: () => apiClient.post('/channex/sync/full'),
+    syncBookings: () => apiClient.post('/channex/bookings/sync'),
+    getBookings: () => apiClient.get('/channex/bookings'),
   },
 
   // Reports

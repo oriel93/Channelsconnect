@@ -190,21 +190,19 @@ export const setupBeds24Connection = (data) => {
   return Promise.resolve({ message: 'Not implemented' });
 };
 
-// Channex connection check - calls backend which uses the server-side API key
+// Channex connection check - lists properties via backend (API key is server-side only)
 export const setupChannexConnection = async () => {
   try {
-    const response = await api.channex.getStatus();
-    const { connected, propertiesCount } = response.data;
-    if (connected) {
-      return { data: { success: true, message: `Connected! Found ${propertiesCount} properties.`, propertiesCount } };
-    }
-    return { data: { success: false, error: 'Could not connect to channel manager. Please contact support.' } };
+    const response = await api.channex.listProperties();
+    const properties = response.data?.data || response.data || [];
+    const count = Array.isArray(properties) ? properties.length : 0;
+    return { data: { success: true, message: `Connected! Found ${count} properties.`, propertiesCount: count } };
   } catch (error) {
     return { data: { success: false, error: error.response?.data?.message || error.message || 'Connection check failed' } };
   }
 };
 
-// Import all properties from Channex via backend
+// Sync all properties from Channex via backend
 export const importChannexProperties = async () => {
   try {
     const response = await api.channex.syncProperties();
