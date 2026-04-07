@@ -1,17 +1,15 @@
 import React, { useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
-import { createPageUrl } from '@/utils';
+import { supabase } from '@/api/base44Client';
 
 export default function AuthCallback() {
   useEffect(() => {
-    // This page should ideally not be hit, but as a fallback,
-    // we redirect to the dashboard. The platform's auth system
-    // should handle the login and redirect before this page loads.
-    const timer = setTimeout(() => {
-      window.location.href = createPageUrl('Dashboard');
-    }, 1500);
-
-    return () => clearTimeout(timer);
+    // Handle Supabase OAuth callback — it processes the hash/code automatically
+    const handleCallback = async () => {
+      await supabase.auth.getSession();
+      window.location.href = '/Dashboard';
+    };
+    handleCallback();
   }, []);
 
   return (
