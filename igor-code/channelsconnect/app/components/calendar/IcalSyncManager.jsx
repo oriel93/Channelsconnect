@@ -226,7 +226,7 @@ export default function IcalSyncManager({ listingId, onSyncComplete }) {
               <Label htmlFor="conn-name">Name</Label>
               <Input
                 id="conn-name"
-                placeholder="e.g. Airbnb, Channex"
+                placeholder="e.g. Airbnb, Booking.com"
                 value={newConnection.name}
                 onChange={(e) => setNewConnection({ ...newConnection, name: e.target.value })}
               />

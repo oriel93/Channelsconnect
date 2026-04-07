@@ -95,7 +95,7 @@ const ListingDetailContent = () => {
                                     {listing.isActive ? 'Active' : 'Inactive'}
                 </Badge>
                                 {listing.beds24RoomId && (
-                                    <Badge variant="outline">Channex</Badge>
+                                    <Badge variant="outline">Synced</Badge>
                                 )}
                             </div>
                         </div>
@@ -118,11 +118,11 @@ const ListingDetailContent = () => {
                         </CardContent>
                     </Card>
 
-                {/* Channex Info */}
+                {/* Channel Manager */}
                 {(listing.beds24PropId || listing.beds24RoomId) && (
                     <Card>
                         <CardHeader>
-                            <CardTitle className="text-lg">Channex Integration</CardTitle>
+                            <CardTitle className="text-lg">Channel Manager</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {listing.beds24PropId && (

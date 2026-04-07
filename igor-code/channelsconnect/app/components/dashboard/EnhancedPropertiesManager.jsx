@@ -20,7 +20,7 @@ export default function EnhancedPropertiesManager({ initialListings, onSelectLis
 
     const handleSyncFromChannex = async () => {
         setIsSyncing(true);
-        toast.info("Syncing properties, calendar data, and bookings from Channex...");
+        toast.info("Syncing your properties, calendar data, and bookings...");
         try {
             const { data } = await enhancedImportBeds24Properties({});
             if (data.success) {
@@ -106,7 +106,7 @@ export default function EnhancedPropertiesManager({ initialListings, onSelectLis
                     Bulk Import from Excel
                 </h3>
                 <p className="text-blue-700 text-sm mb-3">
-                    Upload an Excel file to create multiple properties in Channex and sync them to your dashboard automatically.
+                    Upload an Excel file to create multiple properties and sync them to Channels Connect automatically.
                 </p>
                 
                 <div className="flex items-center gap-3">
@@ -125,7 +125,7 @@ export default function EnhancedPropertiesManager({ initialListings, onSelectLis
                         {isExcelUploading ? (
                             <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing...</>
                         ) : (
-                            <><Upload className="w-4 h-4 mr-2" />Import to Channex</>
+                            <><Upload className="w-4 h-4 mr-2" />Import Properties</>
                         )}
                     </Button>
                 </div>
@@ -145,7 +145,7 @@ export default function EnhancedPropertiesManager({ initialListings, onSelectLis
                     </p>
                     <div className="space-y-2 text-sm text-slate-600">
                         <p>✅ Enhanced Sync imports: Properties + Calendar + Pricing + Bookings</p>
-                        <p>✅ Excel Import creates properties directly in Channex</p>
+                        <p>✅ Excel Import creates and syncs your properties</p>
                         <p>✅ Two-way sync keeps everything synchronized</p>
                     </div>
                 </div>

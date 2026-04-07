@@ -119,7 +119,7 @@ export default function IcalDebugPanel({ listingId }) {
               className="flex-1"
             />
             <Button onClick={handleQuickTest} variant="outline" size="sm">
-              Test Channex
+              Test iCal
             </Button>
             <Button 
               onClick={handleDebug} 

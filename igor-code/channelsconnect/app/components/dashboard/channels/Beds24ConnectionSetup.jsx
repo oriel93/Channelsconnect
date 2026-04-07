@@ -12,7 +12,7 @@ export default function Beds24ConnectionSetup({ onConnect }) {
 
   const handleConnect = async () => {
     if (!apiKey.trim()) {
-      toast.error('Please enter your Channex API Key.');
+      toast.error('Please enter your channel manager API Key.');
       return;
     }
     setIsLoading(true);
@@ -36,9 +36,9 @@ export default function Beds24ConnectionSetup({ onConnect }) {
       <Card className="text-center shadow-xl border-blue-500 border-2 max-w-lg">
         <CardHeader>
           <Power className="w-12 h-12 mx-auto text-blue-500" />
-          <CardTitle className="text-2xl mt-4">Connect Your Channex Account</CardTitle>
+          <CardTitle className="text-2xl mt-4">Activate Channels Connect</CardTitle>
           <CardDescription className="text-gray-600">
-            Enter your Channex API Key to connect and sync your properties across all channels.
+            Enter your channel manager API Key to start syncing your properties across all platforms.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -55,11 +55,11 @@ export default function Beds24ConnectionSetup({ onConnect }) {
             </div>
             <Button onClick={handleConnect} disabled={isLoading} className="w-full">
               {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Save & Connect Channex
+              Connect &amp; Activate
             </Button>
           </div>
           <p className="text-xs text-gray-500 mt-4 px-4">
-            You can find your API key in your Channex account settings under "API". This is a one-time setup.
+            You can find your Channex API key in your account settings under "API". This is a one-time setup.
           </p>
         </CardContent>
       </Card>

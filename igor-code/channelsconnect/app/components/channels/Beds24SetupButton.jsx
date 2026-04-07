@@ -12,11 +12,11 @@ export default function Beds24SetupButton({ onConnectionComplete }) {
   const handleSetup = async () => {
     setIsConnecting(true);
     setConnectionResult(null);
-    toast.info('Connecting Channex Account...');
+    toast.info('Activating Channels Connect...');
 
     try {
       const { data } = await setupChannexConnection({});
-      
+
       if (data.success) {
         setConnectionResult({
           success: true,
@@ -24,8 +24,7 @@ export default function Beds24SetupButton({ onConnectionComplete }) {
           data: data.data
         });
         toast.success(data.message);
-        
-        // Notify parent component that connection is complete
+
         if (onConnectionComplete) {
           onConnectionComplete();
         }
@@ -36,9 +35,9 @@ export default function Beds24SetupButton({ onConnectionComplete }) {
       console.error('Setup error:', error);
       setConnectionResult({
         success: false,
-        message: error.message || 'Failed to connect Channex'
+        message: error.message || 'Failed to activate Channels Connect'
       });
-      toast.error(error.message || 'Failed to connect Channex');
+      toast.error(error.message || 'Failed to activate Channels Connect');
     } finally {
       setIsConnecting(false);
     }
@@ -47,7 +46,7 @@ export default function Beds24SetupButton({ onConnectionComplete }) {
   return (
     <div className="space-y-4">
       <div className="text-center">
-        <Button 
+        <Button
           onClick={handleSetup}
           disabled={isConnecting}
           size="lg"
@@ -56,12 +55,12 @@ export default function Beds24SetupButton({ onConnectionComplete }) {
           {isConnecting ? (
             <>
               <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-              Setting up API connection...
+              Activating...
             </>
           ) : (
             <>
               <Zap className="w-5 h-5 mr-2" />
-              Connect Channex Account
+              Activate Channels Connect
             </>
           )}
         </Button>
@@ -80,7 +79,6 @@ export default function Beds24SetupButton({ onConnectionComplete }) {
               {connectionResult.success && connectionResult.data && (
                 <div className="text-sm">
                   <p>• Found {connectionResult.data.propertiesCount} properties</p>
-                  <p>• Token expires in {Math.round(connectionResult.data.tokenExpiresIn / 3600)} hours</p>
                   <p>• Status: {connectionResult.data.connectionStatus}</p>
                 </div>
               )}
@@ -92,10 +90,10 @@ export default function Beds24SetupButton({ onConnectionComplete }) {
       <div className="text-sm text-gray-600 bg-gray-50 p-4 rounded-lg">
         <h4 className="font-semibold mb-2">What this will do:</h4>
         <ul className="space-y-1 list-disc list-inside">
-          <li>Exchange your invite code for API tokens</li>
-          <li>Test the connection by fetching your properties</li>
+          <li>Verify your channel manager connection</li>
+          <li>Import all your properties automatically</li>
           <li>Store the connection securely in your account</li>
-          <li>Enable full two-way sync with Channex</li>
+          <li>Enable full two-way sync across all channels</li>
         </ul>
       </div>
     </div>

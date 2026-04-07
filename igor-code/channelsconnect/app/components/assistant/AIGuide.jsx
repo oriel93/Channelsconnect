@@ -60,11 +60,11 @@ const allGuideSteps = [
   },
   {
     id: 'channex',
-    title: 'Channex Integration (Admin Only)',
+    title: 'Channel Manager Setup (Admin Only)',
     icon: Settings,
     prompts: [
-      "Connect Channex backend via API key.",
-      "Map uploaded units to Channex room IDs.",
+      "Connect channel manager via API key.",
+      "Map uploaded units to channel manager room IDs.",
       "Run API sync to update availability and rates.",
     ]
   }

@@ -70,7 +70,7 @@ const ListingsContent = () => {
                                     <Home className="w-12 h-12 text-slate-300" />
                                     {listing.beds24RoomId && (
                                         <div className="absolute top-3 right-3 bg-blue-600 text-white px-2 py-1 rounded text-xs font-medium shadow-lg">
-                                            Channex
+                                            Synced
                                             </div>
                                         )}
                                     </div>
