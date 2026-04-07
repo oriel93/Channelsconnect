@@ -210,7 +210,7 @@ export default function OptimizedCalendarLayout({ selectedListingId, listings = 
     }
   }, [selectedProperty]);
 
-  // Fetch calendar data from Beds24 API if listing has beds24RoomId
+  // Fetch calendar data from Channex API if listing has beds24RoomId
   const fetchCalendarDataDebounced = useCallback(async () => {
     if (!selectedProperty) {
       setRawCalendarData([]);
@@ -239,14 +239,14 @@ export default function OptimizedCalendarLayout({ selectedListingId, listings = 
         const daysInMonth = new Date(year, month + 1, 0).getDate();
         const endDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
         
-        // Find the selected listing to check if it has Beds24 integration
+        // Find the selected listing to check if it has Channex integration
         const selectedListing = listings.find(l => l.id === selectedProperty);
         
         // Log selected listing info
         console.log('Selected listing:', selectedListing?.id, 'beds24RoomId:', selectedListing?.beds24RoomId);
         
         if (selectedListing?.beds24RoomId) {
-          // Fetch from cached calendar data (not directly from Beds24)
+          // Fetch from cached calendar data (not directly from Channex)
           console.log('Fetching cached calendar for listing:', selectedListing.id);
           const response = await api.calendar.getRates({
             listingId: selectedListing.id,
@@ -288,7 +288,7 @@ export default function OptimizedCalendarLayout({ selectedListingId, listings = 
             
             console.log('DateMap size:', dateMap.size, 'Sample entries:', Array.from(dateMap.entries()).slice(0, 3));
             
-            // Generate all dates for the month and map Beds24 data
+            // Generate all dates for the month and map Channex data
             const allDates = [];
             const [startYear, startMonth, startDay] = startDateStr.split('-').map(Number);
             const [endYear, endMonth, endDay] = endDateStr.split('-').map(Number);
@@ -400,7 +400,7 @@ export default function OptimizedCalendarLayout({ selectedListingId, listings = 
   }, [selectedProperty, currentMonth, lastSyncTimestamp]);
 
   // CRITICAL FIX: Separate pricing calculations from data fetching
-  // Preserve Beds24 prices, only apply dynamic pricing to days without external prices
+  // Preserve Channex prices, only apply dynamic pricing to days without external prices
   // Also mark dates with bookings as 'booked'
   useEffect(() => {
     if (!rawCalendarData || rawCalendarData.length === 0) {
@@ -445,7 +445,7 @@ export default function OptimizedCalendarLayout({ selectedListingId, listings = 
       }
       
       if (day.status === 'available') {
-        // If day has a price from Beds24, use it as the base
+        // If day has a price from Channex, use it as the base
         // Only apply local dynamic pricing if no external price exists
         const hasExternalPrice = day.source === 'cache' && day.price > 0;
         const effectiveBaseRate = hasExternalPrice ? day.price : baseRate;
@@ -508,9 +508,9 @@ export default function OptimizedCalendarLayout({ selectedListingId, listings = 
     const selectedListing = listings.find(l => l.id === selectedProperty);
     
     try {
-      // If listing has Beds24 roomId, update via Beds24 API
+      // If listing has Beds24 roomId, update via Channex API
       if (selectedListing?.beds24RoomId) {
-        // Use calendar rate update endpoint which updates Beds24 and refreshes cache
+        // Use calendar rate update endpoint which updates Channex and refreshes cache
         const response = await api.calendar.updateRate({
           listingId: selectedListing.id,
           date,
@@ -584,7 +584,7 @@ export default function OptimizedCalendarLayout({ selectedListingId, listings = 
     
     try {
       if (action === 'block') {
-        // Use blockDate endpoint which syncs with Beds24 if needed
+        // Use blockDate endpoint which syncs with Channex if needed
         const { data } = await blockDate({ 
           listingId: selectedProperty, 
           date, 
@@ -594,7 +594,7 @@ export default function OptimizedCalendarLayout({ selectedListingId, listings = 
         
         toast.success(`Blocked ${date}`);
       } else {
-        // Use unblockDate endpoint which syncs with Beds24 if needed
+        // Use unblockDate endpoint which syncs with Channex if needed
         const response = await api.calendar.unblockDate({
           listingId: selectedProperty,
           date,

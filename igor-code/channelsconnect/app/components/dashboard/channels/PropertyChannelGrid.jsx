@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Loader2, ChevronDown, CheckCircle, XCircle } from 'lucide-react';
-import { beds24ApiService } from '@/api/functions';
+import { channexApiService } from '@/api/functions';
 import { toast } from 'sonner';
 
 const channelConfig = [
@@ -22,9 +22,9 @@ export default function PropertyChannelGrid({ properties, channelStatus, onChann
     setUpdating(prev => ({ ...prev, [key]: true }));
 
     try {
-      // In a real implementation, you would need the Beds24 property ID here,
+      // In a real implementation, you would need the Channex property ID here,
       // which should be stored in your `Listing` entity as `external_id`.
-      await beds24ApiService({
+      await channexApiService({
           action: 'manageChannelActivation',
           channelName: channelName,
           activate: !currentStatus

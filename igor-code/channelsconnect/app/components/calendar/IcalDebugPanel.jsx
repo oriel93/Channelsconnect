@@ -67,7 +67,7 @@ export default function IcalDebugPanel({ listingId }) {
   };
 
   const handleQuickTest = () => {
-    setDebugUrl('https://api.beds24.com/ical/bookings.ics?roomid=584027');
+    setDebugUrl('https://api.channex.io/api/v1/ical/{property_id}');
   };
 
   if (!showDebugPanel) {
@@ -113,13 +113,13 @@ export default function IcalDebugPanel({ listingId }) {
           
           <div className="flex gap-2 mb-2">
             <Input
-              placeholder="https://api.beds24.com/ical/bookings.ics?roomid=584027"
+              placeholder="https://api.channex.io/api/v1/ical/{property_id}"
               value={debugUrl}
               onChange={(e) => setDebugUrl(e.target.value)}
               className="flex-1"
             />
             <Button onClick={handleQuickTest} variant="outline" size="sm">
-              Test Beds24
+              Test Channex
             </Button>
             <Button 
               onClick={handleDebug} 

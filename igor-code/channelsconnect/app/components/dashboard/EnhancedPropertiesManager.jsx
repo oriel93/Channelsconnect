@@ -18,9 +18,9 @@ export default function EnhancedPropertiesManager({ initialListings, onSelectLis
         setListings(initialListings);
     }, [initialListings]);
 
-    const handleSyncFromBeds24 = async () => {
+    const handleSyncFromChannex = async () => {
         setIsSyncing(true);
-        toast.info("Syncing properties, calendar data, and bookings from Beds24...");
+        toast.info("Syncing properties, calendar data, and bookings from Channex...");
         try {
             const { data } = await enhancedImportBeds24Properties({});
             if (data.success) {
@@ -81,7 +81,7 @@ export default function EnhancedPropertiesManager({ initialListings, onSelectLis
                 <div className="flex gap-2">
                     <Button
                         variant="outline"
-                        onClick={handleSyncFromBeds24}
+                        onClick={handleSyncFromChannex}
                         disabled={isSyncing}
                     >
                         {isSyncing ? (
@@ -106,7 +106,7 @@ export default function EnhancedPropertiesManager({ initialListings, onSelectLis
                     Bulk Import from Excel
                 </h3>
                 <p className="text-blue-700 text-sm mb-3">
-                    Upload an Excel file to create multiple properties in Beds24 and sync them to your dashboard automatically.
+                    Upload an Excel file to create multiple properties in Channex and sync them to your dashboard automatically.
                 </p>
                 
                 <div className="flex items-center gap-3">
@@ -125,7 +125,7 @@ export default function EnhancedPropertiesManager({ initialListings, onSelectLis
                         {isExcelUploading ? (
                             <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing...</>
                         ) : (
-                            <><Upload className="w-4 h-4 mr-2" />Import to Beds24</>
+                            <><Upload className="w-4 h-4 mr-2" />Import to Channex</>
                         )}
                     </Button>
                 </div>
@@ -141,11 +141,11 @@ export default function EnhancedPropertiesManager({ initialListings, onSelectLis
                     <ImageOff className="w-16 h-16 text-slate-400 mx-auto mb-4" />
                     <h3 className="text-lg font-semibold text-slate-700 mb-2">No Properties Found</h3>
                     <p className="text-slate-500 mb-4">
-                        Use "Enhanced Sync" to import properties from your Beds24 account, or use "Add Property" to import from Airbnb.
+                        Use "Enhanced Sync" to import properties from your Channex account, or use "Add Property" to import from Airbnb.
                     </p>
                     <div className="space-y-2 text-sm text-slate-600">
                         <p>✅ Enhanced Sync imports: Properties + Calendar + Pricing + Bookings</p>
-                        <p>✅ Excel Import creates properties directly in Beds24</p>
+                        <p>✅ Excel Import creates properties directly in Channex</p>
                         <p>✅ Two-way sync keeps everything synchronized</p>
                     </div>
                 </div>

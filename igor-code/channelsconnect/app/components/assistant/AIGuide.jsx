@@ -59,12 +59,12 @@ const allGuideSteps = [
     ]
   },
   {
-    id: 'beds24',
-    title: 'Beds24 Integration (Admin Only)',
+    id: 'channex',
+    title: 'Channex Integration (Admin Only)',
     icon: Settings,
     prompts: [
-      "Connect Beds24 backend via API key.",
-      "Map uploaded units to Beds24 room IDs.",
+      "Connect Channex backend via API key.",
+      "Map uploaded units to Channex room IDs.",
       "Run API sync to update availability and rates.",
     ]
   }
@@ -76,12 +76,12 @@ export default function AIGuide({ isOpen, onClose, user, currentStep = 'login' }
 
   const guideSteps = user?.role === 'admin' 
     ? allGuideSteps 
-    : allGuideSteps.filter(step => step.id !== 'beds24');
+    : allGuideSteps.filter(step => step.id !== 'channex');
 
   useEffect(() => {
     // If the current active step is admin-only and the user is not an admin,
     // move to the first available step.
-    if (user?.role !== 'admin' && activeStep === 'beds24') {
+    if (user?.role !== 'admin' && activeStep === 'channex') {
       setActiveStep(guideSteps[0]?.id || 'login');
     }
   }, [user, activeStep, guideSteps]);

@@ -15,7 +15,7 @@ const quickTips = [
   },
   {
     title: "API Integration",
-    content: "Connect your Beds24 account to automatically sync rates and availability across all channels."
+    content: "Connect your Channex account to automatically sync rates and availability across all channels."
   },
   {
     title: "Photo Upload",

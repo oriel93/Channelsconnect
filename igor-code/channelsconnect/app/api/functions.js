@@ -1,5 +1,11 @@
 // Compatibility layer - maps old base44 function calls to new API
 import { api } from '../lib/apiClient';
+import { importAllProperties, listProperties } from './channexClient';
+
+// Channex API key helpers (stored in localStorage)
+export const getChannexApiKey = () => localStorage.getItem('channex_api_key');
+export const setChannexApiKey = (key) => localStorage.setItem('channex_api_key', key);
+export const clearChannexApiKey = () => localStorage.removeItem('channex_api_key');
 
 // Calendar functions
 export const blockDate = (data) => api.calendar.blockDate(data).then(res => res.data);
@@ -149,8 +155,8 @@ export const createBeds24SubAccount = (data) => {
 };
 
 export const importBeds24Properties = async () => {
-  const response = await api.beds24.syncAndSaveProperties();
-  return { data: response.data };
+  // Redirected to Channex import
+  return importChannexProperties();
 };
 
 export const beds24ApiService = (data) => {
@@ -158,9 +164,13 @@ export const beds24ApiService = (data) => {
   return Promise.resolve({ message: 'Not implemented' });
 };
 
-export const enhancedImportBeds24Properties = (data) => {
-  console.warn('enhancedImportBeds24Properties not yet implemented in new API');
+export const channexApiService = (data) => {
+  console.warn('channexApiService not yet implemented in new API');
   return Promise.resolve({ message: 'Not implemented' });
+};
+
+export const enhancedImportBeds24Properties = async () => {
+  return importChannexProperties();
 };
 
 export const enhancedExcelImport = (data) => {
@@ -183,6 +193,30 @@ export const setupBeds24Connection = (data) => {
   return Promise.resolve({ message: 'Not implemented' });
 };
 
+// Channex connection setup - saves API key and verifies by listing properties
+export const setupChannexConnection = async ({ apiKey }) => {
+  try {
+    const result = await listProperties(apiKey);
+    const propertiesCount = (result?.data || []).length;
+    setChannexApiKey(apiKey);
+    return { data: { success: true, message: `Channex connected! Found ${propertiesCount} properties.`, propertiesCount } };
+  } catch (error) {
+    return { data: { success: false, error: error.message || 'Failed to connect to Channex' } };
+  }
+};
+
+// Import all properties from Channex
+export const importChannexProperties = async () => {
+  const apiKey = getChannexApiKey();
+  if (!apiKey) return { data: { success: false, error: 'No Channex API key found. Please connect your Channex account first.' } };
+  try {
+    const properties = await importAllProperties(apiKey);
+    return { data: { success: true, properties, message: `Imported ${properties.length} properties from Channex` } };
+  } catch (error) {
+    return { data: { success: false, error: error.message || 'Failed to import from Channex' } };
+  }
+};
+
 export const configureCustomAuth = (data) => {
   console.warn('configureCustomAuth not yet implemented in new API');
   return Promise.resolve({ message: 'Not implemented' });
@@ -191,6 +225,11 @@ export const configureCustomAuth = (data) => {
 export const disconnectBeds24Connection = (data) => {
   console.warn('disconnectBeds24Connection not yet implemented in new API');
   return Promise.resolve({ message: 'Not implemented' });
+};
+
+export const disconnectChannexConnection = () => {
+  clearChannexApiKey();
+  return Promise.resolve({ data: { success: true } });
 };
 
 export const getUserLocation = () => {

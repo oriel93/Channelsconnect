@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CheckCircle, AlertCircle, Loader2, Zap } from 'lucide-react';
-import { setupBeds24Connection } from '@/api/functions';
+import { setupChannexConnection } from "@/api/functions";
 import { toast } from 'sonner';
 
 export default function Beds24SetupButton({ onConnectionComplete }) {
@@ -12,10 +12,10 @@ export default function Beds24SetupButton({ onConnectionComplete }) {
   const handleSetup = async () => {
     setIsConnecting(true);
     setConnectionResult(null);
-    toast.info('Setting up Beds24 API V2 connection...');
+    toast.info('Connecting Channex Account...');
 
     try {
-      const { data } = await setupBeds24Connection({});
+      const { data } = await setupChannexConnection({});
       
       if (data.success) {
         setConnectionResult({
@@ -36,9 +36,9 @@ export default function Beds24SetupButton({ onConnectionComplete }) {
       console.error('Setup error:', error);
       setConnectionResult({
         success: false,
-        message: error.message || 'Failed to setup Beds24 connection'
+        message: error.message || 'Failed to connect Channex'
       });
-      toast.error(error.message || 'Failed to setup Beds24 connection');
+      toast.error(error.message || 'Failed to connect Channex');
     } finally {
       setIsConnecting(false);
     }
@@ -61,7 +61,7 @@ export default function Beds24SetupButton({ onConnectionComplete }) {
           ) : (
             <>
               <Zap className="w-5 h-5 mr-2" />
-              Setup Beds24 API V2 Connection
+              Connect Channex Account
             </>
           )}
         </Button>
@@ -95,7 +95,7 @@ export default function Beds24SetupButton({ onConnectionComplete }) {
           <li>Exchange your invite code for API tokens</li>
           <li>Test the connection by fetching your properties</li>
           <li>Store the connection securely in your account</li>
-          <li>Enable full two-way sync with Beds24</li>
+          <li>Enable full two-way sync with Channex</li>
         </ul>
       </div>
     </div>

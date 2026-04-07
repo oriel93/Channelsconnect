@@ -15,7 +15,7 @@ export default function PropertiesManager({ initialListings, onSelectListing, se
         setListings(initialListings);
     }, [initialListings]);
 
-    const handleSyncFromBeds24 = async () => {
+    const handleSyncFromChannex = async () => {
         setIsSyncing(true);
         toast.info("Syncing with your channel manager...");
         try {
@@ -43,7 +43,7 @@ export default function PropertiesManager({ initialListings, onSelectListing, se
                 <div className="flex gap-2">
                     <Button
                         variant="outline"
-                        onClick={handleSyncFromBeds24}
+                        onClick={handleSyncFromChannex}
                         disabled={isSyncing}
                     >
                         {isSyncing ? (

@@ -95,7 +95,7 @@ const ListingDetailContent = () => {
                                     {listing.isActive ? 'Active' : 'Inactive'}
                 </Badge>
                                 {listing.beds24RoomId && (
-                                    <Badge variant="outline">Beds24</Badge>
+                                    <Badge variant="outline">Channex</Badge>
                                 )}
                             </div>
                         </div>
@@ -118,11 +118,11 @@ const ListingDetailContent = () => {
                         </CardContent>
                     </Card>
 
-                {/* Beds24 Info */}
+                {/* Channex Info */}
                 {(listing.beds24PropId || listing.beds24RoomId) && (
                     <Card>
                         <CardHeader>
-                            <CardTitle className="text-lg">Beds24 Integration</CardTitle>
+                            <CardTitle className="text-lg">Channex Integration</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {listing.beds24PropId && (

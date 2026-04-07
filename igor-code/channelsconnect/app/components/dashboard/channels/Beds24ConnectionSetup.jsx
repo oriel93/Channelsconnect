@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Loader2, KeyRound, Power } from 'lucide-react';
-import { setupBeds24Connection } from '@/api/functions';
+import { setupChannexConnection } from '@/api/functions';
 import { toast } from 'sonner';
 
 export default function Beds24ConnectionSetup({ onConnect }) {
@@ -12,12 +12,12 @@ export default function Beds24ConnectionSetup({ onConnect }) {
 
   const handleConnect = async () => {
     if (!apiKey.trim()) {
-      toast.error('Please enter your Distribution Platform API Key.');
+      toast.error('Please enter your Channex API Key.');
       return;
     }
     setIsLoading(true);
     try {
-      const { data } = await setupBeds24Connection({ apiKey: apiKey.trim() });
+      const { data } = await setupChannexConnection({ apiKey: apiKey.trim() });
       if (data.success) {
         toast.success(data.message);
         if (onConnect) onConnect();
@@ -36,9 +36,9 @@ export default function Beds24ConnectionSetup({ onConnect }) {
       <Card className="text-center shadow-xl border-blue-500 border-2 max-w-lg">
         <CardHeader>
           <Power className="w-12 h-12 mx-auto text-blue-500" />
-          <CardTitle className="text-2xl mt-4">Activate Channel Distribution</CardTitle>
+          <CardTitle className="text-2xl mt-4">Connect Your Channex Account</CardTitle>
           <CardDescription className="text-gray-600">
-            Enter your API Key to connect to our distribution platform and sync your properties.
+            Enter your Channex API Key to connect and sync your properties across all channels.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -47,7 +47,7 @@ export default function Beds24ConnectionSetup({ onConnect }) {
               <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
                 type="text"
-                placeholder="Enter your Platform API Key"
+                placeholder="Enter your Channex API Key"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 className="pl-10 text-center"
@@ -55,11 +55,11 @@ export default function Beds24ConnectionSetup({ onConnect }) {
             </div>
             <Button onClick={handleConnect} disabled={isLoading} className="w-full">
               {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Save & Connect Platform
+              Save & Connect Channex
             </Button>
           </div>
           <p className="text-xs text-gray-500 mt-4 px-4">
-            You can find your API key in your distribution platform's settings under "API". This is a one-time setup.
+            You can find your API key in your Channex account settings under "API". This is a one-time setup.
           </p>
         </CardContent>
       </Card>

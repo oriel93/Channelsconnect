@@ -69,7 +69,7 @@ export default function WelcomeSync({ onSyncComplete, user: initialUser }) {
 
   const handleSync = async () => {
     setIsSyncing(true);
-    toast.info("Starting property sync from Beds24. This may take a few minutes...");
+    toast.info("Starting property sync from Channex. This may take a few minutes...");
     
     try {
       const { data } = await importBeds24Properties({});
@@ -178,7 +178,7 @@ export default function WelcomeSync({ onSyncComplete, user: initialUser }) {
           {getSyncStatusDisplay()}
           
           <p className="text-slate-500">
-            Click the button below to perform the initial sync with your connected distribution platform. This will pull in all the properties that have been imported from Airbnb.
+            Click the button below to perform the initial sync with your connected Channex platform. This will pull in all the properties that have been imported from Airbnb.
           </p>
           
           <Button

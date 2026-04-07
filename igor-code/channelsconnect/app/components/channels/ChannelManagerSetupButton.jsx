@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Loader2, Zap } from 'lucide-react';
-import { setupBeds24Connection } from '@/api/functions';
+import { setupChannexConnection } from '@/api/functions';
 import { toast } from 'sonner';
 
 export default function ChannelManagerSetupButton({ onSetupComplete }) {
@@ -10,7 +10,7 @@ export default function ChannelManagerSetupButton({ onSetupComplete }) {
   const handleConnect = async () => {
     setIsConnecting(true);
     try {
-      const { data } = await setupBeds24Connection({});
+      const { data } = await setupChannexConnection({});
       if (data.success) {
         toast.success("Channel distribution platform activated successfully!");
         if (onSetupComplete) {

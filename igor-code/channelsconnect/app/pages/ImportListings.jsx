@@ -168,7 +168,7 @@ const ImportListings = () => {
                           <span className="text-xs text-slate-600">{listing.maxGuests} guests</span>
                         )}
                         {listing.beds24RoomId && (
-                          <Badge variant="outline" className="text-xs">Beds24</Badge>
+                          <Badge variant="outline" className="text-xs">Channex</Badge>
                         )}
                       </div>
                     </div>
