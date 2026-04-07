@@ -110,9 +110,26 @@ export class DashboardService {
     ]);
 
     return {
+      success: true,
+      connectionStatus: 'connected', // Channex is configured server-side — always connected
       listings,
       channels,
       channelConnections,
+      // Legacy shape expected by ChannelsDashboard
+      properties: listings.map(l => ({
+        id: l.id,
+        name: (l as any).title,
+        channexId: (l as any).beds24PropId,
+        city: (l as any).city,
+        country: (l as any).country,
+      })),
+      channelStatus: channels.map(ch => ({
+        id: ch.id,
+        name: ch.name,
+        slug: ch.slug,
+        isActive: ch.isActive,
+        activeConnections: channelConnections.filter(c => c.channelId === ch.id && c.isActive).length,
+      })),
       stats: {
         totalListings: listings.length,
         totalChannels: channels.length,

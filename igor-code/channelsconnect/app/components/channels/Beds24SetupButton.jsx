@@ -15,27 +15,19 @@ export default function Beds24SetupButton({ onConnectionComplete }) {
     toast.info('Activating Channels Connect...');
 
     try {
-      const { data } = await setupChannexConnection({});
+      const { data } = await setupChannexConnection();
 
       if (data.success) {
-        setConnectionResult({
-          success: true,
-          message: data.message,
-          data: data.data
-        });
+        setConnectionResult({ success: true, message: data.message });
         toast.success(data.message);
-
-        if (onConnectionComplete) {
-          onConnectionComplete();
-        }
+        if (onConnectionComplete) onConnectionComplete();
       } else {
         throw new Error(data.error || 'Setup failed');
       }
     } catch (error) {
-      console.error('Setup error:', error);
       setConnectionResult({
         success: false,
-        message: error.message || 'Failed to activate Channels Connect'
+        message: error.message || 'Failed to activate Channels Connect',
       });
       toast.error(error.message || 'Failed to activate Channels Connect');
     } finally {
@@ -53,15 +45,9 @@ export default function Beds24SetupButton({ onConnectionComplete }) {
           className="bg-blue-600 hover:bg-blue-700"
         >
           {isConnecting ? (
-            <>
-              <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-              Activating...
-            </>
+            <><Loader2 className="w-5 h-5 mr-2 animate-spin" />Activating...</>
           ) : (
-            <>
-              <Zap className="w-5 h-5 mr-2" />
-              Activate Channels Connect
-            </>
+            <><Zap className="w-5 h-5 mr-2" />Activate Channels Connect</>
           )}
         </Button>
       </div>
@@ -74,15 +60,7 @@ export default function Beds24SetupButton({ onConnectionComplete }) {
             <AlertCircle className="h-4 w-4 text-red-600" />
           )}
           <AlertDescription className={connectionResult.success ? 'text-green-800' : 'text-red-800'}>
-            <div className="space-y-2">
-              <p><strong>{connectionResult.success ? 'Success!' : 'Error:'}</strong> {connectionResult.message}</p>
-              {connectionResult.success && connectionResult.data && (
-                <div className="text-sm">
-                  <p>• Found {connectionResult.data.propertiesCount} properties</p>
-                  <p>• Status: {connectionResult.data.connectionStatus}</p>
-                </div>
-              )}
-            </div>
+            <strong>{connectionResult.success ? 'Success!' : 'Error:'}</strong> {connectionResult.message}
           </AlertDescription>
         </Alert>
       )}
@@ -90,10 +68,10 @@ export default function Beds24SetupButton({ onConnectionComplete }) {
       <div className="text-sm text-gray-600 bg-gray-50 p-4 rounded-lg">
         <h4 className="font-semibold mb-2">What this will do:</h4>
         <ul className="space-y-1 list-disc list-inside">
-          <li>Verify your channel manager connection</li>
-          <li>Import all your properties automatically</li>
-          <li>Store the connection securely in your account</li>
-          <li>Enable full two-way sync across all channels</li>
+          <li>Connect your properties to Channels Connect</li>
+          <li>Import all your listings automatically</li>
+          <li>Enable two-way sync across all channels</li>
+          <li>Start receiving bookings in real time</li>
         </ul>
       </div>
     </div>

@@ -13,6 +13,7 @@ import { IcalModule } from './ical/ical.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { Beds24Module } from './beds24/beds24.module';
+import { ChannexModule } from './channex/channex.module';
 import { ReportsModule } from './reports/reports.module';
 
 @Module({
@@ -32,6 +33,7 @@ import { ReportsModule } from './reports/reports.module';
     DashboardModule,
     AnalyticsModule,
     Beds24Module,
+    ChannexModule,
     ReportsModule,
   ],
   controllers: [AppController],

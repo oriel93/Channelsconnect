@@ -148,6 +148,13 @@ export const api = {
     updateCalendar: (data) => apiClient.post('/beds24/calendar', data),
   },
 
+  // Channex (server-side integration - API key never exposed to frontend)
+  channex: {
+    getStatus: () => apiClient.get('/channex/status'),
+    listProperties: () => apiClient.get('/channex/properties'),
+    syncProperties: () => apiClient.post('/channex/sync-properties'),
+  },
+
   // Reports
   reports: {
     getRevenue: (params) => apiClient.get('/reports/revenue', { params }),
