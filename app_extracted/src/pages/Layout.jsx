@@ -2,12 +2,12 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import MarketingHeader from "./components/marketing/MarketingHeader";
-import MarketingFooter from "./components/marketing/MarketingFooter";
-import PWAInstaller from "./components/pwa/PWAInstaller";
+import MarketingHeader from "../components/marketing/MarketingHeader";
+import MarketingFooter from "../components/marketing/MarketingFooter";
+import PWAInstaller from "../components/pwa/PWAInstaller";
 import { InvokeLLM } from "@/api/integrations";
 import { X, Bot, Calendar, Rocket } from "lucide-react";
-import TranslationWidget from './components/translation/TranslationWidget';
+import TranslationWidget from '../components/translation/TranslationWidget';
 import { getUserLocation } from '@/api/functions';
 import { createPageUrl } from '@/utils';
 import { sendTeamNotification } from '@/api/functions';
