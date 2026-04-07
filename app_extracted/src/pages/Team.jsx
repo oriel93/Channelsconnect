@@ -12,7 +12,7 @@ const teamMembers = [
     role: "CEO",
     bio: "A visionary leader, Eli drives the company's strategic direction, leveraging extensive experience in hospitality technology to innovate and inspire growth.",
     image: "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/e499bc31c_eliphoto.jpeg",
-    linkedin: "#",
+    linkedin: "https://www.linkedin.com/in/elirouimi-7867085552/",
     email: "Eli@erorentals.com"
   },
   {
@@ -20,7 +20,7 @@ const teamMembers = [
     role: "COO",
     bio: "Oriel masterfully oversees all daily operations, ensuring organizational excellence and scaling our business processes to support rapid global expansion.",
     image: "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/99b9c7584_orielphoto.jpg",
-    linkedin: "#",
+    linkedin: "https://www.linkedin.com/in/oriel-hagbi-427096169/",
     email: "Oriel@erorentals.com"
   },
   {
