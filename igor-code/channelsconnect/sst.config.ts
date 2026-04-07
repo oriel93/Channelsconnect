@@ -60,6 +60,7 @@ export default $config({
                 SUPABASE_WEBHOOK_SECRET: process.env.SUPABASE_WEBHOOK_SECRET || "",
                 BEDS24_API_KEY: process.env.BEDS24_API_KEY || "",
                 BEDS24_REFRESH_TOKEN: process.env.BEDS24_REFRESH_TOKEN || "",
+                CHANNEX_API_KEY: process.env.CHANNEX_API_KEY || "",
                 FRONTEND_URL: process.env.FRONTEND_URL || ""
             },
             dev: {
