@@ -1,0 +1,545 @@
+// Prisma schema for Channels Connect
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model linked to Supabase auth
+// This table is automatically populated via database trigger when users sign up
+// Sync status enum
+enum SyncStatus {
+  idle
+  syncing
+  completed
+  failed
+}
+
+model User {
+  id           String   @id @default(uuid()) // References auth.users(id)
+  email        String   @unique
+  name         String?
+  avatarUrl    String?
+  role         String   @default("user") // user, admin, etc.
+  airbnbHostId String?  // Airbnb user ID extracted from profile URL
+  
+  // Sync status tracking
+  syncStatus      SyncStatus @default(idle)
+  syncStartedAt   DateTime?
+  syncCompletedAt DateTime?
+  syncError       String?
+  
+  // Payout settings
+  payoutAccountHolderName String? // Bank account holder name
+  payoutRoutingNumber     String? // Bank routing number
+  payoutAccountNumber     String? // Bank account number (encrypted)
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  listings              Listing[]
+  bookings              Booking[]
+  leads                 Lead[]
+  propertyConnections   PropertyConnection[]
+  channelConnections    ChannelConnection[]
+  airbnbConnections     AirbnbConnection[]
+  icalConnections       IcalConnection[]
+  priceLabsIntegrations PriceLabsIntegration[]
+  propertyImages        PropertyImage[]
+  calendarAuditLogs     CalendarAuditLog[]
+  syncLogs              SyncLog[]
+
+  @@map("users")
+}
+
+// Channel model - Channel management
+model Channel {
+  id          Int      @id @default(autoincrement())
+  name        String
+  slug        String   @unique
+  description String?
+  logoUrl     String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  channelConnections ChannelConnection[]
+
+  @@map("channels")
+}
+
+// RoomType model
+model RoomType {
+  id          Int      @id @default(autoincrement())
+  listingId   Int
+  name        String
+  description String?
+  maxGuests   Int
+  bedType     String?
+  quantity    Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  listing   Listing     @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  inventory Inventory[]
+
+  @@map("room_types")
+}
+
+// Inventory model
+model Inventory {
+  id         Int      @id @default(autoincrement())
+  roomTypeId Int
+  date       DateTime @db.Date
+  available  Int
+  booked     Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  roomType RoomType @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([roomTypeId, date])
+  @@map("inventory")
+}
+
+// Booking model
+model Booking {
+  id            Int      @id @default(autoincrement())
+  userId        String
+  listingId     Int
+  guestName     String
+  guestEmail    String?
+  guestPhone    String?
+  checkIn       DateTime @db.Date
+  checkOut      DateTime @db.Date
+  numGuests     Int
+  totalPrice    Decimal  @db.Decimal(10, 2)
+  status        String   @default("confirmed") // confirmed, cancelled, pending
+  bookingSource String? // airbnb, booking.com, direct, etc.
+  externalId    String? // External booking ID from channel
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+  @@index([userId])
+  @@index([checkIn, checkOut])
+  @@map("bookings")
+}
+
+// Lead model
+model Lead {
+  id         Int      @id @default(autoincrement())
+  userId     String?
+  email      String
+  name       String?
+  phone      String?
+  message    String?
+  source     String? // website, referral, etc.
+  status     String   @default("new") // new, contacted, converted, lost
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([email])
+  @@map("leads")
+}
+
+// PropertyConnection model
+model PropertyConnection {
+  id                Int      @id @default(autoincrement())
+  userId            String
+  listingId         Int
+  externalPlatform  String // PMS name
+  externalId        String // Property ID in external system
+  credentials       Json? // Encrypted credentials
+  syncEnabled       Boolean  @default(true)
+  lastSyncAt        DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([listingId, externalPlatform])
+  @@map("property_connections")
+}
+
+// Listing model - Property listings
+model Listing {
+  id              Int      @id @default(autoincrement())
+  userId          String
+  title           String
+  description     String?
+  address         String?
+  city            String?
+  state           String?
+  country         String?
+  postalCode      String?
+  latitude        Decimal? @db.Decimal(10, 8)
+  longitude       Decimal? @db.Decimal(11, 8)
+  propertyType    String? // apartment, house, villa, etc.
+  bedrooms        Int?
+  bathrooms       Decimal? @db.Decimal(3, 1)
+  maxGuests       Int?
+  basePrice       Decimal? @db.Decimal(10, 2)
+  currency        String   @default("USD")
+  amenities       Json? // Array of amenities
+  houseRules      String?
+  cancellationPolicy String?
+  checkInTime     String?
+  checkOutTime    String?
+  minNights       Int      @default(1)
+  maxNights       Int?
+  isActive        Boolean  @default(true)
+  beds            Int?     // Number of beds
+  // Beds24 integration fields
+  beds24PropId    String?  // Beds24 property ID
+  beds24RoomId    String?  // Beds24 room/roomType ID
+  // Airbnb integration fields
+  airbnbListingId String?  // Airbnb listing ID
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  user                User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roomTypes           RoomType[]
+  bookings            Booking[]
+  rates               Rate[]
+  blockedDates        BlockedDate[]
+  pricingRules        PricingRule[]
+  propertyImages      PropertyImage[]
+  icalConnections     IcalConnection[]
+  propertyPricing     PropertyPricing[]
+  propertyConnections PropertyConnection[]
+  importedListings    ImportedListing[]
+  calendarEvents      CalendarEvent[]
+  calendar            Calendar[]
+
+  @@index([userId])
+  @@index([city, country])
+  @@index([beds24PropId, beds24RoomId])
+  @@index([airbnbListingId])
+  @@map("listings")
+}
+
+// Rate model
+model Rate {
+  id        Int      @id @default(autoincrement())
+  listingId Int
+  date      DateTime @db.Date
+  price     Decimal  @db.Decimal(10, 2)
+  minStay   Int?
+  available Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([listingId, date])
+  @@index([date])
+  @@map("rates")
+}
+
+// ChannelsConnectBooking model
+model ChannelsConnectBooking {
+  id          Int      @id @default(autoincrement())
+  bookingRef  String   @unique
+  listingId   Int
+  guestName   String
+  checkIn     DateTime @db.Date
+  checkOut    DateTime @db.Date
+  totalPrice  Decimal  @db.Decimal(10, 2)
+  status      String
+  syncStatus  String   @default("pending") // pending, synced, failed
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([listingId])
+  @@map("channels_connect_bookings")
+}
+
+// BlockedDate model
+model BlockedDate {
+  id        Int      @id @default(autoincrement())
+  listingId Int
+  date      DateTime @db.Date
+  reason    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([listingId, date])
+  @@index([listingId])
+  @@index([date])
+  @@index([listingId, date]) // Composite index for faster queries and deletes
+  @@map("blocked_dates")
+}
+
+// PricingRule model
+model PricingRule {
+  id          Int      @id @default(autoincrement())
+  listingId   Int
+  name        String
+  ruleType    String // seasonal, length_of_stay, day_of_week, etc.
+  conditions  Json // Rule conditions
+  adjustment  Decimal  @db.Decimal(5, 2) // Percentage adjustment
+  priority    Int      @default(0)
+  isActive    Boolean  @default(true)
+  startDate   DateTime? @db.Date
+  endDate     DateTime? @db.Date
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+  @@map("pricing_rules")
+}
+
+// PropertyImage model
+model PropertyImage {
+  id          Int      @id @default(autoincrement())
+  userId      String
+  listingId   Int
+  url         String
+  thumbnailUrl String?
+  caption     String?
+  displayOrder Int     @default(0)
+  isPrimary   Boolean  @default(false)
+  cloudinaryId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+  @@map("property_images")
+}
+
+// IcalConnection model
+model IcalConnection {
+  id             Int      @id @default(autoincrement())
+  userId         String
+  listingId      Int
+  name           String
+  icalUrl        String
+  syncDirection  String   @default("import") // import, export, both
+  lastSyncAt     DateTime?
+  lastSyncStatus String? // success, failed
+  syncEnabled    Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+  @@map("ical_connections")
+}
+
+// PriceLabsIntegration model
+model PriceLabsIntegration {
+  id          Int      @id @default(autoincrement())
+  userId      String
+  apiKey      String
+  isActive    Boolean  @default(true)
+  lastSyncAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId])
+  @@map("pricelabs_integrations")
+}
+
+// PropertyPricing model
+model PropertyPricing {
+  id               Int      @id @default(autoincrement())
+  listingId        Int
+  strategy         String   @default("fixed") // fixed, dynamic, pricelabs
+  basePrice        Decimal  @db.Decimal(10, 2)
+  weekendMultiplier Decimal? @db.Decimal(3, 2)
+  monthlyDiscount  Decimal? @db.Decimal(5, 2)
+  lastUpdateAt     DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([listingId])
+  @@map("property_pricing")
+}
+
+// ChannelConnection model
+model ChannelConnection {
+  id          Int      @id @default(autoincrement())
+  userId      String
+  channelId   Int
+  listingId   Int
+  externalId  String? // Property ID on the channel
+  credentials Json? // API keys, tokens, etc.
+  isActive    Boolean  @default(true)
+  lastSyncAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channelId, listingId])
+  @@map("channel_connections")
+}
+
+// CalendarAuditLog model
+model CalendarAuditLog {
+  id         Int      @id @default(autoincrement())
+  userId     String
+  action     String // created, updated, deleted
+  entityType String // booking, rate, blocked_date
+  entityId   Int
+  changes    Json? // What changed
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@map("calendar_audit_logs")
+}
+
+// AirbnbConnection model
+model AirbnbConnection {
+  id           Int      @id @default(autoincrement())
+  userId       String
+  accessToken  String
+  refreshToken String?
+  expiresAt    DateTime?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId])
+  @@map("airbnb_connections")
+}
+
+// ImportedListing model
+model ImportedListing {
+  id             Int      @id @default(autoincrement())
+  listingId      Int?
+  source         String // airbnb, booking.com, etc.
+  externalId     String
+  rawData        Json // Full data from import
+  importStatus   String   @default("pending") // pending, processed, failed
+  matchConfidence Decimal? @db.Decimal(3, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  listing Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+
+  @@unique([source, externalId])
+  @@map("imported_listings")
+}
+
+// SyncLog model
+model SyncLog {
+  id         Int      @id @default(autoincrement())
+  userId     String
+  syncType   String // ical, channel, pms
+  entityType String // booking, rate, availability
+  entityId   Int?
+  status     String // success, failed, partial
+  message    String?
+  details    Json?
+  duration   Int? // milliseconds
+  createdAt  DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([syncType, status])
+  @@map("sync_logs")
+}
+
+// CalendarEvent model
+model CalendarEvent {
+  id          Int      @id @default(autoincrement())
+  listingId   Int
+  title       String
+  description String?
+  startDate   DateTime
+  endDate     DateTime
+  eventType   String // booking, blocked, maintenance
+  source      String? // manual, import, sync
+  externalId  String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+  @@index([startDate, endDate])
+  @@map("calendar_events")
+}
+
+// Calendar model - Caches calendar data from Beds24
+model Calendar {
+  id          Int      @id @default(autoincrement())
+  listingId   Int
+  roomId      Int // Beds24 room ID
+  date        DateTime @db.Date
+  price       Decimal? @db.Decimal(10, 2)
+  numAvail    Int?
+  minStay     Int?
+  maxStay     Int?
+  override    String? // none, open, closed
+  rawData     Json? // Full calendar entry from Beds24
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([listingId, date])
+  @@index([listingId])
+  @@index([date])
+  @@index([listingId, date]) // Composite index for faster range queries and updates
+  @@map("calendar")
+}
+

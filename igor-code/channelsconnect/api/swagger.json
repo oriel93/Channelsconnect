@@ -1,0 +1,3602 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/": {
+      "get": {
+        "operationId": "AppController_getHello",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "API health check"
+          }
+        },
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "AppController_healthCheck",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Health check endpoint"
+          }
+        },
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/users": {
+      "post": {
+        "operationId": "UsersController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserEntity"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "users"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "UsersController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UserEntity"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "users"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/users/me": {
+      "get": {
+        "operationId": "UsersController_getMe",
+        "summary": "Get current user",
+        "description": "Returns the authenticated user data. User ID is extracted from the JWT token.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserEntity"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "users"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "UsersController_updateMe",
+        "summary": "Update current user",
+        "description": "Updates the authenticated user data. User ID is extracted from the JWT token.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserEntity"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "users"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/users/token-info": {
+      "get": {
+        "operationId": "UsersController_getTokenInfo",
+        "summary": "Test JWT token extraction",
+        "description": "Returns the user info extracted directly from the JWT token without database lookup.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Returns info extracted from JWT token (for testing)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "User ID from JWT sub claim"
+                    },
+                    "email": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "users"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/users/{id}": {
+      "patch": {
+        "operationId": "UsersController_update",
+        "summary": "Update user by ID",
+        "description": "Updates user data. Only allowed if the authenticated user matches the target user ID.",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserEntity"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "users"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/users/connect-airbnb": {
+      "post": {
+        "operationId": "UsersController_connectAirbnb",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Airbnb profile connected successfully"
+          }
+        },
+        "tags": [
+          "users"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/users/sync-status": {
+      "get": {
+        "operationId": "UsersController_getSyncStatus",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Get current sync status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "syncStatus": {
+                      "type": "string",
+                      "enum": [
+                        "idle",
+                        "syncing",
+                        "completed",
+                        "failed"
+                      ]
+                    },
+                    "syncStartedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    },
+                    "syncCompletedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    },
+                    "syncError": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "users"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/users/webhooks/before-user-created": {
+      "post": {
+        "operationId": "UsersController_handleBeforeUserCreated",
+        "summary": "Supabase Before User Created webhook",
+        "description": "Called by Supabase Auth before creating a new user. Validates signup and creates user profile in public.users.",
+        "parameters": [
+          {
+            "name": "x-webhook-signature",
+            "required": false,
+            "in": "header",
+            "description": "Webhook signature for verification",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupabaseBeforeUserCreatedDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "User creation allowed and profile created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "users"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/beds24/sync-airbnb": {
+      "post": {
+        "operationId": "Beds24Controller_syncAirbnb",
+        "summary": "Sync Airbnb listing to Beds24",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncAirbnbDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Listing successfully synced to Beds24"
+          }
+        },
+        "tags": [
+          "Beds24"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/beds24/properties/{airbnbHostId}": {
+      "get": {
+        "operationId": "Beds24Controller_getPropertiesByHostId",
+        "summary": "Get Beds24 properties for Airbnb host",
+        "parameters": [
+          {
+            "name": "airbnbHostId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns Beds24 properties"
+          }
+        },
+        "tags": [
+          "Beds24"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/beds24/property/{propKey}": {
+      "get": {
+        "operationId": "Beds24Controller_getProperty",
+        "summary": "Get specific Beds24 property details",
+        "parameters": [
+          {
+            "name": "propKey",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns property details"
+          }
+        },
+        "tags": [
+          "Beds24"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/beds24/properties": {
+      "get": {
+        "operationId": "Beds24Controller_getAllProperties",
+        "summary": "Get all properties from Beds24 account",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Returns all properties in the account"
+          }
+        },
+        "tags": [
+          "Beds24"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/beds24/sync-properties": {
+      "post": {
+        "operationId": "Beds24Controller_syncAndSaveProperties",
+        "summary": "Sync all properties from Beds24 and save to database",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Properties synced and saved successfully"
+          }
+        },
+        "tags": [
+          "Beds24"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/beds24/calendar": {
+      "get": {
+        "operationId": "Beds24Controller_getCalendar",
+        "summary": "Get calendar data from Beds24",
+        "parameters": [
+          {
+            "name": "startDate",
+            "required": true,
+            "in": "query",
+            "description": "Start date (YYYY-MM-DD)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endDate",
+            "required": true,
+            "in": "query",
+            "description": "End date (YYYY-MM-DD)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "roomId",
+            "required": false,
+            "in": "query",
+            "description": "Room IDs (comma-separated)",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          {
+            "name": "propertyId",
+            "required": false,
+            "in": "query",
+            "description": "Property IDs (comma-separated)",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns calendar data for specified rooms/properties"
+          }
+        },
+        "tags": [
+          "Beds24"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "Beds24Controller_updateCalendar",
+        "summary": "Update calendar data in Beds24",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Calendar updated successfully"
+          }
+        },
+        "tags": [
+          "Beds24"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/beds24/bookings": {
+      "get": {
+        "operationId": "Beds24Controller_getBookings",
+        "summary": "Get bookings from Beds24",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": false,
+            "in": "query",
+            "description": "Property IDs (comma-separated)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "roomId",
+            "required": false,
+            "in": "query",
+            "description": "Room IDs (comma-separated)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "arrivalFrom",
+            "required": false,
+            "in": "query",
+            "description": "Arrival from date (YYYY-MM-DD)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "arrivalTo",
+            "required": false,
+            "in": "query",
+            "description": "Arrival to date (YYYY-MM-DD)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "departureFrom",
+            "required": false,
+            "in": "query",
+            "description": "Departure from date (YYYY-MM-DD)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "departureTo",
+            "required": false,
+            "in": "query",
+            "description": "Departure to date (YYYY-MM-DD)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "modifiedFrom",
+            "required": false,
+            "in": "query",
+            "description": "Modified from datetime",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "Status filter (comma-separated: new,request,confirmed,cancelled)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns bookings from Beds24"
+          }
+        },
+        "tags": [
+          "Beds24"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/beds24/sync-bookings": {
+      "post": {
+        "operationId": "Beds24Controller_syncBookings",
+        "summary": "Sync all bookings from Beds24 for user properties",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Bookings synced successfully"
+          }
+        },
+        "tags": [
+          "Beds24"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/webhooks/beds24/booking": {
+      "post": {
+        "operationId": "Beds24WebhookController_handleBookingWebhook",
+        "summary": "Handle Beds24 booking webhook events",
+        "parameters": [
+          {
+            "name": "x-beds24-signature",
+            "required": false,
+            "in": "header",
+            "description": "Webhook signature for verification",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Webhook processed successfully"
+          }
+        },
+        "tags": [
+          "Beds24 Webhooks"
+        ]
+      }
+    },
+    "/webhooks/beds24/test": {
+      "post": {
+        "operationId": "Beds24WebhookController_testWebhook",
+        "summary": "Test endpoint for webhook connectivity",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Test successful"
+          }
+        },
+        "tags": [
+          "Beds24 Webhooks"
+        ]
+      }
+    },
+    "/listings": {
+      "post": {
+        "operationId": "ListingsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateListingDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListingEntity"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "listings"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "ListingsController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ListingEntity"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "listings"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/listings/active": {
+      "get": {
+        "operationId": "ListingsController_findActive",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ListingEntity"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "listings"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/listings/my-listings": {
+      "get": {
+        "operationId": "ListingsController_findMyListings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ListingEntity"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "listings"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/listings/{id}": {
+      "get": {
+        "operationId": "ListingsController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListingEntity"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "listings"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "ListingsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateListingDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListingEntity"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "listings"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "ListingsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListingEntity"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "listings"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/bookings": {
+      "post": {
+        "operationId": "BookingsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBookingDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingEntity"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "bookings"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "BookingsController_findAll",
+        "parameters": [
+          {
+            "name": "listingId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BookingEntity"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "bookings"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/bookings/upcoming": {
+      "get": {
+        "operationId": "BookingsController_findUpcoming",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BookingEntity"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "bookings"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/bookings/my-bookings": {
+      "get": {
+        "operationId": "BookingsController_findMyBookings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BookingEntity"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "bookings"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/bookings/listing/{listingId}": {
+      "get": {
+        "operationId": "BookingsController_findByListingId",
+        "parameters": [
+          {
+            "name": "listingId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Get all bookings for a specific listing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BookingEntity"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "bookings"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/bookings/{id}": {
+      "get": {
+        "operationId": "BookingsController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingEntity"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "bookings"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "BookingsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBookingDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingEntity"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "bookings"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "BookingsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingEntity"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "bookings"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/bookings/{id}/cancel": {
+      "patch": {
+        "operationId": "BookingsController_cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingEntity"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "bookings"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/channels": {
+      "post": {
+        "operationId": "ChannelsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateChannelDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelEntity"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "channels"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "ChannelsController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ChannelEntity"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "channels"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/channels/active": {
+      "get": {
+        "operationId": "ChannelsController_findActive",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ChannelEntity"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "channels"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/channels/{id}": {
+      "get": {
+        "operationId": "ChannelsController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelEntity"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "channels"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "ChannelsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateChannelDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelEntity"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "channels"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "ChannelsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelEntity"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "channels"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/calendar/rates": {
+      "post": {
+        "operationId": "CalendarController_updateRate",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "calendar"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "CalendarController_getRates",
+        "parameters": [
+          {
+            "name": "listingId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "startDate",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endDate",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "calendar"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/calendar/rates/bulk": {
+      "post": {
+        "operationId": "CalendarController_bulkUpdateRates",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkUpdateRatesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "calendar"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/calendar/block": {
+      "post": {
+        "operationId": "CalendarController_blockDate",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlockDateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "calendar"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/calendar/block/bulk": {
+      "post": {
+        "operationId": "CalendarController_bulkBlockDates",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkBlockDatesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "calendar"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/calendar/unblock": {
+      "delete": {
+        "operationId": "CalendarController_unblockDate",
+        "parameters": [
+          {
+            "name": "listingId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "date",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "calendar"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/calendar/unblock/bulk": {
+      "post": {
+        "operationId": "CalendarController_bulkUnblockDates",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkUnblockDatesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "calendar"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/calendar/blocked-dates": {
+      "get": {
+        "operationId": "CalendarController_getBlockedDates",
+        "parameters": [
+          {
+            "name": "listingId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "startDate",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endDate",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "calendar"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/calendar/data": {
+      "get": {
+        "operationId": "CalendarController_getCalendarData",
+        "parameters": [
+          {
+            "name": "listingId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "startDate",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endDate",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "calendar"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/calendar/events": {
+      "get": {
+        "operationId": "CalendarController_getCalendarEvents",
+        "parameters": [
+          {
+            "name": "listingId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "startDate",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endDate",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "calendar"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "CalendarController_createCalendarEvent",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "calendar"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/calendar/events/{id}": {
+      "patch": {
+        "operationId": "CalendarController_updateCalendarEntry",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "calendar"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "CalendarController_deleteCalendarEntry",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "calendar"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/calendar/sync/{listingId}": {
+      "post": {
+        "operationId": "CalendarController_syncCalendar",
+        "parameters": [
+          {
+            "name": "listingId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "calendar"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/calendar/cache/{listingId}": {
+      "delete": {
+        "operationId": "CalendarController_clearCache",
+        "parameters": [
+          {
+            "name": "listingId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "calendar"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/calendar/cached": {
+      "get": {
+        "operationId": "CalendarController_getCachedCalendar",
+        "parameters": [
+          {
+            "name": "listingId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "startDate",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endDate",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "calendar"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/ical/connections": {
+      "post": {
+        "operationId": "IcalController_createConnection",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateIcalConnectionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ical"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "IcalController_findAllConnections",
+        "parameters": [
+          {
+            "name": "listingId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ical"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/ical/connections/{id}": {
+      "get": {
+        "operationId": "IcalController_findOneConnection",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ical"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "IcalController_updateConnection",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateIcalConnectionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ical"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "IcalController_removeConnection",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ical"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/ical/sync/{id}": {
+      "post": {
+        "operationId": "IcalController_syncConnection",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ical"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/ical/sync-all": {
+      "post": {
+        "operationId": "IcalController_syncAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ical"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/ical/export/{listingId}": {
+      "get": {
+        "operationId": "IcalController_exportIcal",
+        "parameters": [
+          {
+            "name": "listingId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ical"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/ical/import": {
+      "post": {
+        "operationId": "IcalController_importIcal",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportIcalDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ical"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/dashboard": {
+      "get": {
+        "operationId": "DashboardController_getDashboardData",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "dashboard"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/dashboard/calendar": {
+      "get": {
+        "operationId": "DashboardController_getCalendarDashboardData",
+        "parameters": [
+          {
+            "name": "startDate",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endDate",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "dashboard"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/dashboard/channels": {
+      "get": {
+        "operationId": "DashboardController_getChannelsDashboardData",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "dashboard"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/analytics": {
+      "get": {
+        "operationId": "AnalyticsController_getAnalytics",
+        "parameters": [
+          {
+            "name": "startDate",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endDate",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/analytics/market": {
+      "get": {
+        "operationId": "AnalyticsController_getMarketData",
+        "parameters": [
+          {
+            "name": "city",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "country",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "analytics"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/reports/revenue": {
+      "get": {
+        "operationId": "ReportsController_getRevenueStats",
+        "summary": "Get revenue statistics",
+        "parameters": [
+          {
+            "name": "startDate",
+            "required": false,
+            "in": "query",
+            "description": "Start date for the report range",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endDate",
+            "required": false,
+            "in": "query",
+            "description": "End date for the report range",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "listingId",
+            "required": false,
+            "in": "query",
+            "description": "Filter by specific listing ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revenue statistics including totals, by month, by listing, and by source"
+          }
+        },
+        "tags": [
+          "reports"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/reports/occupancy": {
+      "get": {
+        "operationId": "ReportsController_getOccupancyStats",
+        "summary": "Get occupancy statistics",
+        "parameters": [
+          {
+            "name": "startDate",
+            "required": false,
+            "in": "query",
+            "description": "Start date for the report range",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endDate",
+            "required": false,
+            "in": "query",
+            "description": "End date for the report range",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "listingId",
+            "required": false,
+            "in": "query",
+            "description": "Filter by specific listing ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Occupancy rates by listing and by month"
+          }
+        },
+        "tags": [
+          "reports"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/reports/adr": {
+      "get": {
+        "operationId": "ReportsController_getADRStats",
+        "summary": "Get Average Daily Rate statistics",
+        "parameters": [
+          {
+            "name": "startDate",
+            "required": false,
+            "in": "query",
+            "description": "Start date for the report range",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endDate",
+            "required": false,
+            "in": "query",
+            "description": "End date for the report range",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "listingId",
+            "required": false,
+            "in": "query",
+            "description": "Filter by specific listing ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ADR statistics including RevPAR, by month, by listing, and by source"
+          }
+        },
+        "tags": [
+          "reports"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/reports/payouts": {
+      "get": {
+        "operationId": "ReportsController_getPayoutStats",
+        "summary": "Get payout status statistics",
+        "parameters": [
+          {
+            "name": "startDate",
+            "required": false,
+            "in": "query",
+            "description": "Start date for the report range",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endDate",
+            "required": false,
+            "in": "query",
+            "description": "End date for the report range",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "listingId",
+            "required": false,
+            "in": "query",
+            "description": "Filter by specific listing ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Payout statistics by status and source, with recent bookings"
+          }
+        },
+        "tags": [
+          "reports"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Channels Connect API",
+    "description": "The Channels Connect API - Property Management & Channel Management Platform",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      }
+    },
+    "schemas": {
+      "CreateUserDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Supabase Auth UUID"
+          },
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "default": "user"
+          },
+          "airbnbHostId": {
+            "type": "string",
+            "description": "Airbnb host ID extracted from profile URL"
+          },
+          "payoutAccountHolderName": {
+            "type": "string",
+            "description": "Bank account holder name for payouts"
+          },
+          "payoutRoutingNumber": {
+            "type": "string",
+            "description": "Bank routing number for payouts"
+          },
+          "payoutAccountNumber": {
+            "type": "string",
+            "description": "Bank account number for payouts"
+          }
+        },
+        "required": [
+          "id",
+          "email"
+        ]
+      },
+      "UserEntity": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "role": {
+            "type": "string"
+          },
+          "airbnbHostId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Airbnb host ID extracted from profile URL"
+          },
+          "syncStatus": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "syncing",
+              "completed",
+              "failed"
+            ],
+            "description": "Sync status"
+          },
+          "syncStartedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "When sync started"
+          },
+          "syncCompletedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "When sync completed"
+          },
+          "syncError": {
+            "type": "string",
+            "nullable": true,
+            "description": "Error message if sync failed"
+          },
+          "payoutAccountHolderName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Bank account holder name for payouts"
+          },
+          "payoutRoutingNumber": {
+            "type": "string",
+            "nullable": true,
+            "description": "Bank routing number for payouts"
+          },
+          "payoutAccountNumber": {
+            "type": "string",
+            "nullable": true,
+            "description": "Bank account number for payouts (encrypted)"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "role",
+          "syncStatus",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "UpdateUserDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Supabase Auth UUID"
+          },
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "default": "user"
+          },
+          "airbnbHostId": {
+            "type": "string",
+            "description": "Airbnb host ID extracted from profile URL"
+          },
+          "payoutAccountHolderName": {
+            "type": "string",
+            "description": "Bank account holder name for payouts"
+          },
+          "payoutRoutingNumber": {
+            "type": "string",
+            "description": "Bank routing number for payouts"
+          },
+          "payoutAccountNumber": {
+            "type": "string",
+            "description": "Bank account number for payouts"
+          }
+        }
+      },
+      "SupabaseBeforeUserCreatedDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "SyncAirbnbDto": {
+        "type": "object",
+        "properties": {
+          "airbnbHostId": {
+            "type": "string",
+            "description": "Airbnb Host ID"
+          },
+          "listingId": {
+            "type": "string",
+            "description": "Listing ID or external listing ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "Optional listing name override"
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional description override"
+          },
+          "images": {
+            "description": "Optional images override",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "maxGuests": {
+            "type": "number",
+            "description": "Maximum guests"
+          },
+          "sqM2": {
+            "type": "number",
+            "description": "Room size in square meters"
+          },
+          "minStay": {
+            "type": "number",
+            "description": "Minimum stay in nights"
+          },
+          "cleaningFee": {
+            "type": "number",
+            "description": "Cleaning fee"
+          },
+          "taxPercent": {
+            "type": "number",
+            "description": "Tax percentage"
+          },
+          "securityDeposit": {
+            "type": "number",
+            "description": "Security deposit"
+          },
+          "availableDates": {
+            "type": "object",
+            "description": "Available dates with pricing"
+          }
+        },
+        "required": [
+          "airbnbHostId",
+          "listingId"
+        ]
+      },
+      "CreateListingDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "postalCode": {
+            "type": "string"
+          },
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "propertyType": {
+            "type": "string"
+          },
+          "bedrooms": {
+            "type": "number"
+          },
+          "bathrooms": {
+            "type": "number"
+          },
+          "maxGuests": {
+            "type": "number"
+          },
+          "basePrice": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string",
+            "default": "USD"
+          },
+          "amenities": {
+            "type": "object"
+          },
+          "houseRules": {
+            "type": "string"
+          },
+          "cancellationPolicy": {
+            "type": "string"
+          },
+          "checkInTime": {
+            "type": "string"
+          },
+          "checkOutTime": {
+            "type": "string"
+          },
+          "minNights": {
+            "type": "number",
+            "default": 1
+          },
+          "maxNights": {
+            "type": "number"
+          },
+          "isActive": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "title"
+        ]
+      },
+      "i": {
+        "type": "object",
+        "properties": {}
+      },
+      "ListingEntity": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "address": {
+            "type": "string",
+            "nullable": true
+          },
+          "city": {
+            "type": "string",
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "nullable": true
+          },
+          "country": {
+            "type": "string",
+            "nullable": true
+          },
+          "postalCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "latitude": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/i"
+              }
+            ]
+          },
+          "longitude": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/i"
+              }
+            ]
+          },
+          "propertyType": {
+            "type": "string",
+            "nullable": true
+          },
+          "bedrooms": {
+            "type": "number",
+            "nullable": true
+          },
+          "bathrooms": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/i"
+              }
+            ]
+          },
+          "beds": {
+            "type": "number",
+            "nullable": true
+          },
+          "maxGuests": {
+            "type": "number",
+            "nullable": true
+          },
+          "basePrice": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/i"
+              }
+            ]
+          },
+          "currency": {
+            "type": "string"
+          },
+          "amenities": {
+            "type": "object",
+            "nullable": true
+          },
+          "houseRules": {
+            "type": "string",
+            "nullable": true
+          },
+          "cancellationPolicy": {
+            "type": "string",
+            "nullable": true
+          },
+          "checkInTime": {
+            "type": "string",
+            "nullable": true
+          },
+          "checkOutTime": {
+            "type": "string",
+            "nullable": true
+          },
+          "minNights": {
+            "type": "number"
+          },
+          "maxNights": {
+            "type": "number",
+            "nullable": true
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "beds24PropId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Beds24 property ID"
+          },
+          "beds24RoomId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Beds24 room/roomType ID"
+          },
+          "airbnbListingId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Airbnb listing ID"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "title",
+          "currency",
+          "minNights",
+          "isActive",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "UpdateListingDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "postalCode": {
+            "type": "string"
+          },
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "propertyType": {
+            "type": "string"
+          },
+          "bedrooms": {
+            "type": "number"
+          },
+          "bathrooms": {
+            "type": "number"
+          },
+          "maxGuests": {
+            "type": "number"
+          },
+          "basePrice": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string",
+            "default": "USD"
+          },
+          "amenities": {
+            "type": "object"
+          },
+          "houseRules": {
+            "type": "string"
+          },
+          "cancellationPolicy": {
+            "type": "string"
+          },
+          "checkInTime": {
+            "type": "string"
+          },
+          "checkOutTime": {
+            "type": "string"
+          },
+          "minNights": {
+            "type": "number",
+            "default": 1
+          },
+          "maxNights": {
+            "type": "number"
+          },
+          "isActive": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "CreateBookingDto": {
+        "type": "object",
+        "properties": {
+          "listingId": {
+            "type": "number"
+          },
+          "guestName": {
+            "type": "string"
+          },
+          "guestEmail": {
+            "type": "string"
+          },
+          "guestPhone": {
+            "type": "string"
+          },
+          "checkIn": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "checkOut": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "numGuests": {
+            "type": "number"
+          },
+          "totalPrice": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "default": "confirmed"
+          },
+          "bookingSource": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "listingId",
+          "guestName",
+          "checkIn",
+          "checkOut",
+          "numGuests",
+          "totalPrice"
+        ]
+      },
+      "BookingEntity": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "listingId": {
+            "type": "number"
+          },
+          "guestName": {
+            "type": "string"
+          },
+          "guestEmail": {
+            "type": "string",
+            "nullable": true
+          },
+          "guestPhone": {
+            "type": "string",
+            "nullable": true
+          },
+          "checkIn": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "checkOut": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "numGuests": {
+            "type": "number"
+          },
+          "totalPrice": {
+            "$ref": "#/components/schemas/i"
+          },
+          "status": {
+            "type": "string"
+          },
+          "bookingSource": {
+            "type": "string",
+            "nullable": true
+          },
+          "externalId": {
+            "type": "string",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "listingId",
+          "guestName",
+          "checkIn",
+          "checkOut",
+          "numGuests",
+          "totalPrice",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "UpdateBookingDto": {
+        "type": "object",
+        "properties": {
+          "listingId": {
+            "type": "number"
+          },
+          "guestName": {
+            "type": "string"
+          },
+          "guestEmail": {
+            "type": "string"
+          },
+          "guestPhone": {
+            "type": "string"
+          },
+          "checkIn": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "checkOut": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "numGuests": {
+            "type": "number"
+          },
+          "totalPrice": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "default": "confirmed"
+          },
+          "bookingSource": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateChannelDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "logoUrl": {
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "name",
+          "slug"
+        ]
+      },
+      "ChannelEntity": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "logoUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "isActive",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "UpdateChannelDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "logoUrl": {
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "UpdateRateDto": {
+        "type": "object",
+        "properties": {
+          "listingId": {
+            "type": "number"
+          },
+          "date": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "price": {
+            "type": "number"
+          },
+          "minStay": {
+            "type": "number"
+          },
+          "available": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "listingId",
+          "date",
+          "price"
+        ]
+      },
+      "BulkUpdateRatesDto": {
+        "type": "object",
+        "properties": {
+          "listingId": {
+            "type": "number"
+          },
+          "startDate": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "endDate": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "price": {
+            "type": "number"
+          },
+          "minStay": {
+            "type": "number"
+          },
+          "available": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "listingId",
+          "startDate",
+          "endDate",
+          "price"
+        ]
+      },
+      "BlockDateDto": {
+        "type": "object",
+        "properties": {
+          "listingId": {
+            "type": "number"
+          },
+          "date": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "listingId",
+          "date"
+        ]
+      },
+      "BulkBlockDatesDto": {
+        "type": "object",
+        "properties": {
+          "listingId": {
+            "type": "number"
+          },
+          "dates": {
+            "type": "array",
+            "items": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "listingId",
+          "dates"
+        ]
+      },
+      "BulkUnblockDatesDto": {
+        "type": "object",
+        "properties": {
+          "listingId": {
+            "type": "number"
+          },
+          "dates": {
+            "type": "array",
+            "items": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "listingId",
+          "dates"
+        ]
+      },
+      "CreateIcalConnectionDto": {
+        "type": "object",
+        "properties": {
+          "listingId": {
+            "type": "number"
+          },
+          "name": {
+            "type": "string"
+          },
+          "icalUrl": {
+            "type": "string"
+          },
+          "syncDirection": {
+            "type": "string",
+            "default": "import"
+          },
+          "syncEnabled": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "listingId",
+          "name",
+          "icalUrl"
+        ]
+      },
+      "UpdateIcalConnectionDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "icalUrl": {
+            "type": "string"
+          },
+          "syncDirection": {
+            "type": "string"
+          },
+          "syncEnabled": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ImportIcalDto": {
+        "type": "object",
+        "properties": {
+          "listingId": {
+            "type": "number"
+          },
+          "icalUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "listingId",
+          "icalUrl"
+        ]
+      }
+    }
+  }
+}

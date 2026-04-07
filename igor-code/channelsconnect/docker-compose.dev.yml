@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: channelsconnect-db-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: channelsconnect
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - channelsconnect-dev
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile.dev
+    container_name: channelsconnect-api-dev
+    restart: unless-stopped
+    ports:
+      - '3001:3001'
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/channelsconnect
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      PORT: 3001
+      FRONTEND_URL: http://localhost:5173
+    volumes:
+      - ./api/src:/app/src
+      - ./api/prisma:/app/prisma
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - channelsconnect-dev
+    command: npm run start:dev
+
+  app:
+    build:
+      context: ./app
+      dockerfile: Dockerfile.dev
+    container_name: channelsconnect-app-dev
+    restart: unless-stopped
+    ports:
+      - '5173:5173'
+    environment:
+      VITE_API_URL: http://localhost:3001
+      VITE_SUPABASE_URL: ${SUPABASE_URL}
+      VITE_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+    volumes:
+      - ./app:/app
+      - /app/node_modules
+    depends_on:
+      - api
+    networks:
+      - channelsconnect-dev
+    command: npm run dev -- --host
+
+volumes:
+  postgres_data_dev:
+
+networks:
+  channelsconnect-dev:
+    driver: bridge
+
