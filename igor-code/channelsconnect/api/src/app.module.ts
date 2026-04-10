@@ -1,3 +1,4 @@
+import { ChannexSyncModule } from './channex/channex-sync.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
@@ -22,6 +23,7 @@ import { ReportsModule } from './reports/reports.module';
       envFilePath: '.env',
     }),
     PrismaModule,
+    ChannexSyncModule,
     AuthModule,
     UsersModule,
     ListingsModule,
