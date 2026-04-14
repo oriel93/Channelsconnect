@@ -1,10 +1,5 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
-/*
-sst deploy --stage production
-sst dev
-*/
-
 export default $config({
     app(input) {
         return {
@@ -12,34 +7,38 @@ export default $config({
             removal: input?.stage === "production" ? "retain" : "remove",
             protect: false,
             home: "aws",
-            profile: "combine-parsers",
+            profile: "default",
             providers: {
                 aws: {
                     region: "us-east-2",
-                    profile: "combine-parsers"
+                    profile: "default"
                 },
             }
         };
     },
 
     async run() {
+        // 1. Define the Secrets (The "Vault")
+        const supabaseUrl = new sst.Secret("SUPABASE_URL");
+        const supabaseKey = new sst.Secret("SUPABASE_ANON_KEY");
+        const dbUrl = new sst.Secret("DATABASE_URL");
+        const channexKey = new sst.Secret("CHANNEX_API_KEY");
+
         const vpc = new sst.aws.Vpc("Vpc");
         const cluster = new sst.aws.Cluster("Cluster", { vpc });
 
-        // API Service (HTTP internally)
+        // 2. API Service
         const api = new sst.aws.Service("Api", {
             cluster,
+            link: [supabaseUrl, supabaseKey, dbUrl, channexKey],
             image: {
                 context: "api",
                 dockerfile: "Dockerfile",
             },
             loadBalancer: {
                 ports: [
-                    { 
-                        listen: "80/http", forward: "3001/http",
-                    },
-                    {   listen: "443/https", forward: "3001/http",
-                    }
+                    { listen: "80/http", forward: "3001/http" },
+                    { listen: "443/https", forward: "3001/http" }
                 ],
                 domain: {
                     name: "api.channelsconnect.com",
@@ -54,33 +53,30 @@ export default $config({
                 timeout: "10 seconds",
             },
             environment: {
-                DATABASE_URL: process.env.DATABASE_URL || "",
-                SUPABASE_URL: process.env.SUPABASE_URL || "",
-                SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || "",
-                SUPABASE_WEBHOOK_SECRET: process.env.SUPABASE_WEBHOOK_SECRET || "",
-                BEDS24_API_KEY: process.env.BEDS24_API_KEY || "",
-                BEDS24_REFRESH_TOKEN: process.env.BEDS24_REFRESH_TOKEN || "",
-                FRONTEND_URL: process.env.FRONTEND_URL || ""
+                DATABASE_URL: dbUrl.value,
+                SUPABASE_URL: supabaseUrl.value,
+                SUPABASE_ANON_KEY: supabaseKey.value,
+                CHANNEX_API_KEY: channexKey.value,
+                FRONTEND_URL: "https://channelsconnect.com"
             },
             dev: {
                 command: "npm run start:dev",
                 directory: "api",
             },
-
         });
 
-
-        // Frontend through same Router (HTTPS)
+        // 3. Frontend
         const frontend = new sst.aws.StaticSite("Frontend", {
             path: "app",
+            link: [supabaseUrl, supabaseKey],
             build: {
                 command: "npm run build",
                 output: "dist",
             },
             environment: {
                 VITE_API_URL: api.url,
-                VITE_SUPABASE_URL: process.env.SUPABASE_URL || "",
-                VITE_SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || "",
+                VITE_SUPABASE_URL: supabaseUrl.value,
+                VITE_SUPABASE_ANON_KEY: supabaseKey.value,
             },
             dev: {
                 command: "npm run dev",

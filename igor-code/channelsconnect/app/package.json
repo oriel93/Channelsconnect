@@ -38,7 +38,7 @@
     "@radix-ui/react-toggle": "^1.1.2",
     "@radix-ui/react-toggle-group": "^1.1.2",
     "@radix-ui/react-tooltip": "^1.1.8",
-    "@supabase/supabase-js": "^2.76.1",
+    "@supabase/supabase-js": "^2.103.0",
     "axios": "^1.12.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -66,7 +66,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.19.0",
-    "@flydotio/dockerfile": "^0.7.8",
+    "@flydotio/dockerfile": "^0.7.4",
     "@types/node": "^22.13.5",
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",
@@ -77,7 +77,7 @@
     "eslint-plugin-react-hooks": "^5.0.0",
     "eslint-plugin-react-refresh": "^0.4.18",
     "globals": "^15.14.0",
-    "openapi-typescript": "^6.7.3",
+    "openapi-typescript": "^7.13.0",
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17",
     "vite": "^6.1.0"

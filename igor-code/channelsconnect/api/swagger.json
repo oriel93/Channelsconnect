@@ -29,6 +29,235 @@
         ]
       }
     },
+    "/channex/properties": {
+      "get": {
+        "operationId": "ChannexController_getProperties",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Channex"
+        ]
+      }
+    },
+    "/channex/room-types/{id}": {
+      "get": {
+        "operationId": "ChannexController_getRoomTypes",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Channex"
+        ]
+      }
+    },
+    "/channex/rate-plans/{id}": {
+      "get": {
+        "operationId": "ChannexController_getRates",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Channex"
+        ]
+      }
+    },
+    "/channex/create": {
+      "post": {
+        "operationId": "ChannexController_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Channex"
+        ]
+      }
+    },
+    "/channex/room-types": {
+      "post": {
+        "operationId": "ChannexController_createRoom",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Channex"
+        ]
+      }
+    },
+    "/channex/rate-plans": {
+      "post": {
+        "operationId": "ChannexController_createRate",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Channex"
+        ]
+      }
+    },
+    "/channex/channels": {
+      "post": {
+        "operationId": "ChannexController_createChannel",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Channex"
+        ]
+      }
+    },
+    "/channex/import/{channelId}": {
+      "post": {
+        "operationId": "ChannexController_startImport",
+        "parameters": [
+          {
+            "name": "channelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Channex"
+        ]
+      }
+    },
+    "/channex-sync/apply": {
+      "post": {
+        "operationId": "ChannexSyncController_applyChange",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ChannexSync"
+        ]
+      }
+    },
+    "/channex-sync/drain": {
+      "post": {
+        "operationId": "ChannexSyncController_drainQueue",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ChannexSync"
+        ]
+      }
+    },
+    "/channex-sync/parity": {
+      "get": {
+        "operationId": "ChannexSyncController_parityCheck",
+        "parameters": [
+          {
+            "name": "apiKey",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sample",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ChannexSync"
+        ]
+      }
+    },
+    "/channex-sync/refresh-mappings": {
+      "get": {
+        "operationId": "ChannexSyncController_refreshMappings",
+        "parameters": [
+          {
+            "name": "listingId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "apiKey",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ChannexSync"
+        ]
+      }
+    },
     "/users": {
       "post": {
         "operationId": "UsersController_create",
@@ -55,13 +284,13 @@
             }
           }
         },
-        "tags": [
-          "users"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "users"
         ]
       },
       "get": {
@@ -82,21 +311,20 @@
             }
           }
         },
-        "tags": [
-          "users"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "users"
         ]
       }
     },
     "/users/me": {
       "get": {
-        "operationId": "UsersController_getMe",
-        "summary": "Get current user",
         "description": "Returns the authenticated user data. User ID is extracted from the JWT token.",
+        "operationId": "UsersController_getMe",
         "parameters": [],
         "responses": {
           "200": {
@@ -110,19 +338,19 @@
             }
           }
         },
-        "tags": [
-          "users"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "summary": "Get current user",
+        "tags": [
+          "users"
         ]
       },
       "patch": {
-        "operationId": "UsersController_updateMe",
-        "summary": "Update current user",
         "description": "Updates the authenticated user data. User ID is extracted from the JWT token.",
+        "operationId": "UsersController_updateMe",
         "parameters": [],
         "requestBody": {
           "required": true,
@@ -146,21 +374,21 @@
             }
           }
         },
-        "tags": [
-          "users"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "summary": "Update current user",
+        "tags": [
+          "users"
         ]
       }
     },
     "/users/token-info": {
       "get": {
-        "operationId": "UsersController_getTokenInfo",
-        "summary": "Test JWT token extraction",
         "description": "Returns the user info extracted directly from the JWT token without database lookup.",
+        "operationId": "UsersController_getTokenInfo",
         "parameters": [],
         "responses": {
           "200": {
@@ -189,21 +417,21 @@
             }
           }
         },
-        "tags": [
-          "users"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "summary": "Test JWT token extraction",
+        "tags": [
+          "users"
         ]
       }
     },
     "/users/{id}": {
       "patch": {
-        "operationId": "UsersController_update",
-        "summary": "Update user by ID",
         "description": "Updates user data. Only allowed if the authenticated user matches the target user ID.",
+        "operationId": "UsersController_update",
         "parameters": [
           {
             "name": "id",
@@ -236,13 +464,14 @@
             }
           }
         },
-        "tags": [
-          "users"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "summary": "Update user by ID",
+        "tags": [
+          "users"
         ]
       }
     },
@@ -255,13 +484,13 @@
             "description": "Airbnb profile connected successfully"
           }
         },
-        "tags": [
-          "users"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "users"
         ]
       }
     },
@@ -306,21 +535,20 @@
             }
           }
         },
-        "tags": [
-          "users"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "users"
         ]
       }
     },
     "/users/webhooks/before-user-created": {
       "post": {
-        "operationId": "UsersController_handleBeforeUserCreated",
-        "summary": "Supabase Before User Created webhook",
         "description": "Called by Supabase Auth before creating a new user. Validates signup and creates user profile in public.users.",
+        "operationId": "UsersController_handleBeforeUserCreated",
         "parameters": [
           {
             "name": "x-webhook-signature",
@@ -355,20 +583,20 @@
             }
           }
         },
-        "tags": [
-          "users"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "summary": "Supabase Before User Created webhook",
+        "tags": [
+          "users"
         ]
       }
     },
     "/beds24/sync-airbnb": {
       "post": {
         "operationId": "Beds24Controller_syncAirbnb",
-        "summary": "Sync Airbnb listing to Beds24",
         "parameters": [],
         "requestBody": {
           "required": true,
@@ -385,20 +613,20 @@
             "description": "Listing successfully synced to Beds24"
           }
         },
-        "tags": [
-          "Beds24"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "summary": "Sync Airbnb listing to Beds24",
+        "tags": [
+          "Beds24"
         ]
       }
     },
     "/beds24/properties/{airbnbHostId}": {
       "get": {
         "operationId": "Beds24Controller_getPropertiesByHostId",
-        "summary": "Get Beds24 properties for Airbnb host",
         "parameters": [
           {
             "name": "airbnbHostId",
@@ -414,20 +642,20 @@
             "description": "Returns Beds24 properties"
           }
         },
-        "tags": [
-          "Beds24"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "summary": "Get Beds24 properties for Airbnb host",
+        "tags": [
+          "Beds24"
         ]
       }
     },
     "/beds24/property/{propKey}": {
       "get": {
         "operationId": "Beds24Controller_getProperty",
-        "summary": "Get specific Beds24 property details",
         "parameters": [
           {
             "name": "propKey",
@@ -443,60 +671,60 @@
             "description": "Returns property details"
           }
         },
-        "tags": [
-          "Beds24"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "summary": "Get specific Beds24 property details",
+        "tags": [
+          "Beds24"
         ]
       }
     },
     "/beds24/properties": {
       "get": {
         "operationId": "Beds24Controller_getAllProperties",
-        "summary": "Get all properties from Beds24 account",
         "parameters": [],
         "responses": {
           "200": {
             "description": "Returns all properties in the account"
           }
         },
-        "tags": [
-          "Beds24"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "summary": "Get all properties from Beds24 account",
+        "tags": [
+          "Beds24"
         ]
       }
     },
     "/beds24/sync-properties": {
       "post": {
         "operationId": "Beds24Controller_syncAndSaveProperties",
-        "summary": "Sync all properties from Beds24 and save to database",
         "parameters": [],
         "responses": {
           "200": {
             "description": "Properties synced and saved successfully"
           }
         },
-        "tags": [
-          "Beds24"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "summary": "Sync all properties from Beds24 and save to database",
+        "tags": [
+          "Beds24"
         ]
       }
     },
     "/beds24/calendar": {
       "get": {
         "operationId": "Beds24Controller_getCalendar",
-        "summary": "Get calendar data from Beds24",
         "parameters": [
           {
             "name": "startDate",
@@ -546,18 +774,18 @@
             "description": "Returns calendar data for specified rooms/properties"
           }
         },
-        "tags": [
-          "Beds24"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "summary": "Get calendar data from Beds24",
+        "tags": [
+          "Beds24"
         ]
       },
       "post": {
         "operationId": "Beds24Controller_updateCalendar",
-        "summary": "Update calendar data in Beds24",
         "parameters": [],
         "requestBody": {
           "required": true,
@@ -577,20 +805,20 @@
             "description": "Calendar updated successfully"
           }
         },
-        "tags": [
-          "Beds24"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "summary": "Update calendar data in Beds24",
+        "tags": [
+          "Beds24"
         ]
       }
     },
     "/beds24/bookings": {
       "get": {
         "operationId": "Beds24Controller_getBookings",
-        "summary": "Get bookings from Beds24",
         "parameters": [
           {
             "name": "propertyId",
@@ -670,40 +898,40 @@
             "description": "Returns bookings from Beds24"
           }
         },
-        "tags": [
-          "Beds24"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "summary": "Get bookings from Beds24",
+        "tags": [
+          "Beds24"
         ]
       }
     },
     "/beds24/sync-bookings": {
       "post": {
         "operationId": "Beds24Controller_syncBookings",
-        "summary": "Sync all bookings from Beds24 for user properties",
         "parameters": [],
         "responses": {
           "200": {
             "description": "Bookings synced successfully"
           }
         },
-        "tags": [
-          "Beds24"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "summary": "Sync all bookings from Beds24 for user properties",
+        "tags": [
+          "Beds24"
         ]
       }
     },
     "/webhooks/beds24/booking": {
       "post": {
         "operationId": "Beds24WebhookController_handleBookingWebhook",
-        "summary": "Handle Beds24 booking webhook events",
         "parameters": [
           {
             "name": "x-beds24-signature",
@@ -720,6 +948,7 @@
             "description": "Webhook processed successfully"
           }
         },
+        "summary": "Handle Beds24 booking webhook events",
         "tags": [
           "Beds24 Webhooks"
         ]
@@ -728,13 +957,13 @@
     "/webhooks/beds24/test": {
       "post": {
         "operationId": "Beds24WebhookController_testWebhook",
-        "summary": "Test endpoint for webhook connectivity",
         "parameters": [],
         "responses": {
           "200": {
             "description": "Test successful"
           }
         },
+        "summary": "Test endpoint for webhook connectivity",
         "tags": [
           "Beds24 Webhooks"
         ]
@@ -766,13 +995,13 @@
             }
           }
         },
-        "tags": [
-          "listings"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "listings"
         ]
       },
       "get": {
@@ -793,13 +1022,13 @@
             }
           }
         },
-        "tags": [
-          "listings"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "listings"
         ]
       }
     },
@@ -822,13 +1051,13 @@
             }
           }
         },
-        "tags": [
-          "listings"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "listings"
         ]
       }
     },
@@ -851,13 +1080,13 @@
             }
           }
         },
-        "tags": [
-          "listings"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "listings"
         ]
       }
     },
@@ -886,13 +1115,13 @@
             }
           }
         },
-        "tags": [
-          "listings"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "listings"
         ]
       },
       "patch": {
@@ -929,13 +1158,13 @@
             }
           }
         },
-        "tags": [
-          "listings"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "listings"
         ]
       },
       "delete": {
@@ -962,13 +1191,13 @@
             }
           }
         },
-        "tags": [
-          "listings"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "listings"
         ]
       }
     },
@@ -998,13 +1227,13 @@
             }
           }
         },
-        "tags": [
-          "bookings"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "bookings"
         ]
       },
       "get": {
@@ -1034,13 +1263,13 @@
             }
           }
         },
-        "tags": [
-          "bookings"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "bookings"
         ]
       }
     },
@@ -1063,13 +1292,13 @@
             }
           }
         },
-        "tags": [
-          "bookings"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "bookings"
         ]
       }
     },
@@ -1092,13 +1321,13 @@
             }
           }
         },
-        "tags": [
-          "bookings"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "bookings"
         ]
       }
     },
@@ -1130,13 +1359,13 @@
             }
           }
         },
-        "tags": [
-          "bookings"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "bookings"
         ]
       }
     },
@@ -1165,13 +1394,13 @@
             }
           }
         },
-        "tags": [
-          "bookings"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "bookings"
         ]
       },
       "patch": {
@@ -1208,13 +1437,13 @@
             }
           }
         },
-        "tags": [
-          "bookings"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "bookings"
         ]
       },
       "delete": {
@@ -1241,13 +1470,13 @@
             }
           }
         },
-        "tags": [
-          "bookings"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "bookings"
         ]
       }
     },
@@ -1276,13 +1505,13 @@
             }
           }
         },
-        "tags": [
-          "bookings"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "bookings"
         ]
       }
     },
@@ -1312,13 +1541,13 @@
             }
           }
         },
-        "tags": [
-          "channels"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "channels"
         ]
       },
       "get": {
@@ -1339,13 +1568,13 @@
             }
           }
         },
-        "tags": [
-          "channels"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "channels"
         ]
       }
     },
@@ -1368,13 +1597,13 @@
             }
           }
         },
-        "tags": [
-          "channels"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "channels"
         ]
       }
     },
@@ -1403,13 +1632,13 @@
             }
           }
         },
-        "tags": [
-          "channels"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "channels"
         ]
       },
       "patch": {
@@ -1446,13 +1675,13 @@
             }
           }
         },
-        "tags": [
-          "channels"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "channels"
         ]
       },
       "delete": {
@@ -1479,13 +1708,13 @@
             }
           }
         },
-        "tags": [
-          "channels"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "channels"
         ]
       }
     },
@@ -1508,13 +1737,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "calendar"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "calendar"
         ]
       },
       "get": {
@@ -1550,13 +1779,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "calendar"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "calendar"
         ]
       }
     },
@@ -1579,13 +1808,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "calendar"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "calendar"
         ]
       }
     },
@@ -1608,13 +1837,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "calendar"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "calendar"
         ]
       }
     },
@@ -1637,13 +1866,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "calendar"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "calendar"
         ]
       }
     },
@@ -1673,13 +1902,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "calendar"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "calendar"
         ]
       }
     },
@@ -1702,13 +1931,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "calendar"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "calendar"
         ]
       }
     },
@@ -1746,13 +1975,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "calendar"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "calendar"
         ]
       }
     },
@@ -1790,13 +2019,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "calendar"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "calendar"
         ]
       }
     },
@@ -1834,13 +2063,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "calendar"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "calendar"
         ]
       },
       "post": {
@@ -1851,13 +2080,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "calendar"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "calendar"
         ]
       }
     },
@@ -1879,13 +2108,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "calendar"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "calendar"
         ]
       },
       "delete": {
@@ -1905,13 +2134,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "calendar"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "calendar"
         ]
       }
     },
@@ -1933,13 +2162,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "calendar"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "calendar"
         ]
       }
     },
@@ -1961,13 +2190,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "calendar"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "calendar"
         ]
       }
     },
@@ -2005,13 +2234,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "calendar"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "calendar"
         ]
       }
     },
@@ -2034,13 +2263,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "ical"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "ical"
         ]
       },
       "get": {
@@ -2060,13 +2289,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "ical"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "ical"
         ]
       }
     },
@@ -2088,13 +2317,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "ical"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "ical"
         ]
       },
       "patch": {
@@ -2124,13 +2353,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "ical"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "ical"
         ]
       },
       "delete": {
@@ -2150,13 +2379,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "ical"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "ical"
         ]
       }
     },
@@ -2178,13 +2407,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "ical"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "ical"
         ]
       }
     },
@@ -2197,13 +2426,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "ical"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "ical"
         ]
       }
     },
@@ -2225,13 +2454,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "ical"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "ical"
         ]
       }
     },
@@ -2254,13 +2483,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "ical"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "ical"
         ]
       }
     },
@@ -2273,13 +2502,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "dashboard"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "dashboard"
         ]
       }
     },
@@ -2309,13 +2538,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "dashboard"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "dashboard"
         ]
       }
     },
@@ -2328,13 +2557,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "dashboard"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "dashboard"
         ]
       }
     },
@@ -2364,13 +2593,13 @@
             "description": ""
           }
         },
-        "tags": [
-          "analytics"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "analytics"
         ]
       }
     },
@@ -2400,20 +2629,19 @@
             "description": ""
           }
         },
-        "tags": [
-          "analytics"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "tags": [
+          "analytics"
         ]
       }
     },
     "/reports/revenue": {
       "get": {
         "operationId": "ReportsController_getRevenueStats",
-        "summary": "Get revenue statistics",
         "parameters": [
           {
             "name": "startDate",
@@ -2448,20 +2676,20 @@
             "description": "Revenue statistics including totals, by month, by listing, and by source"
           }
         },
-        "tags": [
-          "reports"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "summary": "Get revenue statistics",
+        "tags": [
+          "reports"
         ]
       }
     },
     "/reports/occupancy": {
       "get": {
         "operationId": "ReportsController_getOccupancyStats",
-        "summary": "Get occupancy statistics",
         "parameters": [
           {
             "name": "startDate",
@@ -2496,20 +2724,20 @@
             "description": "Occupancy rates by listing and by month"
           }
         },
-        "tags": [
-          "reports"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "summary": "Get occupancy statistics",
+        "tags": [
+          "reports"
         ]
       }
     },
     "/reports/adr": {
       "get": {
         "operationId": "ReportsController_getADRStats",
-        "summary": "Get Average Daily Rate statistics",
         "parameters": [
           {
             "name": "startDate",
@@ -2544,20 +2772,20 @@
             "description": "ADR statistics including RevPAR, by month, by listing, and by source"
           }
         },
-        "tags": [
-          "reports"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "summary": "Get Average Daily Rate statistics",
+        "tags": [
+          "reports"
         ]
       }
     },
     "/reports/payouts": {
       "get": {
         "operationId": "ReportsController_getPayoutStats",
-        "summary": "Get payout status statistics",
         "parameters": [
           {
             "name": "startDate",
@@ -2592,13 +2820,14 @@
             "description": "Payout statistics by status and source, with recent bookings"
           }
         },
-        "tags": [
-          "reports"
-        ],
         "security": [
           {
             "bearer": []
           }
+        ],
+        "summary": "Get payout status statistics",
+        "tags": [
+          "reports"
         ]
       }
     }

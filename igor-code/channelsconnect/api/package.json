@@ -21,6 +21,7 @@
     "generate:swagger": "ts-node src/generate-swagger.ts"
   },
   "dependencies": {
+    "@nestjs/axios": "^4.0.1",
     "@nestjs/common": "^11.1.18",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.1.18",
@@ -29,12 +30,13 @@
     "@nestjs/swagger": "^11.2.7",
     "@prisma/client": "^5.22.0",
     "@supabase/supabase-js": "^2.38.0",
-    "axios": "^1.13.2",
+    "axios": "^1.15.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.0",
     "jose": "^6.1.3",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.1",
+    "sst": "^4.7.2",
     "swagger-ui-express": "^5.0.0"
   },
   "devDependencies": {

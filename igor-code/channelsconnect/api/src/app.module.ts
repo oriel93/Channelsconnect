@@ -1,4 +1,3 @@
-import { ChannexSyncModule } from './channex/channex-sync.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
@@ -16,15 +15,24 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { Beds24Module } from './beds24/beds24.module';
 import { ReportsModule } from './reports/reports.module';
 
+
+// Channex Modules
+import { ChannexSyncModule } from './channex/channex-sync.module';
+import { ChannexModule } from './channex/channex.module'; // <--- New Import
+
 @Module({
   imports: [
+    // Core Configuration
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
     }),
     PrismaModule,
-    ChannexSyncModule,
     AuthModule,
+
+    // Feature Modules
+    ChannexModule,      // <--- Added for Property/Room fetching
+    ChannexSyncModule,  // Existing sync logic
     UsersModule,
     ListingsModule,
     BookingsModule,
@@ -40,4 +48,3 @@ import { ReportsModule } from './reports/reports.module';
   providers: [AppService],
 })
 export class AppModule {}
-

@@ -63,7 +63,7 @@ export class RoomContentDto {
   @ApiPropertyOptional()
   roomType?: number;
 
-  @ApiPropertyOptional({ type: [[String]] })
+  @ApiPropertyOptional({ type: [String] })
   featureCodes?: string[][];
 
   @ApiPropertyOptional({ type: RoomTextsDto })
