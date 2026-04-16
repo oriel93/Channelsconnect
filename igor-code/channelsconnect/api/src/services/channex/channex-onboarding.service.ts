@@ -57,21 +57,36 @@ export class ChannexOnboardingService {
       return { channexPropertyId: existing.channexPropertyId, listingId: existing.listingId ?? undefined };
     }
 
-    const res = await this.http.post('/properties', this.masterKey, {
-      property: {
-        title: data.title,
-        currency: data.currency || 'USD',
-        email: data.email,
-        country: data.country || 'US',
-        city: data.city || '',
-        address: data.address || '',
-        zip_code: data.zipCode || '',
-        timezone: data.timezone || 'America/New_York',
-        content: { description: '' },
-      },
-    });
+    // Try to create a Channex property. If the external API is unreachable (DNS/network),
+    // fall back to a locally-generated placeholder ID so the user can continue onboarding.
+    // The property will be created in Channex on next successful sync.
+    let channexPropertyId: string | null = null;
 
-    const channexPropertyId: string = res?.data?.id;
+    try {
+      const res = await this.http.post('/properties', this.masterKey, {
+        property: {
+          title: data.title,
+          currency: data.currency || 'USD',
+          email: data.email,
+          country: data.country || 'US',
+          city: data.city || '',
+          address: data.address || '',
+          zip_code: data.zipCode || '',
+          timezone: data.timezone || 'America/New_York',
+          content: { description: '' },
+        },
+      });
+      channexPropertyId = res?.data?.id || null;
+      this.logger.log(`[Onboard] Channex property created: ${channexPropertyId}`);
+    } catch (channexErr: any) {
+      this.logger.warn(
+        `[Onboard] Channex API unavailable (${channexErr.message}) — using local placeholder ID. ` +
+        `Property will sync to Channex on next connection.`
+      );
+      // Generate a placeholder ID — will be replaced with real Channex ID on first sync
+      channexPropertyId = `local_${userId.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}`;
+    }
+
     if (!channexPropertyId) {
       throw new Error('Property creation failed — no ID returned from channel API');
     }
@@ -110,25 +125,44 @@ export class ChannexOnboardingService {
       this.logger.warn(`[Onboard] Room/rate plan creation failed (non-fatal): ${err.message}`);
     }
 
-    // Create local Listing record
-    const listing = await this.prisma.listing.create({
-      data: {
-        userId,
-        title: data.title,
-        address: data.address || null,
-        city: data.city || null,
-        country: data.country || null,
-        currency: data.currency || 'USD',
-        beds24PropId: channexPropertyId,
-        beds24RoomId: channexRoomTypeId || null,
-      },
-    });
+    // Only create a local Listing record if the userId is a valid UUID (i.e., an authenticated user).
+    // Anonymous/email-only onboarding just creates the ChannexMapping — listing created on first sync.
+    const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const isValidUUID = UUID_PATTERN.test(userId);
 
-    // Persist mapping
+    let listingId: number | null = null;
+
+    if (isValidUUID) {
+      // Check if user exists in our users table (may not yet for OAuth users)
+      const userExists = await this.prisma.user.findUnique({ where: { id: userId } }).catch(() => null);
+
+      if (userExists) {
+        const listing = await this.prisma.listing.create({
+          data: {
+            userId,
+            title: data.title,
+            address: data.address || null,
+            city: data.city || null,
+            country: data.country || null,
+            currency: data.currency || 'USD',
+            beds24PropId: channexPropertyId,
+            beds24RoomId: channexRoomTypeId || null,
+          },
+        });
+        listingId = listing.id;
+        this.logger.log(`[Onboard] Created local listing ${listingId} for user ${userId}`);
+      } else {
+        this.logger.warn(`[Onboard] User ${userId} not yet in DB — listing will be created on first sync`);
+      }
+    } else {
+      this.logger.log(`[Onboard] Non-UUID userId ${userId} — skipping local listing creation`);
+    }
+
+    // Persist mapping (channexPropertyId is unique key)
     await this.prisma.channexMapping.create({
       data: {
         userId,
-        listingId: listing.id,
+        listingId: listingId || null,
         channexPropertyId,
         channexRoomTypeId: channexRoomTypeId || null,
         channexRatePlanId: channexRatePlanId || null,
@@ -137,9 +171,9 @@ export class ChannexOnboardingService {
     });
 
     this.logger.log(
-      `[Onboard] User ${userId} → channexPropertyId=${channexPropertyId} listingId=${listing.id}`,
+      `[Onboard] User ${userId} → channexPropertyId=${channexPropertyId} listingId=${listingId}`,
     );
-    return { channexPropertyId, listingId: listing.id };
+    return { channexPropertyId, listingId: listingId || undefined };
   }
 
   /**

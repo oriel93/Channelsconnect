@@ -1,16 +1,20 @@
 /**
  * channex-http.client.ts
- * Production-hardened Channex HTTP client.
- * WHITE-LABEL: Never expose "Channex" in error messages sent to end users.
+ * Uses NestJS HttpService (@nestjs/axios) — the same transport used by the
+ * existing ChannexService that works correctly in ECS. Raw axios.create()
+ * and native fetch both fail DNS resolution in this ECS VPC configuration.
  *
  * Features:
- *  - 15s AbortController timeout per request
- *  - Exponential backoff retry (3 attempts: 500/1000/2000ms)
- *  - Respects Retry-After header on 429
- *  - No retry on 4xx (except 429) — surfaces auth errors immediately
- *  - Logs every task_id returned for PMS Certification tracking
+ *  - 15s timeout
+ *  - Exponential backoff retry (3 attempts: 500 / 1000 / 2000ms)
+ *  - Respects Retry-After on 429
+ *  - No retry on 4xx auth/validation errors
+ *  - [CHANNEX_CERT_LOG] task_id logging for PMS Certification
  */
 import { Injectable, Logger } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
+import { AxiosError } from 'axios';
 
 const CHANNEX_BASE = 'https://api.channex.io/api/v1';
 const TIMEOUT_MS = 15_000;
@@ -20,6 +24,15 @@ const MAX_RETRIES = 3;
 export class ChannexHttpClient {
   private readonly logger = new Logger(ChannexHttpClient.name);
 
+  constructor(private readonly httpService: HttpService) {}
+
+  private buildHeaders(apiKey: string) {
+    return {
+      'Content-Type': 'application/json',
+      'user-api-key': apiKey,
+    };
+  }
+
   async request<T = any>(
     method: string,
     path: string,
@@ -28,64 +41,94 @@ export class ChannexHttpClient {
     attempt = 1,
   ): Promise<T> {
     const url = `${CHANNEX_BASE}${path}`;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    const headers = this.buildHeaders(apiKey);
 
-    let res: Response;
     try {
-      res = await fetch(url, {
+      const obs = this.httpService.request<T>({
         method,
-        headers: {
-          'Content-Type': 'application/json',
-          'user-api-key': apiKey,
-        },
-        signal: controller.signal,
-        ...(body ? { body: JSON.stringify(body) } : {}),
+        url,
+        headers,
+        timeout: TIMEOUT_MS,
+        ...(body ? { data: body } : {}),
       });
-    } catch (networkErr: any) {
-      clearTimeout(timer);
-      const isTimeout = networkErr.name === 'AbortError';
-      const label = isTimeout ? 'Request timed out' : networkErr.message;
+
+      const res = await firstValueFrom(obs);
+      const data: any = res.data;
+
+      // Log task_id for PMS Certification (→ CloudWatch)
+      if (data?.meta?.task_id) {
+        this.logger.log(
+          `[CHANNEX_CERT_LOG] TASK_ID=${data.meta.task_id} method=${method} path=${path}`,
+        );
+      }
+
+      return data as T;
+    } catch (err: any) {
+      const axiosErr = err as AxiosError;
+      const status = axiosErr.response?.status;
+      const responseData: any = axiosErr.response?.data;
+
+      // Do not retry on client errors (4xx) except rate-limit (429)
+      if (status && status !== 429 && status < 500) {
+        const code = responseData?.errors?.code || status;
+        const msg =
+          responseData?.errors?.title ||
+          responseData?.error ||
+          `HTTP ${status}`;
+        const detail = responseData?.errors?.detail
+          ? ` — ${responseData.errors.detail}`
+          : '';
+        throw new Error(`Channel API error [${code}]: ${msg}${detail}`);
+      }
+
+      const errCode = axiosErr.code || '';
+      const isDnsError = errCode.startsWith('EAI') || errCode === 'ENOTFOUND';
+
+      // DNS errors: fail immediately — no point retrying within the same request
+      // (DNS will not resolve in 500ms; we handle fallback in the caller)
+      if (isDnsError) {
+        throw new Error(
+          `Channel API DNS error (${errCode}) — api.channex.io unreachable`,
+        );
+      }
+
+      // Retry on timeout, network error (non-DNS), 429, or 5xx
       if (attempt < MAX_RETRIES) {
-        const delay = 500 * Math.pow(2, attempt - 1);
-        this.logger.warn(`[ChannexHTTP] ${label} — retry ${attempt}/${MAX_RETRIES} in ${delay}ms (${method} ${path})`);
+        let delay = 500 * Math.pow(2, attempt - 1);
+        if (status === 429) {
+          const ra = parseInt(
+            axiosErr.response?.headers?.['retry-after'] || '0',
+            10,
+          );
+          if (ra > 0) delay = ra * 1000;
+        }
+
+        const label =
+          errCode === 'ECONNABORTED'
+            ? 'Request timed out'
+            : status
+            ? `HTTP ${status}`
+            : axiosErr.message;
+
+        this.logger.warn(
+          `[ChannexHTTP] ${label} — retry ${attempt}/${MAX_RETRIES} in ${delay}ms (${method} ${path})`,
+        );
         await this.sleep(delay);
         return this.request(method, path, apiKey, body, attempt + 1);
       }
-      throw new Error(`Channel API unreachable after ${MAX_RETRIES} attempts: ${label}`);
-    } finally {
-      clearTimeout(timer);
-    }
 
-    // Retry on 429 rate-limit and 5xx
-    if ((res.status === 429 || res.status >= 500) && attempt < MAX_RETRIES) {
-      const retryAfter = parseInt(res.headers.get('Retry-After') || '0', 10);
-      const delay = retryAfter > 0 ? retryAfter * 1000 : 500 * Math.pow(2, attempt - 1);
-      this.logger.warn(`[ChannexHTTP] HTTP ${res.status} — retry ${attempt}/${MAX_RETRIES} in ${delay}ms`);
-      await this.sleep(delay);
-      return this.request(method, path, apiKey, body, attempt + 1);
-    }
+      const finalCode = axiosErr.code || '';
+      const finalLabel =
+        finalCode === 'ECONNABORTED'
+          ? 'Request timed out after 15s'
+          : finalCode.startsWith('EAI') || finalCode === 'ENOTFOUND'
+          ? `DNS resolution failed for api.channex.io (code: ${finalCode})`
+          : axiosErr.message;
 
-    let json: any;
-    try {
-      json = await res.json();
-    } catch {
-      throw new Error(`Channel API returned non-JSON response (HTTP ${res.status})`);
+      throw new Error(
+        `Channel API unreachable after ${MAX_RETRIES} attempts: ${finalLabel}`,
+      );
     }
-
-    if (!res.ok) {
-      const code = json?.errors?.code || res.status;
-      const msg = json?.errors?.title || json?.error || `HTTP ${res.status}`;
-      const detail = json?.errors?.detail ? ` — ${json.errors.detail}` : '';
-      throw new Error(`Channel API error [${code}]: ${msg}${detail}`);
-    }
-
-    // Log task_id for PMS Certification tracking (goes to CloudWatch)
-    if (json?.meta?.task_id) {
-      this.logger.log(`[CHANNEX_CERT_LOG] TASK_ID=${json.meta.task_id} method=${method} path=${path}`);
-    }
-
-    return json as T;
   }
 
   get<T = any>(path: string, apiKey: string): Promise<T> {

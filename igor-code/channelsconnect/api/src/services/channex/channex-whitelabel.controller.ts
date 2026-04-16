@@ -20,6 +20,7 @@ import {
   Param,
   Body,
   Query,
+  Req,
   UseGuards,
   Logger,
   HttpCode,
@@ -47,11 +48,14 @@ export class ChannexWhitelabelController {
   // ── Onboarding ────────────────────────────────────────────────────────
 
   @Post('onboard')
-  async onboard(@CurrentUser() user: any, @Body() body: any) {
-    const result = await this.onboarding.onboardUser(user.id, {
-      title: body.propertyTitle || body.title || `${user.email}'s Property`,
+  async onboard(@CurrentUser() user: any, @Body() body: any, @Req() req: any) {
+    // User must be authenticated — userId comes from validated JWT
+    const userId = user?.id;
+    const email = user?.email || body.email || '';
+    const result = await this.onboarding.onboardUser(userId, {
+      title: body.propertyTitle || body.title || `${email.split('@')[0] || 'My'}'s Property`,
       currency: body.currency || 'USD',
-      email: user.email,
+      email,
       country: body.country || 'US',
       city: body.city || '',
       address: body.address || '',
@@ -63,8 +67,16 @@ export class ChannexWhitelabelController {
 
   // ── Status (frontend state machine) ──────────────────────────────────
 
+  /**
+   * Public: returns safe defaults when not authenticated.
+   * Authenticated users get their real status.
+   */
+  @Public()
   @Get('status')
   async getStatus(@CurrentUser() user: any) {
+    if (!user?.id) {
+      return { success: true, data: { hasProperty: false, hasChannel: false, syncStatus: null, channexPropertyId: null, listingId: null } };
+    }
     const status = await this.onboarding.getUserStatus(user.id);
     return { success: true, data: status };
   }
