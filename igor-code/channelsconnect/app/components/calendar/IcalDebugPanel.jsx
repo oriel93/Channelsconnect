@@ -119,7 +119,7 @@ export default function IcalDebugPanel({ listingId }) {
               className="flex-1"
             />
             <Button onClick={handleQuickTest} variant="outline" size="sm">
-              Test Beds24
+              Test Connection
             </Button>
             <Button 
               onClick={handleDebug} 

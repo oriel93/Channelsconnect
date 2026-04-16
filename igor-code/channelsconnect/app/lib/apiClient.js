@@ -156,6 +156,36 @@ export const api = {
     getADR: (params) => apiClient.get('/reports/adr', { params }),
     getPayouts: (params) => apiClient.get('/reports/payouts', { params }),
   },
+
+  /**
+   * connect — White-label Channels Connect onboarding API (/connect/*)
+   * Channels are synced server-side; the browser never talks to Channex directly.
+   */
+  connect: {
+    /** Returns { hasProperty, hasChannel, syncStatus, channexPropertyId, listingId } */
+    getStatus: () => apiClient.get('/connect/status'),
+
+    /** Step 1: Create the user's property. Body: { title, city, country, currency, address } */
+    onboard: (data) => apiClient.post('/connect/onboard', data),
+
+    /** Step 2: Get a branded OTA OAuth URL to open in a modal. channel = 'airbnb' | 'booking_com' */
+    getOAuthLink: (channel = 'airbnb') => apiClient.get(`/connect/oauth-link?channel=${channel}`),
+
+    /** Step 3: Start full deep sync (property details, photos, 500-day ARI). Returns { syncLogId } */
+    startSync: () => apiClient.post('/connect/sync'),
+
+    /** Poll sync progress by syncLogId */
+    getSyncProgress: (syncLogId) => apiClient.get(`/connect/sync/${syncLogId}/progress`),
+
+    /** PMS Cert Test #11: acknowledge a booking */
+    acknowledgeBooking: (bookingId) => apiClient.post(`/connect/booking/${bookingId}/ack`),
+
+    /** PMS Cert: push 500 days of ARI in exactly 2 calls */
+    pushFullARI: (payload) => apiClient.post('/connect/ari/full', payload),
+
+    /** PMS Cert: single/multi date range update */
+    updateARI: (payload) => apiClient.post('/connect/ari/update', payload),
+  },
 };
 
 export default apiClient;

@@ -60,7 +60,7 @@ const ConnectAirbnbDialog = ({ channel }) => {
             <ul className="text-sm text-blue-800 space-y-1 text-left list-disc list-inside">
               <li>You'll be redirected to Airbnb for authorization</li>
               <li>We'll import all your listings automatically</li>
-              <li>Your properties will be added to Beds24</li>
+              <li>Your properties will be added to Channels Connect</li>
               <li>You'll receive a confirmation email when complete</li>
             </ul>
           </div>

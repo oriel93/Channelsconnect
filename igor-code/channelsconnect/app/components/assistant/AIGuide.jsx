@@ -60,11 +60,11 @@ const allGuideSteps = [
   },
   {
     id: 'beds24',
-    title: 'Beds24 Integration (Admin Only)',
+    title: 'Channel Integration (Admin Only)',
     icon: Settings,
     prompts: [
-      "Connect Beds24 backend via API key.",
-      "Map uploaded units to Beds24 room IDs.",
+      "Connect your channel backend via API key.",
+      "Map uploaded units to room IDs.",
       "Run API sync to update availability and rates.",
     ]
   }
