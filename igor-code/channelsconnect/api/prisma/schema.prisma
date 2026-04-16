@@ -53,6 +53,7 @@ model User {
   propertyImages        PropertyImage[]
   calendarAuditLogs     CalendarAuditLog[]
   syncLogs              SyncLog[]
+  channexMappings       ChannexMapping[]
 
   @@map("users")
 }
@@ -230,6 +231,7 @@ model Listing {
   importedListings    ImportedListing[]
   calendarEvents      CalendarEvent[]
   calendar            Calendar[]
+  channexMapping      ChannexMapping?
 
   @@index([userId])
   @@index([city, country])
@@ -516,6 +518,32 @@ model CalendarEvent {
   @@index([listingId])
   @@index([startDate, endDate])
   @@map("calendar_events")
+}
+
+// ChannexMapping model - Maps Channels Connect users/listings to Channex entities
+model ChannexMapping {
+  id                String    @id @default(uuid())
+  userId            String
+  listingId         Int?      @unique
+  channexPropertyId String    @unique
+  channexRoomTypeId String?
+  channexRatePlanId String?
+  channelType       String    @default("airbnb") // airbnb, booking_com, vrbo
+  oauthState        String?   // PKCE state for OAuth flow
+  accessToken       String?   // OTA OAuth token (encrypted in prod)
+  tokenExpiresAt    DateTime?
+  syncStatus        String    @default("pending") // pending, active, error
+  lastSyncAt        DateTime?
+  lastSyncTaskId    String?   // task_id logged for certification
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([channexPropertyId])
+  @@map("channex_mappings")
 }
 
 // Calendar model - Caches calendar data from Beds24

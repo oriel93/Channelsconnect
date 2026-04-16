@@ -20,6 +20,9 @@ import { ReportsModule } from './reports/reports.module';
 import { ChannexSyncModule } from './channex/channex-sync.module';
 import { ChannexModule } from './channex/channex.module'; // <--- New Import
 
+// White-label Services Module
+import { ChannexServicesModule } from './services/channex/channex-services.module';
+
 @Module({
   imports: [
     // Core Configuration
@@ -31,8 +34,9 @@ import { ChannexModule } from './channex/channex.module'; // <--- New Import
     AuthModule,
 
     // Feature Modules
-    ChannexModule,      // <--- Added for Property/Room fetching
-    ChannexSyncModule,  // Existing sync logic
+    ChannexModule,          // <--- Added for Property/Room fetching
+    ChannexSyncModule,      // Existing sync logic
+    ChannexServicesModule,  // White-label integration services (/connect/* routes)
     UsersModule,
     ListingsModule,
     BookingsModule,
