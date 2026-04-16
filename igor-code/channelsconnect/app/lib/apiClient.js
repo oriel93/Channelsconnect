@@ -1,11 +1,12 @@
 import axios from 'axios';
 import { supabase } from './supabase';
 
-// In production: VITE_API_URL="/" means same origin (Router serves both)
-// In development: falls back to localhost:3001
-const API_URL = import.meta.env.VITE_API_URL === '/' 
-  ? '' 
-  : (import.meta.env.VITE_API_URL || 'http://localhost:3001');
+// VITE_API_URL is injected at build time by SST with the ALB URL for the API service.
+// In development it falls back to localhost:3001.
+// The legacy '/' value (same-origin server setup) collapses to '' so relative paths still work,
+// but for any real URL (http/https) we use it verbatim.
+const rawApiUrl = import.meta.env.VITE_API_URL || '';
+const API_URL = rawApiUrl === '/' ? '' : rawApiUrl || 'http://localhost:3001';
 
 // Create axios instance
 const apiClient = axios.create({

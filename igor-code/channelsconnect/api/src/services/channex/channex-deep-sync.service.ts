@@ -534,7 +534,7 @@ export class ChannexDeepSyncService {
       if (taskId) {
         taskIds.push(taskId);
         this.logger.log(
-          "[CERT ARI] TASK_ID=" + taskId + " range=" + range.from + "->" + range.to + " (call " + taskIds.length + "/2)",
+          "[CHANNEX_CERT_LOG] CERT_ARI TASK_ID=" + taskId + " range=" + range.from + "->" + range.to + " (call " + taskIds.length + "/2)",
         );
       }
     }
@@ -584,7 +584,7 @@ export class ChannexDeepSyncService {
     });
     const taskId: string | undefined = res?.meta?.task_id;
     if (taskId) {
-      this.logger.log("[ARI Update] TASK_ID=" + taskId + " " + dateFrom + "->" + dateTo);
+      this.logger.log("[CHANNEX_CERT_LOG] ARI_UPDATE TASK_ID=" + taskId + " " + dateFrom + "->" + dateTo);
     }
     return taskId;
   }

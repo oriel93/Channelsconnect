@@ -418,7 +418,14 @@ export class ChannexSyncService implements OnModuleInit {
    * Runs every 30 seconds via cron. Also callable manually.
    */
   @Cron(CronExpression.EVERY_30_SECONDS)
-  async drainQueue(apiKey: string) {
+  async drainQueue(apiKey?: string) {
+    // When called by the scheduler, apiKey is undefined — use master key from env
+    const key = apiKey || process.env.CHANNEX_API_KEY || '';
+    if (!key) {
+      this.logger.warn('[Queue] CHANNEX_API_KEY not set — skipping drain');
+      return;
+    }
+    apiKey = key;
     const pendingJobs = await this.prisma.syncLog.findMany({
       where: { status: 'pending' },
       take: 10,

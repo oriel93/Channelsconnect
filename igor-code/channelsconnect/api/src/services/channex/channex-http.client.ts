@@ -82,7 +82,7 @@ export class ChannexHttpClient {
 
     // Log task_id for PMS Certification tracking (goes to CloudWatch)
     if (json?.meta?.task_id) {
-      this.logger.log(`[ChannexHTTP] TASK_ID=${json.meta.task_id} method=${method} path=${path}`);
+      this.logger.log(`[CHANNEX_CERT_LOG] TASK_ID=${json.meta.task_id} method=${method} path=${path}`);
     }
 
     return json as T;

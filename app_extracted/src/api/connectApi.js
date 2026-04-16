@@ -1,12 +1,30 @@
 /**
  * connectApi.js
- * Typed client for the /connect/* endpoints on api.channelsconnect.com.
- * All calls are proxied through our backend — Channex is never exposed to the browser.
+ * Typed client for /connect/* endpoints on api.channelsconnect.com.
+ *
+ * Auth: reads the Base44 token from localStorage automatically.
+ * The NestJS backend accepts Base44 tokens via dual-auth guard.
+ * Channex is never exposed to the browser — all calls go through our backend.
  */
 
 const API_BASE = import.meta.env.VITE_API_URL || 'https://api.channelsconnect.com';
 
-async function apiCall(method, path, body = null, token = null) {
+/** Read the Base44 access token from localStorage */
+function getToken() {
+  try {
+    return (
+      localStorage.getItem('base44_access_token') ||
+      localStorage.getItem('sb-access-token') ||
+      localStorage.getItem('auth_token') ||
+      null
+    );
+  } catch {
+    return null;
+  }
+}
+
+async function apiCall(method, path, body = null) {
+  const token = getToken();
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -24,27 +42,42 @@ async function apiCall(method, path, body = null, token = null) {
   return json;
 }
 
-/** Get connection status for the current user */
-export async function getConnectStatus(token) {
-  return apiCall('GET', '/connect/status', null, token);
+/** Get connection status for the current user (drives the onboarding state machine) */
+export async function getConnectStatus() {
+  return apiCall('GET', '/connect/status');
 }
 
-/** Onboard: create property on Channels Connect */
-export async function onboardProperty(token, data) {
-  return apiCall('POST', '/connect/onboard', data, token);
+/** Step 1: Create the property on Channels Connect */
+export async function onboardProperty(data) {
+  return apiCall('POST', '/connect/onboard', data);
 }
 
-/** Get OAuth URL to connect an OTA (Airbnb, etc.) */
-export async function getOAuthLink(token, channel = 'airbnb') {
-  return apiCall('GET', `/connect/oauth-link?channel=${channel}`, null, token);
+/** Step 2: Get a branded OAuth URL to connect an OTA channel */
+export async function getOAuthLink(channel = 'airbnb') {
+  return apiCall('GET', `/connect/oauth-link?channel=${channel}`);
 }
 
-/** Start a full deep sync (returns { syncLogId }) */
-export async function startSync(token) {
-  return apiCall('POST', '/connect/sync', null, token);
+/** Step 3: Trigger a full deep sync (property details, photos, 500-day ARI) */
+export async function startSync() {
+  return apiCall('POST', '/connect/sync');
 }
 
-/** Poll sync progress */
-export async function getSyncProgress(token, syncLogId) {
-  return apiCall('GET', `/connect/sync/${syncLogId}/progress`, null, token);
+/** Poll sync progress by syncLogId */
+export async function getSyncProgress(syncLogId) {
+  return apiCall('GET', `/connect/sync/${syncLogId}/progress`);
+}
+
+/** PMS Cert: Push 500-day ARI in 2 calls */
+export async function pushFullARI(payload) {
+  return apiCall('POST', '/connect/ari/full', payload);
+}
+
+/** PMS Cert: Update a specific date range */
+export async function updateARI(payload) {
+  return apiCall('POST', '/connect/ari/update', payload);
+}
+
+/** PMS Cert #11: Acknowledge a booking */
+export async function acknowledgeBooking(bookingId) {
+  return apiCall('POST', `/connect/booking/${bookingId}/ack`);
 }
