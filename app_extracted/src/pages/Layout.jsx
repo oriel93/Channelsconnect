@@ -2,12 +2,12 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import MarketingHeader from "../components/marketing/MarketingHeader";
-import MarketingFooter from "../components/marketing/MarketingFooter";
-import PWAInstaller from "../components/pwa/PWAInstaller";
+import MarketingHeader from "@/components/marketing/MarketingHeader";
+import MarketingFooter from "@/components/marketing/MarketingFooter";
+import PWAInstaller from "@/components/pwa/PWAInstaller";
 import { InvokeLLM } from "@/api/integrations";
 import { X, Bot, Calendar, Rocket } from "lucide-react";
-import TranslationWidget from '../components/translation/TranslationWidget';
+import TranslationWidget from '@/components/translation/TranslationWidget';
 import { getUserLocation } from '@/api/functions';
 import { createPageUrl } from '@/utils';
 import { sendTeamNotification } from '@/api/functions';
@@ -406,7 +406,8 @@ export default function Layout({ children, currentPageName }) {
     appendOrUpdateMetaTag('twitter:image', 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/og-image-channels-connect.png');
     
     // Google Analytics 4 (Replace with your Measurement ID)
-    const gaId = 'YOUR_GA_MEASUREMENT_ID';
+    // FIX: Use VITE_GA_MEASUREMENT_ID env var instead of hardcoded placeholder
+    const gaId = import.meta.env.VITE_GA_MEASUREMENT_ID || '';
     if (gaId && gaId !== 'YOUR_GA_MEASUREMENT_ID' && !document.querySelector(`#ga-script-${gaId}`)) {
         const script = document.createElement('script');
         script.id = `ga-script-${gaId}`;
