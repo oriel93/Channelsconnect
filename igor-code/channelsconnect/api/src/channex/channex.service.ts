@@ -1,15 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-import { Resource } from 'sst';
+
 
 @Injectable()
 export class ChannexService {
-  private readonly baseUrl = 'https://staging.channex.io/api/v1';
+  private readonly baseUrl = 'https://api.channex.io/api/v1';
   private readonly headers: any;
 
   constructor(private readonly httpService: HttpService) {
-    const apiKey = (Resource as any).CHANNEX_API_KEY?.value || '';
+    const apiKey = process.env.CHANNEX_API_KEY || '';
     this.headers = {
       'user-api-key': apiKey,
       'Content-Type': 'application/json',
