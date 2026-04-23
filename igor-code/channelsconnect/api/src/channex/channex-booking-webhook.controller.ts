@@ -26,6 +26,7 @@ import { ApiTags, ApiOperation, ApiOkResponse, ApiHeader } from '@nestjs/swagger
 import { Public } from '../auth/decorators/public.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChannexHttpClient } from '../services/channex/channex-http.client';
+import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 
 // ---------------------------------------------------------------------------
@@ -275,10 +276,16 @@ export class ChannexBookingWebhookController {
           .join(' | ') || null,
       };
 
-      // Upsert by externalId so re-deliveries are idempotent
+      // ── 3a. Determine action type for logging and inventory logic ────────
+      const actionType = this.resolveActionType(revision.status);
+      this.logger.log(`[Webhook] Action: ${actionType} — booking_id=${revision.booking_id}`);
+
+      // ── 3b. Upsert booking — idempotent on re-delivery ───────────────────
       const existing = await this.prisma.booking.findFirst({
         where: { externalId: revision.booking_id, listingId },
       });
+
+      let bookingDbId: number;
 
       if (existing) {
         await this.prisma.booking.update({
@@ -292,35 +299,51 @@ export class ChannexBookingWebhookController {
             notes: bookingData.notes,
           },
         });
+        bookingDbId = existing.id;
         this.logger.log(
-          `[Webhook] Updated existing booking id=${existing.id} (external=${revision.booking_id})`,
+          `[Webhook] Action: ${actionType} — updated booking id=${existing.id} (external=${revision.booking_id})`,
         );
       } else {
         const created = await this.prisma.booking.create({ data: bookingData });
+        bookingDbId = created.id;
         this.logger.log(
-          `[Webhook] Created new booking id=${created.id} (external=${revision.booking_id})`,
+          `[Webhook] Action: ${actionType} — created booking id=${created.id} (external=${revision.booking_id})`,
         );
       }
 
-      // Log sync activity
+      // ── 3c. Update local inventory (Rate table) based on action ──────────
+      // When a booking is created/modified → mark dates as unavailable.
+      // When a booking is cancelled → restore availability.
+      // This keeps the Rate table in sync with real occupancy so the
+      // next ARI push reflects correct inventory.
+      await this.adjustInventory({
+        listingId,
+        arrivalDate: revision.arrival_date,
+        departureDate: revision.departure_date,
+        actionType,
+      });
+
+      // ── 3d. Log sync activity ─────────────────────────────────────────────
       await this.prisma.syncLog.create({
         data: {
           userId,
           syncType: 'channex_booking_webhook',
           entityType: 'booking',
           status: 'synced',
-          message: `booking_revision ${revision.id} processed (booking ${revision.booking_id})`,
+          message: `booking_revision ${revision.id} processed — Action: ${actionType} (booking ${revision.booking_id})`,
           details: {
             bookingRevisionId: revision.id,
             bookingId: revision.booking_id,
+            actionType,
             status: revision.status,
             listingId,
-          } as any,
+            bookingDbId,
+          } as unknown as Prisma.JsonObject,
         },
       });
 
       // ── 4. Send Booking ACK back to Channex (Source 106) ─────────────────
-      // This MUST happen even if the booking was already in our DB (idempotent).
+      // MUST be sent even if booking was already in DB (idempotent).
       if (apiKey) {
         await this.sendBookingAck(revision.id, apiKey);
       } else {
@@ -334,6 +357,7 @@ export class ChannexBookingWebhookController {
         bookingRevisionId: revision.id,
         bookingId: revision.booking_id,
         listingId,
+        actionType,
         status: bookingData.status,
       };
     } catch (err: any) {
@@ -371,5 +395,91 @@ export class ChannexBookingWebhookController {
       default:
         return 'confirmed';
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Helper: resolve human-readable action type from Channex status
+  // -------------------------------------------------------------------------
+
+  private resolveActionType(
+    status: string,
+  ): 'create' | 'modify' | 'cancel' {
+    switch (status?.toLowerCase()) {
+      case 'new':        return 'create';
+      case 'modified':   return 'modify';
+      case 'cancelled':  return 'cancel';
+      default:           return 'create';
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Inventory adjustment: update Rate.available for all dates in the stay
+  //
+  // create / modify → available = false (dates are occupied)
+  // cancel          → available = true  (dates freed up)
+  //
+  // Uses upsert to avoid primary-key conflicts (idempotent on re-delivery).
+  // Only adjusts dates strictly before departure (checkout day stays open).
+  // -------------------------------------------------------------------------
+
+  private async adjustInventory(params: {
+    listingId: number;
+    arrivalDate: string;
+    departureDate: string;
+    actionType: 'create' | 'modify' | 'cancel';
+  }): Promise<void> {
+    const { listingId, arrivalDate, departureDate, actionType } = params;
+
+    // Booking spans arrival_date (inclusive) to departure_date (exclusive)
+    const arrival   = new Date(arrivalDate);
+    const departure = new Date(departureDate);
+
+    if (isNaN(arrival.getTime()) || isNaN(departure.getTime())) {
+      this.logger.warn(
+        `[Webhook] Invalid dates for inventory adjustment: ` +
+          `arrival=${arrivalDate} departure=${departureDate}`,
+      );
+      return;
+    }
+
+    // available = false for new/modify; true for cancel
+    const available = actionType === 'cancel';
+
+    // Iterate day-by-day from arrival up to (but not including) departure
+    const stayDates: Date[] = [];
+    const cursor = new Date(arrival);
+    while (cursor < departure) {
+      stayDates.push(new Date(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    if (stayDates.length === 0) return;
+
+    this.logger.log(
+      `[Webhook] Inventory adjustment — Action: ${actionType} ` +
+        `listing=${listingId} dates=${arrivalDate}→${departureDate} ` +
+        `(${stayDates.length} nights) available=${available}`,
+    );
+
+    // Upsert each date — safe against PK conflicts and re-deliveries
+    for (const date of stayDates) {
+      await this.prisma.rate.upsert({
+        where: {
+          listingId_date: { listingId, date },
+        },
+        update: { available },
+        create: {
+          listingId,
+          date,
+          price: 0,       // placeholder; will be overwritten by next ARI push
+          available,
+        },
+      });
+    }
+
+    this.logger.log(
+      `[Webhook] Inventory adjusted — ` +
+        `${stayDates.length} Rate rows upserted for listing=${listingId}`,
+    );
   }
 }
