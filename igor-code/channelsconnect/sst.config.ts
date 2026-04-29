@@ -48,9 +48,11 @@ export default $config({
                 }
             },
             health: {
-                command: ["CMD-SHELL", "curl -f http://localhost:3001/ || exit 1"],
+                command: ["CMD-SHELL", "curl -f http://localhost:3001/health || exit 1"],
                 interval: "30 seconds",
                 timeout: "10 seconds",
+                startPeriod: "60 seconds",  // grace period for NestJS cold-start
+                retries: 3,
             },
             environment: {
                 DATABASE_URL: dbUrl.value,

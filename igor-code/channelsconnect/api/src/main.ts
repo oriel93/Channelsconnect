@@ -62,16 +62,26 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
-  // Export Swagger JSON for type generation
-  const outputPath = path.resolve(process.cwd(), 'swagger.json');
-  fs.writeFileSync(outputPath, JSON.stringify(document, null, 2));
-  console.log(`📝 Swagger JSON exported to: ${outputPath}`);
+  // Export Swagger JSON for type generation (dev only — skip in production
+  // where the filesystem may be read-only and a crash here would kill the ECS task)
+  if (process.env.NODE_ENV !== 'production') {
+    try {
+      const outputPath = path.resolve(process.cwd(), 'swagger.json');
+      fs.writeFileSync(outputPath, JSON.stringify(document, null, 2));
+      console.log(`📝 Swagger JSON exported to: ${outputPath}`);
+    } catch (e) {
+      console.warn(`⚠️  Could not write swagger.json: ${(e as Error).message}`);
+    }
+  }
 
   const port = process.env.PORT || 3001;
   await app.listen(port);
   console.log(`🚀 Application is running on: http://localhost:${port}`);
   console.log(`📚 Swagger documentation: http://localhost:${port}/api/docs`);
 }
-bootstrap();
+bootstrap().catch((err) => {
+  console.error('🔴 Fatal: NestJS bootstrap failed:', err);
+  process.exit(1);
+});
 
  
