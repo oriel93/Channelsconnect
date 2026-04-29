@@ -1,14 +1,15 @@
-import './App.css'
-import Pages from "@/pages/index.jsx"
-import { Toaster } from "@/components/ui/toaster"
+/**
+ * App.jsx — temporarily wired to CertDashboard for Channex certification.
+ * To restore the normal app, change the import back to Pages and swap the JSX.
+ *
+ * Original:
+ *   import Pages from "@/pages/index.jsx"
+ *   <Pages />
+ */
+import CertDashboard from '@/CertDashboard.jsx'
 
 function App() {
-  return (
-    <>
-      <Pages />
-      <Toaster />
-    </>
-  )
+  return <CertDashboard />
 }
 
-export default App 
+export default App
