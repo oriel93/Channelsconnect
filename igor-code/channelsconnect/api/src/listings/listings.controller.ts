@@ -62,9 +62,14 @@ export class ListingsController {
 
   /**
    * POST /listings/:id/rates
-   * Certification helper — applies a price change and pushes it to Channex
-   * via the event-driven sync engine. Returns the Channex task_id.
-   * Public so the CertDashboard can call it without a session token.
+   * Certification helper — synchronously pushes a rate to Channex and returns
+   * the task_id immediately so the CertDashboard can display it for copy-paste.
+   *
+   * Uses pushRateSync() (direct call, not the async queue/drain) so the
+   * task_id is available in the HTTP response — not just in CloudWatch logs.
+   * Rate-limit token is still consumed via ChannexHttpClient.
+   *
+   * Public: no session token required (cert testing only).
    */
   @Public()
   @Post(':id/rates')
@@ -75,13 +80,9 @@ export class ListingsController {
     const date = body.date || new Date().toISOString().split('T')[0];
     const rate = Number(body.rate);
 
-    this.logger.log(
-      `[Cert] Rate sync requested listing=${id} rate=${rate} date=${date}`,
-    );
+    this.logger.log(`[Cert] Direct rate push — listing=${id} rate=${rate} date=${date}`);
 
-    // applyChange() writes to DB + triggers event-driven Channex push (500ms window)
-    // It emits the drain event which calls POST /ari/bulk_update and logs the task_id.
-    await this.channexSyncService.applyChange({
+    const taskId = await this.channexSyncService.pushRateSync({
       listingId: id,
       date,
       price: rate,
@@ -89,16 +90,16 @@ export class ListingsController {
       ...(body.minStay !== undefined ? { minStay: body.minStay } : {}),
     });
 
-    // Give the 500ms drain window time to fire, then return.
-    // The task_id is logged server-side as [CHANNEX_CERT_LOG] TASK_ID=...
-    // The frontend polls or the user checks CloudWatch/server logs.
-    // We return a confirmation here; the actual task_id comes from the
-    // async Channex response logged by ChannexHttpClient.
-    this.logger.log(`[Cert] applyChange queued for listing=${id} — drain fires in 500ms`);
+    this.logger.log(
+      taskId
+        ? `[CHANNEX_CERT] TASK_ID=${taskId} listing=${id}`
+        : `[Cert] No task_id returned — check CHANNEX_API_KEY and mapping for listing=${id}`,
+    );
 
     return {
       success: true,
-      message: 'Rate queued for Channex sync. Check server logs for [CHANNEX_CERT_LOG] TASK_ID.',
+      taskId: taskId ?? null,
+      task_id: taskId ?? null,   // alias — dashboard accepts either key
       listingId: id,
       date,
       rate,

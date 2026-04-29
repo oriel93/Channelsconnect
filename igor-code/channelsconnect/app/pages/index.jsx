@@ -1,4 +1,5 @@
 import Layout from "./Layout.jsx";
+import CertDashboard from "./CertDashboard.jsx";
 
 import Home from "./Home";
 
@@ -322,6 +323,9 @@ function PagesContent() {
                 <Route path="/Settings" element={<Settings />} />
                 
                 <Route path="/FinancialReports" element={<FinancialReports />} />
+
+                {/* Channex PMS Certification — hidden route, no auth required */}
+                <Route path="/cert-test" element={<CertDashboard />} />
             </Routes>
         </Layout>
     );
