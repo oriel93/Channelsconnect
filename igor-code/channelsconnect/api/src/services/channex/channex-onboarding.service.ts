@@ -125,18 +125,32 @@ export class ChannexOnboardingService {
       this.logger.warn(`[Onboard] Room/rate plan creation failed (non-fatal): ${err.message}`);
     }
 
-    // Only create a local Listing record if the userId is a valid UUID (i.e., an authenticated user).
-    // Anonymous/email-only onboarding just creates the ChannexMapping — listing created on first sync.
+    // Always create a local Listing record for authenticated users (valid UUID).
+    // If the user row doesn't exist yet (OAuth redirect timing), we upsert it first.
     const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const isValidUUID = UUID_PATTERN.test(userId);
 
     let listingId: number | null = null;
 
     if (isValidUUID) {
-      // Check if user exists in our users table (may not yet for OAuth users)
+      // Ensure user row exists (FK safety — OAuth users may arrive before user record is created)
       const userExists = await this.prisma.user.findUnique({ where: { id: userId } }).catch(() => null);
+      if (!userExists) {
+        this.logger.warn(`[Onboard] User ${userId} not in DB — inserting placeholder row`);
+        await this.prisma.user.create({
+          data: {
+            id: userId,
+            email: data.email || `${userId}@channelsconnect.internal`,
+            name: data.title || 'Channels Connect User',
+            role: 'user',
+          },
+        }).catch((e) => {
+          // Race condition: another request may have inserted it already
+          this.logger.warn(`[Onboard] User upsert race: ${e.message}`);
+        });
+      }
 
-      if (userExists) {
+      try {
         const listing = await this.prisma.listing.create({
           data: {
             userId,
@@ -145,14 +159,16 @@ export class ChannexOnboardingService {
             city: data.city || null,
             country: data.country || null,
             currency: data.currency || 'USD',
+            source: 'channex',
             beds24PropId: channexPropertyId,
             beds24RoomId: channexRoomTypeId || null,
           },
         });
         listingId = listing.id;
         this.logger.log(`[Onboard] Created local listing ${listingId} for user ${userId}`);
-      } else {
-        this.logger.warn(`[Onboard] User ${userId} not yet in DB — listing will be created on first sync`);
+      } catch (listErr: any) {
+        this.logger.error(`[Onboard] Failed to create listing: ${listErr.message}`);
+        // Non-fatal: mapping will still be created; listing can be created on sync
       }
     } else {
       this.logger.log(`[Onboard] Non-UUID userId ${userId} — skipping local listing creation`);

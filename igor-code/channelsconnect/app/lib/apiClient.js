@@ -65,12 +65,19 @@ export const api = {
 
   // Listings
   listings: {
+    // CRUD
     getAll: () => apiClient.get('/listings'),
     getById: (id) => apiClient.get(`/listings/${id}`),
     getActive: () => apiClient.get('/listings/active'),
     create: (data) => apiClient.post('/listings', data),
     update: (id, data) => apiClient.patch(`/listings/${id}`, data),
     delete: (id) => apiClient.delete(`/listings/${id}`),
+    // Airbnb content capture
+    importAirbnb: (url) => apiClient.post('/listings/import/airbnb', { url }),
+    createManual: (title) => apiClient.post('/listings/manual', { title }),
+    list: () => apiClient.get('/listings'),
+    syncRate: (listingId, rate, date) =>
+      apiClient.post(`/listings/${listingId}/rates`, { rate, date }),
   },
 
   // Bookings
@@ -207,14 +214,6 @@ export const api = {
       apiClient.get('/channex-sync/parity', { params: { apiKey, sample } }),
   },
 
-  /** Airbnb content capture — creates a local listing from an Airbnb URL */
-  listings: {
-    importAirbnb: (url) => apiClient.post('/listings/import/airbnb', { url }),
-    createManual: (title) => apiClient.post('/listings/manual', { title }),
-    list: () => apiClient.get('/listings'),
-    syncRate: (listingId, rate, date) =>
-      apiClient.post(`/listings/${listingId}/rates`, { rate, date }),
-  },
 };
 
 export default apiClient;

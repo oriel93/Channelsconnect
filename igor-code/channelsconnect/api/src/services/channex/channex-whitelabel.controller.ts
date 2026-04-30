@@ -62,7 +62,16 @@ export class ChannexWhitelabelController {
       zipCode: body.zipCode || body.zip_code,
       timezone: body.timezone,
     } as OnboardPropertyDto);
-    return { success: true, message: 'Property connected successfully to Channels Connect.', data: result };
+    // Normalize the response so the frontend success gate can always check `data.id`
+    return {
+      success: true,
+      message: 'Property connected successfully to Channels Connect.',
+      data: {
+        id: result.listingId ?? result.channexPropertyId,  // frontend checks this first
+        listingId: result.listingId ?? null,
+        channexPropertyId: result.channexPropertyId,
+      },
+    };
   }
 
   // ── Status (frontend state machine) ──────────────────────────────────

@@ -176,26 +176,36 @@ export default function Layout({ children, currentPageName }) {
     // Create manifest
     createManifest();
 
-    // Enhanced PWA Service Worker with Dashboard Optimization
+    // ── Service Worker: REMOVED ─────────────────────────────────────────────────
+    // Blob-URL-based SW registration is blocked by browsers in production
+    // (blob: protocol not supported for SW scope) and caused white-screen
+    // flicker + fetch-interception bugs. Channels Connect is a Channel Manager,
+    // not a PWA — we don't need offline caching.
+    //
+    // Instead, unregister any stale SW that may be cached from a prior build:
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        const swCode = `
-          const CACHE_NAME = 'channels-connect-dashboard-v2';
-          const DASHBOARD_CACHE = 'dashboard-data-v1';
-          
-          // Enhanced caching strategy for dashboard
-          const urlsToCache = [
-            '/',
-            '/Dashboard',
-            '/ImportListings',
-            '/Listings',
-            '/ImageManager',
-            '/Channels',
-            // Dashboard API endpoints
-            '/api/dashboard/data',
-            '/api/listings',
-            '/api/channels'
-          ];
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        regs.forEach((reg) => {
+          const url = reg.active?.scriptURL || reg.installing?.scriptURL || '';
+          if (url.startsWith('blob:') || url === '') reg.unregister();
+        });
+      });
+    }
+
+    if (false) {
+      // DEAD CODE — kept for reference, never executed
+      // Original blob-SW code removed. Do not re-enable.
+      const urlsToCache = [
+        '/',
+        '/Dashboard',
+        '/ImportListings',
+        '/Listings',
+        '/ImageManager',
+        '/Channels',
+        '/api/dashboard/data',
+        '/api/listings',
+        '/api/channels'
+      ];
 
           // Install event - cache core dashboard assets
           self.addEventListener('install', (event) => {
@@ -334,19 +344,7 @@ export default function Layout({ children, currentPageName }) {
         const swBlob = new Blob([swCode], { type: 'application/javascript' });
         const swURL = URL.createObjectURL(swBlob);
 
-        navigator.serviceWorker.register(swURL)
-          .then((registration) => {
-            console.log('Enhanced Dashboard SW registered: ', registration);
-            
-            // Enable background sync for dashboard
-            if ('sync' in window.ServiceWorkerRegistration.prototype) {
-              registration.sync.register('dashboard-sync');
-            }
-          })
-          .catch((registrationError) => {
-            console.log('SW registration failed: ', registrationError);
-          });
-      });
+      // (end of dead code block)
     }
 
     // --- SEO IMPLEMENTATION ---

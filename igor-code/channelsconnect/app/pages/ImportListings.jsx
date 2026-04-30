@@ -275,14 +275,25 @@ function SetupStep({ user, onComplete }) {
     if (!form.title.trim()) { toast.error('Property name is required.'); return; }
     setWorking(true);
     try {
-      // Success gating: only advance if backend returns a valid property with an id
+      // Success gating: only advance if backend returns a valid property/channel ID.
+      // Response shape: { success, message, data: { channexPropertyId, listingId } }
       const res = await api.connect.onboard({ ...form, email: user?.email || '', userId: user?.id || '' });
-      const data = res?.data;
-      const propertyId = data?.data?.id ?? data?.id ?? data?.channexPropertyId;
+      const body = res?.data;  // axios wraps the JSON body in .data
+      const inner = body?.data || body; // handle both { data: {...} } and flat shapes
+      const propertyId =
+        inner?.channexPropertyId ||
+        inner?.listingId         ||
+        inner?.id                ||
+        body?.channexPropertyId  ||
+        body?.listingId          ||
+        body?.id;
       if (!propertyId) {
-        throw new Error('Property created but no ID returned — please try again.');
+        throw new Error(
+          `Setup failed: no property ID in response. ` +
+          `Got: ${JSON.stringify(body).slice(0, 200)}`
+        );
       }
-      toast.success(`Property created! (ID: ${propertyId}) Now connect your channel.`);
+      toast.success('Property set up! Now connect your booking channel.');
       onComplete();
     } catch (err) {
       const msg = err.response?.data?.message || err.message || 'Setup failed. Please try again.';
