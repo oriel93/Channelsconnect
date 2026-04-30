@@ -65,22 +65,6 @@ export default $config({
                 command: "npm run start:dev",
                 directory: "api",
             },
-            transform: {
-                taskDefinition: (args: any) => {
-                    // Inject Google public DNS so the ECS container can resolve
-                    // external hostnames (app.channex.io) — the VPC resolver
-                    // (169.254.169.253) intermittently fails for external names.
-                    args.containerDefinitions = $resolve(args.containerDefinitions).apply(
-                        (defs: any) => {
-                            const containers = JSON.parse(defs);
-                            for (const c of containers) {
-                                c.dnsServers = ['8.8.8.8', '8.8.4.4'];
-                            }
-                            return JSON.stringify(containers);
-                        }
-                    );
-                },
-            },
         });
 
         // 3. Frontend

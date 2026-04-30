@@ -45,8 +45,14 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
+# Copy entrypoint script that overrides DNS to Google (8.8.8.8)
+# ECS awsvpc mode blocks per-container dnsServers but allows resolv.conf override
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
 # Expose API port
 EXPOSE 3001
 
 # Start the compiled NestJS application
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["node", "dist/main"]
