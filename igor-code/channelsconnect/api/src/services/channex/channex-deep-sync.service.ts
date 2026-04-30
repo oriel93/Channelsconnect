@@ -754,7 +754,10 @@ export class ChannexDeepSyncService {
     values: {
       rate?: number;
       minStay?: number;
+      maxStay?: number;
       stopSell?: boolean;
+      closedToArrival?: boolean;
+      closedToDeparture?: boolean;
       availability?: number;
     },
   ): Promise<string | undefined> {
@@ -767,7 +770,10 @@ export class ChannexDeepSyncService {
     };
     if (values.rate !== undefined) rateAttrs.rate = Math.round(values.rate * 100); // cents
     if (values.minStay !== undefined) rateAttrs.min_stay_arrival = values.minStay;
+    if (values.maxStay !== undefined) rateAttrs.max_stay = values.maxStay;
     if (values.stopSell !== undefined) rateAttrs.closed = values.stopSell;
+    if (values.closedToArrival !== undefined) rateAttrs.closed_to_arrival = values.closedToArrival;
+    if (values.closedToDeparture !== undefined) rateAttrs.closed_to_departure = values.closedToDeparture;
 
     // POST /restrictions (flat format — no type/attributes wrapper)
     const rateRes = await this.http.post<any>('/restrictions', this.masterKey, {

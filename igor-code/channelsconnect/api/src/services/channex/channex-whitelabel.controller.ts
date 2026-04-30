@@ -30,6 +30,7 @@ import {
 import { ChannexOnboardingService, OnboardPropertyDto } from './channex-onboarding.service';
 import { ChannexDeepSyncService, SyncProgress } from './channex-deep-sync.service';
 import { ChannexHttpClient } from './channex-http.client';
+import { PrismaService } from '../../prisma/prisma.service';
 import { SupabaseAuthGuard } from '../../auth/guards/supabase-auth.guard';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Public } from '../../auth/decorators/public.decorator';
@@ -44,6 +45,7 @@ export class ChannexWhitelabelController {
     private readonly onboarding: ChannexOnboardingService,
     private readonly deepSync: ChannexDeepSyncService,
     private readonly http: ChannexHttpClient,
+    private readonly prisma: PrismaService,
   ) {}
 
   // ── Onboarding ────────────────────────────────────────────────────────
@@ -204,7 +206,37 @@ export class ChannexWhitelabelController {
 
   // ── PMS Certification Endpoints ───────────────────────────────────────
 
+  /**
+   * PMS Cert helper — returns the cert property's IDs from the DB.
+   * Called by the CertDashboard to self-populate without hardcoding.
+   * Uses CERT_USER_ID env var (set to the cert Supabase user).
+   */
+  @Public()
+  @Get('cert/property-info')
+  async getCertPropertyInfo() {
+    const certUserId = process.env.CERT_USER_ID || '1d63e070-dbff-48b8-ba2a-be8ba3a41ae8';
+    const mapping = await this.prisma.channexMapping.findFirst({
+      where: { userId: certUserId, syncStatus: 'active' },
+      include: { listing: { select: { id: true, title: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!mapping) {
+      return { success: false, message: 'No active mapping for cert user' };
+    }
+    return {
+      success: true,
+      data: {
+        listingId: mapping.listingId,
+        listingTitle: mapping.listing?.title,
+        propertyId: mapping.channexPropertyId,
+        roomTypeId: mapping.channexRoomTypeId,
+        ratePlanId: mapping.channexRatePlanId,
+      },
+    };
+  }
+
   /** PMS Cert Test #11 — Booking Acknowledge */
+  @Public()
   @Post('booking/:bookingId/ack')
   async acknowledgeBooking(@Param('bookingId') bookingId: string) {
     this.logger.log(`[Cert#11] Acknowledging booking ${bookingId}`);
@@ -214,6 +246,7 @@ export class ChannexWhitelabelController {
   }
 
   /** PMS Cert — Full 500-day ARI (EXACTLY 2 API calls) */
+  @Public()
   @Post('ari/full')
   async pushFullARI(@Body() body: any) {
     const taskIds = await this.deepSync.pushCertificationARI(
@@ -234,6 +267,7 @@ export class ChannexWhitelabelController {
   }
 
   /** PMS Cert — Single/Multi date range update */
+  @Public()
   @Post('ari/update')
   async updateARI(@Body() body: any) {
     const taskId = await this.deepSync.updateARI(
@@ -242,7 +276,15 @@ export class ChannexWhitelabelController {
       body.ratePlanId,
       body.dateFrom,
       body.dateTo,
-      { rate: body.rate, minStay: body.minStay, stopSell: body.stopSell, availability: body.availability },
+      {
+        rate:              body.rate,
+        minStay:           body.minStay,
+        maxStay:           body.maxStay,
+        stopSell:          body.stopSell,
+        closedToArrival:   body.closedToArrival,
+        closedToDeparture: body.closedToDeparture,
+        availability:      body.availability,
+      },
     );
     return { success: true, message: 'ARI updated.', taskId: taskId || null };
   }
