@@ -89,8 +89,41 @@ export class ListingsService {
     const data = withSafeDefaults(userId, createListingDto);
     this.logger.log(`[Listings] Creating listing "${data.title}" for user ${userId}`);
 
+    // Use Prisma's unchecked create input to avoid XOR conflict.
+    // All non-relation fields go directly in data; userId is the FK.
     const listing = await this.prisma.listing.create({
-      data: { ...data, userId },
+      data: {
+        userId,
+        title:              data.title,
+        currency:           data.currency,
+        minNights:          data.minNights,
+        isActive:           data.isActive,
+        source:             data.source,
+        description:        data.description,
+        address:            data.address,
+        city:               data.city,
+        state:              data.state,
+        country:            data.country,
+        postalCode:         data.postalCode,
+        latitude:           data.latitude,
+        longitude:          data.longitude,
+        propertyType:       data.propertyType,
+        bedrooms:           data.bedrooms,
+        bathrooms:          data.bathrooms,
+        beds:               data.beds,
+        maxGuests:          data.maxGuests,
+        basePrice:          data.basePrice,
+        amenities:          data.amenities,
+        houseRules:         data.houseRules,
+        cancellationPolicy: data.cancellationPolicy,
+        checkInTime:        data.checkInTime,
+        checkOutTime:       data.checkOutTime,
+        maxNights:          data.maxNights,
+        beds24PropId:       data.beds24PropId,
+        beds24RoomId:       data.beds24RoomId,
+        airbnbListingId:    data.airbnbListingId,
+        captureUrl:         data.captureUrl,
+      },
     });
 
     this.logger.log(`[Listings] Created listing id=${listing.id} title="${listing.title}"`);
