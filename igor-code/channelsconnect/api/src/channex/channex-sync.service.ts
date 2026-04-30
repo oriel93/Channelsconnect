@@ -6,9 +6,14 @@
  *  - NO polling cron. Queue drains are triggered by an internal EventEmitter
  *    the instant applyChange() is called from the PMS UI.
  *  - 500 ms "collection window" groups changes for the same property into
- *    a single POST /ari/bulk_update payload (batching, cert tests 3-8).
+ *    two batched calls: POST /availability + POST /restrictions
  *  - Rate limiting is delegated to ChannexHttpClient (token-bucket, 429 ACK).
  *  - Full sync produces exactly 2 API calls for 500 days of ARI.
+ *
+ * Channex API endpoints (staging.channex.io/api/v1):
+ *  - POST /availability  — flat payload: { property_id, room_type_id, date_from, date_to, availability }
+ *  - POST /restrictions  — flat payload: { property_id, rate_plan_id, date_from, date_to, rate, ... }
+ *  - Task ID returned as:  res.data[0].id  (NOT res.meta.task_id)
  */
 
 import {
@@ -308,7 +313,7 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
         byProperty.get(propId)!.updates.push(update);
       }
 
-      // ── One POST /ari/bulk_update per property ─────────────────────────
+      // ── Two calls per property: POST /availability + POST /restrictions ──
       for (const [propId, { jobs, updates }] of byProperty) {
         await this.pushBatchToChannex(propId, updates, jobs, apiKey);
       }
@@ -320,12 +325,13 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Builds and sends a single POST /ari/bulk_update containing ALL pending
-   * updates for the given property.
+   * Sends availability + rates/restrictions for a batch of pending updates.
+   * Uses two separate Channex API calls:
+   *   1. POST /availability  — one flat entry per update with availability
+   *   2. POST /restrictions  — one flat entry per update with rate/restrictions
    *
-   * Source 27 pointer: POST /ari/bulk_update at line 213 below.
-   * Source 94 compliance: the entire `values` array (not a per-date loop)
-   * is sent in one call.
+   * The flat payload format (no type/attributes wrapping) is required by
+   * staging.channex.io. Task ID is in res.data[0].id.
    */
   private async pushBatchToChannex(
     channexPropertyId: string,
@@ -333,63 +339,72 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
     jobs: any[],
     apiKey: string,
   ) {
-    // Build flat payload — no per-date loop, single array of all entries
-    const values: object[] = [];
+    // Build separate payloads for availability and rates
+    const availValues: object[] = [];
+    const rateValues: object[] = [];
 
     for (const u of updates) {
       if (u.available !== undefined) {
-        values.push({
-          type: 'availability',
-          attributes: {
-            property_id: channexPropertyId,
-            room_type_id: u.channexRoomTypeId,
-            date_from: u.date,
-            date_to: u.date,
-            availability: u.available ? 1 : 0,
-          },
+        availValues.push({
+          property_id: channexPropertyId,
+          room_type_id: u.channexRoomTypeId,
+          date_from: u.date,
+          date_to: u.date,
+          availability: u.available ? 1 : 0,
         });
       }
 
       if (u.price !== undefined) {
-        values.push({
-          type: 'rates',
-          attributes: {
-            property_id: channexPropertyId,
-            room_type_id: u.channexRoomTypeId,
-            ...(u.channexRatePlanId
-              ? { rate_plan_id: u.channexRatePlanId }
-              : {}),
-            date_from: u.date,
-            date_to: u.date,
-            rate: u.price,
-            min_stay_arrival: u.minStay ?? 1,
-          },
+        rateValues.push({
+          property_id: channexPropertyId,
+          ...(u.channexRatePlanId ? { rate_plan_id: u.channexRatePlanId } : {}),
+          date_from: u.date,
+          date_to: u.date,
+          rate: u.price,
+          min_stay_arrival: u.minStay ?? 1,
         });
       }
     }
 
-    if (values.length === 0) {
+    if (availValues.length === 0 && rateValues.length === 0) {
       await this.markJobsSynced(jobs);
       return;
     }
 
     try {
-      // Source 27: POST /ari/bulk_update
-      const res = await this.http.post('/ari/bulk_update', apiKey, { values });
+      let taskId: string | undefined;
 
-      const taskId: string | undefined = res?.meta?.task_id;
-      if (taskId) {
-        this.logger.log(
-          `[CHANNEX_CERT_LOG] TASK_ID=${taskId} ` +
-            `bulk_update prop=${channexPropertyId} ` +
-            `entries=${values.length} jobs=${jobs.length}`,
-        );
+      // Call 1: POST /availability
+      if (availValues.length > 0) {
+        const availRes = await this.http.post('/availability', apiKey, { values: availValues });
+        const availTaskId: string | undefined = availRes?.data?.[0]?.id;
+        if (availTaskId) {
+          taskId = availTaskId;
+          this.logger.log(
+            `[CHANNEX_CERT_LOG] AVAIL_TASK_ID=${availTaskId} ` +
+              `prop=${channexPropertyId} entries=${availValues.length}`,
+          );
+        }
+      }
+
+      // Call 2: POST /restrictions
+      if (rateValues.length > 0) {
+        const rateRes = await this.http.post('/restrictions', apiKey, { values: rateValues });
+        const rateTaskId: string | undefined = rateRes?.data?.[0]?.id;
+        if (rateTaskId) {
+          taskId = rateTaskId;
+          this.logger.log(
+            `[CHANNEX_CERT_LOG] TASK_ID=${rateTaskId} ` +
+              `restrictions prop=${channexPropertyId} ` +
+              `entries=${rateValues.length} jobs=${jobs.length}`,
+          );
+        }
       }
 
       await this.markJobsSynced(jobs);
       this.logger.log(
         `[ARI] Batch OK — prop=${channexPropertyId} ` +
-          `entries=${values.length} jobs=${jobs.length}`,
+          `avail=${availValues.length} rates=${rateValues.length} jobs=${jobs.length}`,
       );
     } catch (err: any) {
       if (err.status === 422 || err.status === 409) {
@@ -436,8 +451,9 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
 
     try {
       const json = await this.http.get(
-        `/ari?filter[property_id]=${channexPropertyId}` +
-          `&filter[date][gte]=${update.date}&filter[date][lte]=${update.date}`,
+        `/restrictions?filter[property_id]=${channexPropertyId}` +
+          `&filter[date][gte]=${update.date}&filter[date][lte]=${update.date}` +
+          `&filter[restrictions]=rate,availability`,
         apiKey,
       );
 
@@ -584,53 +600,63 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    // Build payload
-    const values: object[] = [];
+    // Build separate payloads for availability and restrictions
+    // Channex API uses flat objects (no type/attributes wrapping):
+    //   POST /restrictions  — { property_id, rate_plan_id, date_from, date_to, rate, ... }
+    //   POST /availability  — { property_id, room_type_id, date_from, date_to, availability }
+    // Task ID is in res.data[0].id
+    let taskId: string | null = null;
 
     if (update.price !== undefined) {
-      values.push({
-        type: 'rates',
-        attributes: {
-          property_id: ids.channexPropertyId,
-          room_type_id: ids.channexRoomTypeId,
-          ...(ids.channexRatePlanId ? { rate_plan_id: ids.channexRatePlanId } : {}),
-          date_from: update.date,
-          date_to: update.date,
-          rate: update.price,
-          ...(update.minStay !== undefined ? { min_stay_arrival: update.minStay } : {}),
-        },
-      });
+      const ratePayload = [{
+        property_id: ids.channexPropertyId,
+        ...(ids.channexRatePlanId ? { rate_plan_id: ids.channexRatePlanId } : {}),
+        date_from: update.date,
+        date_to: update.date,
+        rate: update.price,
+        ...(update.minStay !== undefined ? { min_stay_arrival: update.minStay } : {}),
+      }];
+      const rateRes = await this.http.post<any>('/restrictions', apiKey, { values: ratePayload });
+      const rateTaskId: string | undefined = rateRes?.data?.[0]?.id;
+      if (rateTaskId) {
+        taskId = rateTaskId;
+        this.logger.log(
+          `[CHANNEX_CERT] TASK_ID=${rateTaskId} restrictions listing=${update.listingId} date=${update.date} rate=${update.price}`,
+        );
+      } else {
+        this.logger.warn(
+          `[Cert] restrictions push: no task_id in response: ${JSON.stringify(rateRes)}`,
+        );
+      }
     }
 
     if (update.available !== undefined) {
-      values.push({
-        type: 'availability',
-        attributes: {
-          property_id: ids.channexPropertyId,
-          room_type_id: ids.channexRoomTypeId,
-          date_from: update.date,
-          date_to: update.date,
-          availability: update.available ? 1 : 0,
-        },
-      });
+      const availPayload = [{
+        property_id: ids.channexPropertyId,
+        room_type_id: ids.channexRoomTypeId,
+        date_from: update.date,
+        date_to: update.date,
+        availability: update.available ? 1 : 0,
+      }];
+      const availRes = await this.http.post<any>('/availability', apiKey, { values: availPayload });
+      const availTaskId: string | undefined = availRes?.data?.[0]?.id;
+      if (availTaskId) {
+        taskId = taskId ?? availTaskId; // prefer rate task_id if both present
+        this.logger.log(
+          `[CHANNEX_CERT] AVAIL_TASK_ID=${availTaskId} availability listing=${update.listingId} date=${update.date}`,
+        );
+      } else {
+        this.logger.warn(
+          `[Cert] availability push: no task_id in response: ${JSON.stringify(availRes)}`,
+        );
+      }
     }
 
-    if (values.length === 0) return null;
-
-    const res = await this.http.post<any>('/ari/bulk_update', apiKey, { values });
-    const taskId: string | undefined = res?.meta?.task_id;
-
-    if (taskId) {
-      this.logger.log(
-        `[CHANNEX_CERT] TASK_ID=${taskId} direct-push listing=${update.listingId} date=${update.date} rate=${update.price}`,
-      );
-    } else {
-      this.logger.warn(
-        `[Cert] bulk_update succeeded but no task_id in response: ${JSON.stringify(res)}`,
-      );
+    if (!taskId) {
+      this.logger.warn(`[Cert] pushRateSync: nothing to push for listing=${update.listingId}`);
     }
 
-    return taskId ?? null;
+    return taskId;
   }
 
   // -------------------------------------------------------------------------
@@ -669,13 +695,17 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
         }
 
         const json = await this.http.get(
-          `/ari?filter[property_id]=${propId}&filter[date][gte]=${dateStr}&filter[date][lte]=${dateStr}`,
+          `/restrictions?filter[property_id]=${propId}` +
+            `&filter[date][gte]=${dateStr}&filter[date][lte]=${dateStr}` +
+            `&filter[restrictions]=rate,availability`,
           apiKey,
         );
 
-        const attrs = json?.data?.[0]?.attributes;
-        const channexPrice = attrs?.rate ? parseFloat(attrs.rate) : null;
-        const channexAvail = attrs?.availability ?? null;
+        // Response shape: { data: { [ratePlanId]: { [date]: { rate, availability } } } }
+        const ratePlanId = mapping?.channexRatePlanId;
+        const dateData = json?.data?.[ratePlanId]?.[dateStr] ?? {};
+        const channexPrice = dateData.rate ? parseFloat(dateData.rate) : null;
+        const channexAvail = dateData.availability ?? null;
 
         const priceMatch =
           channexPrice === null ||

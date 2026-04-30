@@ -375,23 +375,20 @@ export class ChannexDeepSyncService {
 
     // ── Call 1: Availability (all 500 days, single payload) ───────────────
     const availValues = Array.from(rateMap.entries()).map(([dateStr, data]) => ({
-      type: 'availability',
-      attributes: {
-        property_id: channexPropId,
-        room_type_id: mapping.channexRoomTypeId,
-        date_from: dateStr,
-        date_to: dateStr,
-        availability: data.available ? 1 : 0,
-      },
+      property_id: channexPropId,
+      room_type_id: mapping.channexRoomTypeId,
+      date_from: dateStr,
+      date_to: dateStr,
+      availability: data.available ? 1 : 0,
     }));
 
     const availRes = await this.http.post(
-      '/ari/bulk_update',
+      '/availability',
       this.masterKey,
       { values: availValues },
     );
 
-    const availTaskId: string | undefined = availRes?.meta?.task_id;
+    const availTaskId: string | undefined = availRes?.data?.[0]?.id;
     if (availTaskId) {
       progress.taskIds.push(availTaskId);
       this.logger.log(
@@ -402,28 +399,24 @@ export class ChannexDeepSyncService {
 
     // ── Call 2: Rates & Restrictions (all 500 days, single payload) ────────
     const rateValues = Array.from(rateMap.entries()).map(([dateStr, data]) => ({
-      type: 'rates',
-      attributes: {
-        property_id: channexPropId,
-        room_type_id: mapping.channexRoomTypeId,
-        rate_plan_id: mapping.channexRatePlanId,
-        date_from: dateStr,
-        date_to: dateStr,
-        rate: data.price,
-        min_stay_arrival: data.minStay,
-        closed: !data.available,
-        closed_to_arrival: false,
-        closed_to_departure: false,
-      },
+      property_id: channexPropId,
+      rate_plan_id: mapping.channexRatePlanId,
+      date_from: dateStr,
+      date_to: dateStr,
+      rate: data.price,
+      min_stay_arrival: data.minStay,
+      closed: !data.available,
+      closed_to_arrival: false,
+      closed_to_departure: false,
     }));
 
     const rateRes = await this.http.post(
-      '/ari/bulk_update',
+      '/restrictions',
       this.masterKey,
       { values: rateValues },
     );
 
-    const rateTaskId: string | undefined = rateRes?.meta?.task_id;
+    const rateTaskId: string | undefined = rateRes?.data?.[0]?.id;
     if (rateTaskId) {
       progress.taskIds.push(rateTaskId);
       this.logger.log(
@@ -612,23 +605,18 @@ export class ChannexDeepSyncService {
     const dateFrom = fmt(today);
     const dateTo = fmt(addDays(today, 499));
 
-    // Call 1: Availability only
-    const availRes = await this.http.post<any>('/ari/bulk_update', this.masterKey, {
-      values: [
-        {
-          type: 'availability',
-          attributes: {
-            property_id: propId,
-            room_type_id: roomTypeId,
-            date_from: dateFrom,
-            date_to: dateTo,
-            availability,
-          },
-        },
-      ],
+    // Call 1: POST /availability (flat format)
+    const availRes = await this.http.post<any>('/availability', this.masterKey, {
+      values: [{
+        property_id: propId,
+        room_type_id: roomTypeId,
+        date_from: dateFrom,
+        date_to: dateTo,
+        availability,
+      }],
     });
 
-    const availTaskId: string | undefined = availRes?.meta?.task_id;
+    const availTaskId: string | undefined = availRes?.data?.[0]?.id;
     if (availTaskId) {
       taskIds.push(availTaskId);
       this.logger.log(
@@ -637,28 +625,22 @@ export class ChannexDeepSyncService {
       );
     }
 
-    // Call 2: Rates & Restrictions only
-    const ratesRes = await this.http.post<any>('/ari/bulk_update', this.masterKey, {
-      values: [
-        {
-          type: 'rates',
-          attributes: {
-            property_id: propId,
-            room_type_id: roomTypeId,
-            rate_plan_id: ratePlanId,
-            date_from: dateFrom,
-            date_to: dateTo,
-            rate,
-            min_stay_arrival: minStay,
-            closed: false,
-            closed_to_arrival: false,
-            closed_to_departure: false,
-          },
-        },
-      ],
+    // Call 2: POST /restrictions (flat format)
+    const ratesRes = await this.http.post<any>('/restrictions', this.masterKey, {
+      values: [{
+        property_id: propId,
+        rate_plan_id: ratePlanId,
+        date_from: dateFrom,
+        date_to: dateTo,
+        rate,
+        min_stay_arrival: minStay,
+        closed: false,
+        closed_to_arrival: false,
+        closed_to_departure: false,
+      }],
     });
 
-    const ratesTaskId: string | undefined = ratesRes?.meta?.task_id;
+    const ratesTaskId: string | undefined = ratesRes?.data?.[0]?.id;
     if (ratesTaskId) {
       taskIds.push(ratesTaskId);
       this.logger.log(
@@ -694,31 +676,36 @@ export class ChannexDeepSyncService {
     if (values.minStay !== undefined) rateAttrs.min_stay_arrival = values.minStay;
     if (values.stopSell !== undefined) rateAttrs.closed = values.stopSell;
 
-    const payload: any[] = [{ type: 'rates', attributes: rateAttrs }];
-
-    if (values.availability !== undefined) {
-      payload.push({
-        type: 'availability',
-        attributes: {
-          property_id: propId,
-          room_type_id: roomTypeId,
-          date_from: dateFrom,
-          date_to: dateTo,
-          availability: values.availability,
-        },
-      });
-    }
-
-    const res = await this.http.post<any>('/ari/bulk_update', this.masterKey, {
-      values: payload,
+    // POST /restrictions (flat format — no type/attributes wrapper)
+    const rateRes = await this.http.post<any>('/restrictions', this.masterKey, {
+      values: [rateAttrs],
     });
-
-    const taskId: string | undefined = res?.meta?.task_id;
+    let taskId: string | undefined = rateRes?.data?.[0]?.id;
     if (taskId) {
       this.logger.log(
         `[CHANNEX_CERT_LOG] ARI_UPDATE TASK_ID=${taskId} ${dateFrom}->${dateTo}`,
       );
     }
+
+    if (values.availability !== undefined) {
+      const availRes = await this.http.post<any>('/availability', this.masterKey, {
+        values: [{
+          property_id: propId,
+          room_type_id: roomTypeId,
+          date_from: dateFrom,
+          date_to: dateTo,
+          availability: values.availability,
+        }],
+      });
+      const availTaskId: string | undefined = availRes?.data?.[0]?.id;
+      if (availTaskId) {
+        taskId = taskId ?? availTaskId;
+        this.logger.log(
+          `[CHANNEX_CERT_LOG] AVAIL_UPDATE TASK_ID=${availTaskId} ${dateFrom}->${dateTo}`,
+        );
+      }
+    }
+
     return taskId;
   }
 }
