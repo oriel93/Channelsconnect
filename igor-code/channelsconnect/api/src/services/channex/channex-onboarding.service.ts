@@ -46,16 +46,12 @@ export class ChannexOnboardingService {
     data: OnboardPropertyDto,
   ): Promise<{ channexPropertyId: string; listingId?: number }> {
     this.logger.log(`[Onboard] Creating property for user ${userId}: "${data.title}"`);
-
-    // Check if already onboarded
-    const existing = await this.prisma.channexMapping.findFirst({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (existing) {
-      this.logger.log(`[Onboard] User ${userId} already has mapping ${existing.channexPropertyId}`);
-      return { channexPropertyId: existing.channexPropertyId, listingId: existing.listingId ?? undefined };
-    }
+    // NOTE: We intentionally do NOT return early if a mapping already exists.
+    // Users can have multiple properties — each call to onboardUser() creates
+    // a NEW Channex property + Listing + ChannexMapping row.
+    // The old guard was the root cause of "new property replaces old one".
+    // If you need idempotency for a specific property, pass a unique title or
+    // check by (userId + title) at the call site, not here.
 
     // Try to create a Channex property. If the external API is unreachable (DNS/network),
     // fall back to a locally-generated placeholder ID so the user can continue onboarding.

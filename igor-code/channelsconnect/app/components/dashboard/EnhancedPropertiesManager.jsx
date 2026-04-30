@@ -14,8 +14,18 @@ export default function EnhancedPropertiesManager({ initialListings, onSelectLis
     const [isExcelUploading, setIsExcelUploading] = useState(false);
     const [selectedFile, setSelectedFile] = useState(null);
 
+    // Sync local list when the parent delivers a genuinely different set of
+    // listings (e.g. after a full refetch).  We compare by serialised IDs so
+    // a parent re-render that passes the same array reference (or same IDs)
+    // does NOT overwrite any optimistic appends we made locally.
     useEffect(() => {
-        setListings(initialListings);
+        if (!initialListings) return;
+        const incomingIds = (initialListings).map(l => l.id).sort().join(',');
+        const currentIds  = listings.map(l => l.id).sort().join(',');
+        if (incomingIds !== currentIds) {
+            setListings(initialListings);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialListings]);
 
     const handleSyncFromBeds24 = async () => {

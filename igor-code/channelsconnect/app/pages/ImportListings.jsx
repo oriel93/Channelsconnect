@@ -648,15 +648,20 @@ export default function ImportListings() {
   const [user, setUser] = useState(null);
 
   const proceed = useCallback(async (currentUser) => {
-    try {
-      const { data } = await api.connect.getStatus();
-      const s = data?.data || data;
-      if (!s?.hasProperty) setUiState('setup');
-      else if (!s?.hasChannel) setUiState('connect');
-      else setUiState('sync');
-    } catch {
-      setUiState('setup');
+    // Always start at 'setup' so the user can add a new property.
+    //
+    // Previously this called getStatus() and skipped straight to 'connect' or
+    // 'sync' if hasProperty was true. That meant returning users could NEVER
+    // fill in the setup form for a second property — the root cause of
+    // "new property replaces old one" (backend onboard() returned the first
+    // property's data because it thought the user was already set up).
+    //
+    // The only exception: if the user is not yet authenticated, show auth first.
+    if (!currentUser) {
+      setUiState('auth');
+      return;
     }
+    setUiState('setup');
   }, []);
 
   useEffect(() => {
