@@ -9,7 +9,9 @@ import {
   HttpCode,
   HttpStatus,
   UnauthorizedException,
+  Req,
 } from '@nestjs/common';
+import { Request } from 'express';
 import {
   ApiTags,
   ApiOkResponse,
@@ -102,6 +104,46 @@ export class UsersController {
   })
   updateMe(@CurrentUser() user: CurrentUserData, @Body() updateUserDto: UpdateUserDto) {
     return this.usersService.update(user.id, updateUserDto);
+  }
+
+  /**
+   * POST /users/consent
+   *
+   * Records legal consent (ToS acceptance + distribution authorization) for the
+   * authenticated user. Called by the frontend immediately after a successful
+   * Supabase signup when the user checks the mandatory consent checkbox.
+   *
+   * Captures:
+   *   - tosAcceptedAt: exact server-side UTC timestamp
+   *   - signupIp: real client IP via x-forwarded-for (Cloudflare/ALB) or req.ip
+   */
+  @Post('consent')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ description: 'Consent recorded successfully' })
+  @ApiOperation({
+    summary: 'Record ToS acceptance and channel distribution authorization',
+    description:
+      'Saves tosAcceptedAt timestamp and signupIp for legal audit trail. ' +
+      'Must be called with a valid Bearer token (authenticated user only).',
+  })
+  async recordConsent(
+    @CurrentUser() user: CurrentUserData,
+    @Req() req: Request,
+  ) {
+    // Resolve real client IP: Cloudflare / ALB sets x-forwarded-for
+    const forwarded = req.headers['x-forwarded-for'];
+    const clientIp = Array.isArray(forwarded)
+      ? forwarded[0]
+      : forwarded?.split(',')[0]?.trim() || req.ip || 'unknown';
+
+    await this.usersService.recordConsent(user.id, clientIp);
+
+    return {
+      success: true,
+      message: 'Consent recorded',
+      tosAcceptedAt: new Date().toISOString(),
+      ip: clientIp,
+    };
   }
 
   @Patch(':id')

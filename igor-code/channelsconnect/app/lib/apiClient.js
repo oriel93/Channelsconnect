@@ -210,12 +210,19 @@ export const api = {
     /** Returns a Blob — use with URL.createObjectURL for download */
     exportListingsBlob: () =>
       apiClient.get('/admin/export/listings', { responseType: 'blob' }),
-    /** Direct browser download — opens the CSV download in a new tab */
-    exportListingsUrl: () => {
-      const base = apiClient.defaults.baseURL || '';
-      return `${base}/admin/export/listings`;
-    },
+    /** Per-user full data export (JSON blob download) */
+    exportUserData: (userId) =>
+      apiClient.get(`/admin/users/${userId}/export`, { responseType: 'blob' }),
+    /** Get all images for a listing (admin view, includes hi-res metadata) */
+    getListingImages: (listingId) =>
+      apiClient.get(`/admin/listings/${listingId}/images`),
+    /** Trigger server-side sharp hi-res conversion for one image */
+    convertImageToHighRes: (listingId, imageId) =>
+      apiClient.post(`/admin/listings/${listingId}/images/${imageId}/convert`),
   },
+
+  /** Record ToS consent — called immediately after signup */
+  recordConsent: () => apiClient.post('/users/consent'),
 
   channexSync: {
     /** Apply a single ARI change (event-driven, 500 ms batch window) */

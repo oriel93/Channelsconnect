@@ -51,6 +51,22 @@ export class UsersService {
     });
   }
 
+  /**
+   * Record legal consent (ToS acceptance + channel distribution authorization).
+   * Saves server-side UTC timestamp and the user's real IP for audit purposes.
+   */
+  async recordConsent(userId: string, clientIp: string): Promise<void> {
+    this.logger.log(`[Consent] Recording ToS acceptance for user ${userId} from IP ${clientIp}`);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        tosAcceptedAt: new Date(),
+        signupIp: clientIp,
+      },
+    });
+    this.logger.log(`[Consent] tosAcceptedAt saved for user ${userId}`);
+  }
+
   // User is now auto-created by database trigger
   // This method just ensures the user exists (should always be true after signup)
   async ensureUserExists(supabaseUserId: string, email: string, name?: string) {

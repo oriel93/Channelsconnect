@@ -7,8 +7,9 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Mail, Lock, AlertCircle, CheckCircle } from 'lucide-react';
+import { Loader2, Mail, Lock, AlertCircle, CheckCircle, Shield } from 'lucide-react';
 import { createPageUrl } from '@/utils';
+import api from '@/lib/apiClient';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -23,6 +24,8 @@ export default function Login() {
     confirmPassword: '',
     fullName: '',
   });
+  // Legal consent checkbox — must be checked before signup submission
+  const [tosAccepted, setTosAccepted] = useState(false);
 
   // Removed auto-redirect on mount to allow users to always access login page
   // useEffect(() => {
@@ -74,6 +77,10 @@ export default function Login() {
         setError('Full name is required');
         return false;
       }
+      if (!tosAccepted) {
+        setError('You must accept the Terms of Service and channel distribution authorization to create an account.');
+        return false;
+      }
     }
 
     return true;
@@ -116,6 +123,18 @@ export default function Login() {
         if (error) throw error;
 
         if (data.user) {
+          // Record legal consent audit trail (fire-and-forget — don't block UX)
+          // Note: user must be authenticated to call /users/consent.
+          // After Supabase signUp, the session may not be immediately available
+          // for auto-confirmed accounts; we call it best-effort.
+          try {
+            if (data.session) {
+              await api.recordConsent();
+            }
+          } catch (consentErr) {
+            console.warn('[Consent] Could not record consent immediately:', consentErr?.message);
+          }
+
           setSuccess(
             'Account created successfully! Please check your email to verify your account.'
           );
@@ -126,6 +145,7 @@ export default function Login() {
             confirmPassword: '',
             fullName: '',
           });
+          setTosAccepted(false);
           // Switch to login mode after a delay
           setTimeout(() => {
             setIsLogin(true);
@@ -284,10 +304,44 @@ export default function Login() {
               </div>
             )}
 
+            {/* Legal Consent Checkbox — signup only */}
+            {!isLogin && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <Shield className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs font-semibold text-slate-700">Channel Distribution Authorization</p>
+                </div>
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={tosAccepted}
+                    onChange={(e) => {
+                      setTosAccepted(e.target.checked);
+                      if (error?.includes('Terms of Service')) setError('');
+                    }}
+                    disabled={loading}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 flex-shrink-0"
+                    required
+                  />
+                  <span className="text-xs text-slate-600 leading-relaxed">
+                    I agree to the{' '}
+                    <a href="/TermsOfService" target="_blank" className="text-blue-600 underline hover:text-blue-800">
+                      Terms of Service
+                    </a>
+                    , and I explicitly authorize Channels Connect to publish, distribute, and manage my
+                    property listings across all connected channels (including Airbnb, Booking.com, and Vrbo).
+                  </span>
+                </label>
+                {!tosAccepted && (
+                  <p className="text-xs text-amber-600">Required to create an account.</p>
+                )}
+              </div>
+            )}
+
             <Button
               type="submit"
               className="w-full"
-              disabled={loading}
+              disabled={loading || (!isLogin && !tosAccepted)}
             >
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {isLogin ? 'Sign In' : 'Create Account'}

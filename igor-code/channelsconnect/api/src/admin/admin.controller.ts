@@ -1,6 +1,9 @@
 import {
   Controller,
   Get,
+  Post,
+  Param,
+  ParseIntPipe,
   Res,
   UseGuards,
   Logger,
@@ -78,5 +81,51 @@ export class AdminController {
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(csv);
+  }
+
+  // ── GET /admin/users/:id/export ───────────────────────────────────────
+
+  @Get('users/:id/export')
+  @ApiOperation({ summary: 'Export all data for a single user as JSON (admin only)' })
+  @ApiOkResponse({ description: 'Structured JSON: user profile, listings, bookings, consent audit data' })
+  async exportUserData(
+    @Param('id') userId: string,
+    @Res() res: Response,
+  ) {
+    this.logger.log(`[Admin] GET /admin/users/${userId}/export`);
+    const data = await this.adminService.exportUserData(userId);
+    const filename = `user_export_${userId}_${new Date().toISOString().slice(0, 10)}.json`;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.json(data);
+  }
+
+  // ── GET /admin/listings/:listingId/images ──────────────────────────────
+
+  @Get('listings/:listingId/images')
+  @ApiOperation({ summary: 'Get all images for a listing (admin only)' })
+  @ApiOkResponse({ description: 'Array of property_images rows including hi-res metadata' })
+  getListingImages(@Param('listingId', ParseIntPipe) listingId: number) {
+    this.logger.log(`[Admin] GET /admin/listings/${listingId}/images`);
+    return this.adminService.getListingImages(listingId);
+  }
+
+  // ── POST /admin/listings/:listingId/images/:imageId/convert ──────────────
+
+  @Post('listings/:listingId/images/:imageId/convert')
+  @ApiOperation({
+    summary: 'Convert a property image to OTA hi-res spec using sharp (admin only)',
+    description:
+      'Downloads source image from Supabase Storage, processes with sharp ' +
+      '(resize max 1920×1080, JPEG 92%), uploads back as _highres, updates DB.',
+  })
+  @ApiOkResponse({ description: 'highResUrl, storagePath, dimensions, sizeBytes' })
+  async convertImageToHighRes(
+    @Param('listingId', ParseIntPipe) listingId: number,
+    @Param('imageId', ParseIntPipe) imageId: number,
+  ) {
+    this.logger.log(`[Admin] POST convert listing=${listingId} image=${imageId}`);
+    return this.adminService.convertImageToHighRes(listingId, imageId);
   }
 }

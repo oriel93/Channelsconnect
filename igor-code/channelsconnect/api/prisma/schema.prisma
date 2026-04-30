@@ -37,6 +37,10 @@ model User {
   payoutAccountHolderName String? // Bank account holder name
   payoutRoutingNumber     String? // Bank routing number
   payoutAccountNumber     String? // Bank account number (encrypted)
+
+  // Legal consent audit trail
+  tosAcceptedAt DateTime? // Timestamp when user accepted Terms of Service
+  signupIp      String?   // IP address at time of registration
   
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -235,7 +239,7 @@ model Listing {
   importedListings    ImportedListing[]
   calendarEvents      CalendarEvent[]
   calendar            Calendar[]
-  channexMapping      ChannexMapping?
+  channexMappings     ChannexMapping[]  // multiple combos (room×rate) supported
 
   @@index([userId])
   @@index([city, country])
@@ -324,17 +328,26 @@ model PricingRule {
 
 // PropertyImage model
 model PropertyImage {
-  id          Int      @id @default(autoincrement())
-  userId      String
-  listingId   Int
-  url         String
+  id           Int      @id @default(autoincrement())
+  userId       String
+  listingId    Int
+  url          String
   thumbnailUrl String?
-  caption     String?
-  displayOrder Int     @default(0)
-  isPrimary   Boolean  @default(false)
+  caption      String?
+  displayOrder Int      @default(0)
+  isPrimary    Boolean  @default(false)
   cloudinaryId String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  // Storage metadata (used by Supabase Storage upload flow)
+  filename     String?  // Original filename
+  storagePath  String?  // Path inside the 'property-media' Supabase bucket
+  sortOrder    Int      @default(0)
+  isCover      Boolean  @default(false)
+  // High-res conversion tracking (set by admin image processing)
+  highResUrl        String?  // URL of admin-converted hi-res image
+  highResStoragePath String? // Storage path of hi-res image
+  highResConvertedAt DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   // Relations
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -528,8 +541,8 @@ model CalendarEvent {
 model ChannexMapping {
   id                String    @id @default(uuid())
   userId            String
-  listingId         Int?      @unique
-  channexPropertyId String    @unique
+  listingId         Int?      // Note: no DB-level unique constraint — multiple combos per listing supported
+  channexPropertyId String    @unique // Prisma type compat — DB constraint is enforced at the lead property level
   channexRoomTypeId String?
   channexRatePlanId String?
   channelType       String    @default("airbnb") // airbnb, booking_com, vrbo

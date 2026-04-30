@@ -1,5 +1,21 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import * as path from 'path';
+import { createClient } from '@supabase/supabase-js';
+import sharp from 'sharp';
 import { PrismaService } from '../prisma/prisma.service';
+
+// Supabase admin client for Storage operations
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL || '',
+  process.env.SUPABASE_ANON_KEY || '',
+);
+
+const STORAGE_BUCKET = 'property-media';
+
+/** OTA high-res spec: 1920×1080 max, JPEG 92 % */
+const HR_WIDTH  = 1920;
+const HR_HEIGHT = 1080;
+const HR_QUALITY = 92;
 
 /**
  * AdminService — global platform data access.
@@ -122,6 +138,172 @@ export class AdminService {
 
     const lines = [headers.join(','), ...rows.map((r) => r.map(escape).join(','))];
     return lines.join('\n');
+  }
+
+  // ── Per-User Data Export ───────────────────────────────────────────────────
+
+  /**
+   * Export all data for a single user as a structured JSON object.
+   * Includes listings, bookings, ical connections, channex mappings,
+   * property images, and consent/audit fields.
+   */
+  async exportUserData(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        listings: {
+          include: {
+            propertyImages: true,
+            channexMappings: true,
+            icalConnections: true,
+            rates: { take: 10, orderBy: { date: 'desc' } },
+          },
+        },
+        bookings: { orderBy: { createdAt: 'desc' } },
+        airbnbConnections: true,
+        icalConnections: true,
+        syncLogs: { take: 20, orderBy: { createdAt: 'desc' } },
+      },
+    });
+
+    if (!user) throw new NotFoundException(`User ${userId} not found`);
+
+    return {
+      exportedAt: new Date().toISOString(),
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        createdAt: user.createdAt,
+        // Legal consent audit trail
+        tosAcceptedAt: (user as any).tosAcceptedAt ?? null,
+        signupIp: (user as any).signupIp ?? null,
+        syncStatus: user.syncStatus,
+        airbnbHostId: user.airbnbHostId,
+      },
+      listings: user.listings,
+      bookings: user.bookings,
+      icalConnections: user.icalConnections,
+      airbnbConnections: user.airbnbConnections,
+      recentSyncLogs: user.syncLogs,
+      summary: {
+        listingCount: user.listings.length,
+        bookingCount: user.bookings.length,
+        icalCount: user.icalConnections.length,
+      },
+    };
+  }
+
+  // ── Image Processing (admin-only sharp pipeline) ───────────────────────────
+
+  /**
+   * Convert a single property image to OTA hi-res spec using sharp.
+   *
+   * Pipeline:
+   *   1. Download original image from Supabase Storage (or URL)
+   *   2. Resize to max 1920×1080, maintain aspect ratio, JPEG 92 %
+   *   3. Upload back with _highres suffix
+   *   4. Update property_images row with highResUrl + highResStoragePath
+   *
+   * Returns the new public URL.
+   */
+  async convertImageToHighRes(listingId: number, imageId: number): Promise<{
+    highResUrl: string;
+    storagePath: string;
+    width: number;
+    height: number;
+    sizeBytes: number;
+  }> {
+    this.logger.log(`[Admin/Image] Converting image id=${imageId} listing=${listingId}`);
+
+    // 1. Fetch image record
+    const image = await this.prisma.propertyImage.findFirst({
+      where: { id: imageId, listingId },
+    });
+    if (!image) throw new NotFoundException(`Image ${imageId} not found for listing ${listingId}`);
+
+    // 2. Download source image
+    let sourceBuffer: Buffer;
+
+    if (image.storagePath) {
+      // Download from Supabase Storage
+      const { data, error } = await supabaseAdmin.storage
+        .from(STORAGE_BUCKET)
+        .download(image.storagePath);
+      if (error || !data) {
+        throw new Error(`Failed to download from Storage: ${error?.message || 'no data'}`);
+      }
+      sourceBuffer = Buffer.from(await data.arrayBuffer());
+    } else {
+      // Fallback: fetch from public URL
+      const response = await fetch(image.url);
+      if (!response.ok) throw new Error(`Failed to fetch image URL: ${response.status}`);
+      sourceBuffer = Buffer.from(await response.arrayBuffer());
+    }
+
+    // 3. Process with sharp — resize to 1920×1080 max, JPEG 92%
+    const sharpInstance = sharp(sourceBuffer)
+      .resize(HR_WIDTH, HR_HEIGHT, {
+        fit: 'inside',      // preserve aspect ratio, never crop
+        withoutEnlargement: false, // allow upscale to meet OTA minimum
+      })
+      .jpeg({ quality: HR_QUALITY, mozjpeg: true });
+
+    const outputBuffer = await sharpInstance.toBuffer();
+    const metadata = await sharp(outputBuffer).metadata();
+
+    // 4. Build hi-res storage path
+    const originalName = image.storagePath
+      ? path.basename(image.storagePath, path.extname(image.storagePath))
+      : `image_${imageId}`;
+    const hrStoragePath = `listings/${listingId}/highres/${originalName}_highres.jpg`;
+
+    // 5. Upload to Supabase Storage
+    const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+      .from(STORAGE_BUCKET)
+      .upload(hrStoragePath, outputBuffer, {
+        contentType: 'image/jpeg',
+        upsert: true,
+      });
+    if (uploadError) throw new Error(`Hi-res upload failed: ${uploadError.message}`);
+
+    // 6. Get public URL
+    const { data: urlData } = supabaseAdmin.storage
+      .from(STORAGE_BUCKET)
+      .getPublicUrl(hrStoragePath);
+    const highResUrl = urlData.publicUrl;
+
+    // 7. Update DB record
+    await this.prisma.propertyImage.update({
+      where: { id: imageId },
+      data: {
+        highResUrl,
+        highResStoragePath: hrStoragePath,
+        highResConvertedAt: new Date(),
+      },
+    });
+
+    this.logger.log(
+      `[Admin/Image] Converted image id=${imageId} → ${hrStoragePath} ` +
+      `(${metadata.width}×${metadata.height}, ${outputBuffer.length} bytes)`,
+    );
+
+    return {
+      highResUrl,
+      storagePath: hrStoragePath,
+      width: metadata.width ?? HR_WIDTH,
+      height: metadata.height ?? HR_HEIGHT,
+      sizeBytes: outputBuffer.length,
+    };
+  }
+
+  /** Fetch all images for a listing (admin view — includes hi-res metadata) */
+  async getListingImages(listingId: number) {
+    return this.prisma.propertyImage.findMany({
+      where: { listingId },
+      orderBy: [{ sortOrder: 'asc' }, { displayOrder: 'asc' }, { createdAt: 'asc' }],
+    });
   }
 
   // ── Stats ──────────────────────────────────────────────────────────────────

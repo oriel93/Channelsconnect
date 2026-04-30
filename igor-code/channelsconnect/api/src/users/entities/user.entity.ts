@@ -32,6 +32,12 @@ export class UserEntity implements User {
   @ApiProperty({ required: false, nullable: true, description: 'Error message if sync failed' })
   syncError: string | null;
 
+  @ApiProperty({ required: false, nullable: true, description: 'Timestamp when user accepted Terms of Service' })
+  tosAcceptedAt: Date | null;
+
+  @ApiProperty({ required: false, nullable: true, description: 'IP address at time of registration (legal audit trail)' })
+  signupIp: string | null;
+
   @ApiProperty({ required: false, nullable: true, description: 'Bank account holder name for payouts' })
   payoutAccountHolderName: string | null;
 

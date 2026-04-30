@@ -239,6 +239,7 @@ export default function AdminDashboard() {
         <TabsList className="grid w-full grid-cols-2 max-w-xs">
           <TabsTrigger value="users">Users ({users.length})</TabsTrigger>
           <TabsTrigger value="listings">Listings ({listings.length})</TabsTrigger>
+          <TabsTrigger value="media">Media Manager</TabsTrigger>
         </TabsList>
 
         {/* ── Users Tab ── */}
@@ -275,6 +276,8 @@ export default function AdminDashboard() {
                         <TableHead className="text-right">Bookings</TableHead>
                         <TableHead>Sync Status</TableHead>
                         <TableHead>Joined</TableHead>
+                        <TableHead title="Terms of Service consent">ToS</TableHead>
+                        <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -305,11 +308,124 @@ export default function AdminDashboard() {
                             <TableCell className="text-slate-500 text-sm">
                               {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—'}
                             </TableCell>
+                            {/* ToS consent status */}
+                            <TableCell>
+                              {u.tosAcceptedAt ? (
+                                <span title={`ToS accepted at: ${new Date(u.tosAcceptedAt).toLocaleString()}`} className="flex items-center gap-1">
+                                  <Shield className="w-4 h-4 text-emerald-500" />
+                                </span>
+                              ) : (
+                                <span title="No consent recorded">
+                                  <Shield className="w-4 h-4 text-slate-300" />
+                                </span>
+                              )}
+                            </TableCell>
+                            {/* Extract data */}
+                            <TableCell>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleExtractUserData(u.id, u.email)}
+                              >
+                                <Download className="w-3.5 h-3.5 mr-1" />Extract
+                              </Button>
+                            </TableCell>
                           </TableRow>
                         ))
                       )}
                     </TableBody>
                   </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Media Manager Tab ── */}
+        <TabsContent value="media">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                {mediaListingId ? (
+                  <>
+                    <Button variant="ghost" size="sm"
+                      onClick={() => { setActiveTab('listings'); setMediaListingId(null); setListingImages([]); }}>
+                      <ArrowLeft className="w-4 h-4" />
+                    </Button>
+                    <ImageIcon className="w-5 h-5 text-blue-600" />
+                    Media: <span className="font-normal text-slate-600 ml-1">{mediaListingTitle}</span>
+                  </>
+                ) : (
+                  <><ImageIcon className="w-5 h-5" /> Admin Image Converter</>
+                )}
+              </CardTitle>
+              {mediaListingId && (
+                <p className="text-sm text-slate-500">
+                  Images are converted server-side via <strong>sharp</strong> (max 1920×1080, JPEG 92%).
+                  Click <em>Convert to High-Res</em> on any image.
+                </p>
+              )}
+            </CardHeader>
+            <CardContent>
+              {!mediaListingId ? (
+                <div className="text-center py-12 text-slate-500">
+                  <ImageIcon className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                  <p className="text-sm">Go to the <strong>Listings</strong> tab and click <strong>Media</strong> on any listing.</p>
+                </div>
+              ) : isLoadingImages ? (
+                <div className="flex justify-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+                </div>
+              ) : listingImages.length === 0 ? (
+                <div className="text-center py-12 text-slate-500">
+                  <ImageIcon className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                  <p className="text-sm">No images found for this listing.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {listingImages.map((img) => (
+                    <div key={img.id} className="border rounded-lg overflow-hidden bg-white shadow-sm">
+                      <div className="aspect-video relative bg-slate-100">
+                        <img
+                          src={img.highResUrl || img.url}
+                          alt={img.filename || 'Property image'}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                        />
+                        {img.highResConvertedAt && (
+                          <div className="absolute top-2 right-2">
+                            <Badge className="bg-emerald-500 text-white text-xs px-1.5 py-0.5">
+                              <Sparkles className="w-3 h-3 mr-1" />Hi-Res
+                            </Badge>
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-3 space-y-2">
+                        <p className="text-xs font-medium truncate">{img.filename || `Image #${img.id}`}</p>
+                        {img.highResConvertedAt && (
+                          <p className="text-xs text-emerald-600 flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3" />
+                            Converted {new Date(img.highResConvertedAt).toLocaleDateString()}
+                          </p>
+                        )}
+                        <Button
+                          size="sm"
+                          className="w-full"
+                          variant={img.highResConvertedAt ? 'outline' : 'default'}
+                          onClick={() => handleConvertImage(img.id)}
+                          disabled={convertingId === img.id}
+                        >
+                          {convertingId === img.id ? (
+                            <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Converting…</>
+                          ) : img.highResConvertedAt ? (
+                            <><Sparkles className="w-3.5 h-3.5 mr-1.5" />Re-Convert</>
+                          ) : (
+                            <><Sparkles className="w-3.5 h-3.5 mr-1.5" />Convert to High-Res</>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </CardContent>
@@ -352,6 +468,7 @@ export default function AdminDashboard() {
                         <TableHead>Status</TableHead>
                         <TableHead className="text-right">Photos</TableHead>
                         <TableHead>Created</TableHead>
+                        <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -383,6 +500,16 @@ export default function AdminDashboard() {
                             <TableCell className="text-right">{l._count?.propertyImages ?? 0}</TableCell>
                             <TableCell className="text-slate-500 text-sm">
                               {l.createdAt ? new Date(l.createdAt).toLocaleDateString() : '—'}
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleOpenMediaManager(l.id, l.title)}
+                              >
+                                <ImageIcon className="w-3.5 h-3.5 mr-1" />
+                                Media
+                              </Button>
                             </TableCell>
                           </TableRow>
                         ))

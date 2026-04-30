@@ -27,5 +27,11 @@ export class CreateUserDto {
 
   @ApiProperty({ required: false, description: 'Bank account number for payouts' })
   payoutAccountNumber?: string;
+
+  @ApiProperty({ required: false, description: 'Timestamp when user accepted Terms of Service' })
+  tosAcceptedAt?: Date;
+
+  @ApiProperty({ required: false, description: 'IP address at time of registration (legal audit trail)' })
+  signupIp?: string;
 }
 
