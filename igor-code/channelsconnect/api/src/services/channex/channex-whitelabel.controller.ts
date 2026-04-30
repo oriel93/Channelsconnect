@@ -215,22 +215,29 @@ export class ChannexWhitelabelController {
   @Get('cert/property-info')
   async getCertPropertyInfo() {
     const certUserId = process.env.CERT_USER_ID || '1d63e070-dbff-48b8-ba2a-be8ba3a41ae8';
-    const mapping = await this.prisma.channexMapping.findFirst({
+    const mappings = await this.prisma.channexMapping.findMany({
       where: { userId: certUserId, syncStatus: 'active' },
       include: { listing: { select: { id: true, title: true } } },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: 'asc' },
     });
-    if (!mapping) {
+    if (!mappings.length) {
       return { success: false, message: 'No active mapping for cert user' };
     }
+    const first = mappings[0];
     return {
       success: true,
       data: {
-        listingId: mapping.listingId,
-        listingTitle: mapping.listing?.title,
-        propertyId: mapping.channexPropertyId,
-        roomTypeId: mapping.channexRoomTypeId,
-        ratePlanId: mapping.channexRatePlanId,
+        listingId: first.listingId,
+        listingTitle: first.listing?.title,
+        propertyId: first.channexPropertyId,
+        // Legacy single-combo fields (for T1 full sync)
+        roomTypeId: first.channexRoomTypeId,
+        ratePlanId: first.channexRatePlanId,
+        // All room type + rate plan combos for multi-room cert tests
+        combos: mappings.map(m => ({
+          roomTypeId: m.channexRoomTypeId,
+          ratePlanId: m.channexRatePlanId,
+        })),
       },
     };
   }
@@ -245,28 +252,39 @@ export class ChannexWhitelabelController {
     return { success: true, message: 'Booking acknowledged.', data: res };
   }
 
-  /** PMS Cert — Full 500-day ARI (EXACTLY 2 API calls) */
+  /** PMS Cert — Full 500-day ARI across ALL room type + rate plan combos */
   @Public()
   @Post('ari/full')
   async pushFullARI(@Body() body: any) {
-    const taskIds = await this.deepSync.pushCertificationARI(
-      body.propertyId,
-      body.roomTypeId,
-      body.ratePlanId,
-      body.rate ?? 100,
-      body.availability ?? 1,
-      body.minStay ?? 1,
-      body.listingId ?? undefined, // pass listingId for varied DB-backed rates
-    );
+    // If combos array provided, push ARI for each combo (2 calls per combo)
+    const combos: Array<{roomTypeId: string; ratePlanId: string}> = body.combos || [
+      { roomTypeId: body.roomTypeId, ratePlanId: body.ratePlanId },
+    ];
+
+    const allTaskIds: string[] = [];
+    for (const combo of combos) {
+      if (!combo.roomTypeId || !combo.ratePlanId) continue;
+      const ids = await this.deepSync.pushCertificationARI(
+        body.propertyId,
+        combo.roomTypeId,
+        combo.ratePlanId,
+        body.rate ?? 100,
+        body.availability ?? 1,
+        body.minStay ?? 1,
+        body.listingId ?? undefined,
+      );
+      allTaskIds.push(...ids);
+    }
+
     return {
       success: true,
-      message: `500-day ARI sent in ${taskIds.length} call(s). Task IDs logged.`,
-      taskIds,
-      callCount: taskIds.length,
+      message: `500-day ARI sent for ${combos.length} room/rate combo(s). ${allTaskIds.length} total API call(s).`,
+      taskIds: allTaskIds,
+      callCount: allTaskIds.length,
     };
   }
 
-  /** PMS Cert — Single/Multi date range update */
+  /** PMS Cert — Single/Multi date range update (single room/rate combo) */
   @Public()
   @Post('ari/update')
   async updateARI(@Body() body: any) {
@@ -287,5 +305,20 @@ export class ChannexWhitelabelController {
       },
     );
     return { success: true, message: 'ARI updated.', taskId: taskId || null };
+  }
+
+  /**
+   * PMS Cert — Batch update: multiple room/rate combos in a SINGLE Channex API call.
+   * Used for cert tests 3, 7, 8 that require updating multiple rate plans at once.
+   * Body: { propertyId, entries: [{roomTypeId, ratePlanId, dateFrom, dateTo, rate?, minStay?, ...}] }
+   */
+  @Public()
+  @Post('ari/batch')
+  async updateARIBatch(@Body() body: any) {
+    const taskId = await this.deepSync.updateARIBatch(
+      body.propertyId,
+      body.entries,
+    );
+    return { success: true, message: 'Batch ARI update sent in 1 API call.', taskId: taskId || null };
   }
 }

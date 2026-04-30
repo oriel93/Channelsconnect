@@ -807,4 +807,53 @@ export class ChannexDeepSyncService {
 
     return taskId;
   }
+
+  /**
+   * Batch ARI update: sends ONE POST /restrictions call with multiple entries
+   * (multiple room types, rate plans, date ranges, restrictions in a single API call).
+   * Used by cert tests 3, 7, 8 which require multi-combo updates.
+   */
+  async updateARIBatch(
+    propId: string,
+    entries: Array<{
+      roomTypeId: string;
+      ratePlanId: string;
+      dateFrom: string;
+      dateTo: string;
+      rate?: number;
+      minStay?: number;
+      maxStay?: number;
+      stopSell?: boolean;
+      closedToArrival?: boolean;
+      closedToDeparture?: boolean;
+    }>,
+  ): Promise<string | undefined> {
+    const restrictionValues = entries.map(e => {
+      const attrs: Record<string, any> = {
+        property_id: propId,
+        room_type_id: e.roomTypeId,
+        rate_plan_id: e.ratePlanId,
+        date_from: e.dateFrom,
+        date_to: e.dateTo,
+      };
+      if (e.rate !== undefined) attrs.rate = Math.round(e.rate * 100);
+      if (e.minStay !== undefined) attrs.min_stay_arrival = e.minStay;
+      if (e.maxStay !== undefined) attrs.max_stay = e.maxStay;
+      if (e.stopSell !== undefined) attrs.closed = e.stopSell;
+      if (e.closedToArrival !== undefined) attrs.closed_to_arrival = e.closedToArrival;
+      if (e.closedToDeparture !== undefined) attrs.closed_to_departure = e.closedToDeparture;
+      return attrs;
+    });
+
+    const res = await this.http.post<any>('/restrictions', this.masterKey, {
+      values: restrictionValues,
+    });
+    const taskId: string | undefined = res?.data?.[0]?.id;
+    if (taskId) {
+      this.logger.log(
+        `[CHANNEX_CERT_LOG] BATCH_ARI_UPDATE TASK_ID=${taskId} entries=${entries.length}`,
+      );
+    }
+    return taskId;
+  }
 }
