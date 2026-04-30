@@ -148,20 +148,14 @@ export const createBeds24SubAccount = (data) => {
   return Promise.resolve({ message: 'Not implemented' });
 };
 
+// Channels Connect import (replaces Beds24 import)
 export const importBeds24Properties = async () => {
-  const response = await api.beds24.syncAndSaveProperties();
-  return { data: response.data };
+  // Decommissioned — use importFromAirbnb or channex sync instead
+  return { data: [], message: 'Beds24 decommissioned' };
 };
 
-export const beds24ApiService = (data) => {
-  console.warn('beds24ApiService not yet implemented in new API');
-  return Promise.resolve({ message: 'Not implemented' });
-};
-
-export const enhancedImportBeds24Properties = (data) => {
-  console.warn('enhancedImportBeds24Properties not yet implemented in new API');
-  return Promise.resolve({ message: 'Not implemented' });
-};
+export const beds24ApiService = (_data) => Promise.resolve({ message: 'Beds24 decommissioned' });
+export const enhancedImportBeds24Properties = (_data) => Promise.resolve({ message: 'Beds24 decommissioned' });
 
 export const enhancedExcelImport = (data) => {
   console.warn('enhancedExcelImport not yet implemented in new API');
@@ -198,7 +192,7 @@ export const getUserLocation = () => {
   return Promise.resolve({ message: 'Not implemented' });
 };
 
-// Beds24 functions
-export const syncAirbnbToBeds24 = (data) => api.beds24.syncAirbnb(data).then(res => res.data);
-export const getBeds24PropertiesByHostId = (airbnbHostId) => api.beds24.getPropertiesByHostId(airbnbHostId).then(res => res.data);
-export const getBeds24Property = (propKey) => api.beds24.getProperty(propKey).then(res => res.data);
+// Legacy Beds24 stubs — decommissioned, kept as no-ops to avoid import errors
+export const syncAirbnbToBeds24 = (_data) => Promise.resolve({ message: 'Beds24 decommissioned — use Channex sync' });
+export const getBeds24PropertiesByHostId = (_airbnbHostId) => Promise.resolve({ data: [] });
+export const getBeds24Property = (_propKey) => Promise.resolve({ data: null });

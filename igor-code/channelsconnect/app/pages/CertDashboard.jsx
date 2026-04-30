@@ -220,6 +220,9 @@ export default function CertDashboard() {
   const [creatingVilla, setCreatingVilla] = useState(false);
   const [villaError, setVillaError] = useState(null);
   const [taskLog, setTaskLog] = useState([]);
+  const [airbnbUrl, setAirbnbUrl] = useState('');
+  const [importLoading, setImportLoading] = useState(false);
+  const [importResult, setImportResult] = useState(null);
 
   const loadListings = useCallback(async () => {
     setLoadingListings(true);
@@ -388,6 +391,38 @@ export default function CertDashboard() {
           {listings.map(listing => (
             <ListingRow key={listing.id} listing={listing} onSynced={addTaskId} />
           ))}
+        </div>
+
+        {/* Airbnb Quick Import */}
+        <div style={{marginTop:'2rem',padding:'1rem',background:'#f0f9ff',borderRadius:'8px',border:'1px solid #bae6fd',color:'#0f172a'}}>
+          <h3 style={{marginTop:0}}>🏠 Airbnb Quick Import</h3>
+          <input
+            type="text"
+            placeholder="https://www.airbnb.com/rooms/12345678"
+            value={airbnbUrl}
+            onChange={e => setAirbnbUrl(e.target.value)}
+            style={{width:'100%',padding:'8px',marginBottom:'8px',boxSizing:'border-box',borderRadius:'4px',border:'1px solid #ccc'}}
+          />
+          <button onClick={async () => {
+            setImportLoading(true);
+            try {
+              const r = await fetch(`${API}/listings/import/airbnb`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({url: airbnbUrl}) });
+              const d = await r.json();
+              setImportResult(d);
+            } catch(e) {
+              setImportResult({error: e.message});
+            } finally {
+              setImportLoading(false);
+            }
+          }} disabled={importLoading || !airbnbUrl}
+            style={{background:'#0284c7',color:'white',padding:'8px 16px',border:'none',borderRadius:'4px',cursor:'pointer'}}>
+            {importLoading ? '⏳ Importing...' : '📥 Import Listing'}
+          </button>
+          {importResult && (
+            <pre style={{marginTop:'1rem',background:'#fff',padding:'8px',borderRadius:'4px',fontSize:'12px',overflow:'auto'}}>
+              {JSON.stringify(importResult, null, 2)}
+            </pre>
+          )}
         </div>
 
         {/* Cert Form Link */}

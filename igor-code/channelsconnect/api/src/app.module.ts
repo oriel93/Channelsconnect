@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -12,7 +13,8 @@ import { CalendarModule } from './calendar/calendar.module';
 import { IcalModule } from './ical/ical.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { AnalyticsModule } from './analytics/analytics.module';
-import { Beds24Module } from './beds24/beds24.module';
+// Beds24Module intentionally disabled — decommissioned in favour of ChannexSyncModule
+// import { Beds24Module } from './beds24/beds24.module';
 import { ReportsModule } from './reports/reports.module';
 
 
@@ -30,12 +32,22 @@ import { ChannexServicesModule } from './services/channex/channex-services.modul
       isGlobal: true,
       envFilePath: '.env',
     }),
+    // Event-driven queue infrastructure (replaces @Cron polling)
+    EventEmitterModule.forRoot({
+      wildcard: false,
+      delimiter: '.',
+      newListener: false,
+      removeListener: false,
+      maxListeners: 20,
+      verboseMemoryLeak: true,
+      ignoreErrors: false,
+    }),
     PrismaModule,
     AuthModule,
 
     // Feature Modules
     ChannexModule,          // <--- Added for Property/Room fetching
-    ChannexSyncModule,      // Existing sync logic
+    ChannexSyncModule,      // Event-driven sync engine (no cron)
     ChannexServicesModule,  // White-label integration services (/connect/* routes)
     UsersModule,
     ListingsModule,
@@ -45,7 +57,7 @@ import { ChannexServicesModule } from './services/channex/channex-services.modul
     IcalModule,
     DashboardModule,
     AnalyticsModule,
-    Beds24Module,
+    // Beds24Module, // Decommissioned
     ReportsModule,
   ],
   controllers: [AppController],

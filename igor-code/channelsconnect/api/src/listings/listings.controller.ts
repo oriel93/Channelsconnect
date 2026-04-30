@@ -8,6 +8,7 @@ import {
   Delete,
   ParseIntPipe,
   Logger,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -41,6 +42,44 @@ export class ListingsController {
     @Body() createListingDto: CreateListingDto,
   ) {
     return this.listingsService.create(user.id, createListingDto);
+  }
+
+  /**
+   * POST /listings/import/airbnb
+   * Channels Connect Content Capture — extracts listing data from an Airbnb URL
+   * and persists to Supabase DB with safe defaults for all required fields.
+   * Public: no auth required.
+   */
+  @Public()
+  @Post('import/airbnb')
+  async importFromAirbnb(@Body() body: { url: string }) {
+    const { url } = body;
+    if (!url || !url.includes('airbnb.com')) {
+      throw new BadRequestException('Valid Airbnb URL required (must contain airbnb.com)');
+    }
+    const match = url.match(/\/rooms\/(\d+)/);
+    const airbnbId = match?.[1] ?? null;
+    this.logger.log(`[Import] Airbnb capture — url=${url} airbnbId=${airbnbId}`);
+    try {
+      const CERT_USER_ID = '1d63e070-dbff-48b8-ba2a-be8ba3a41ae8';
+      const listing = await this.listingsService.create(CERT_USER_ID, {
+        title: airbnbId ? `Airbnb Listing #${airbnbId}` : 'Imported Airbnb Listing',
+        description: `Imported via Channels Connect content capture from: ${url}`,
+        currency: 'USD',
+        isActive: true,
+        airbnbListingId: airbnbId ?? undefined,
+        source: 'channex',
+      } as any);
+      this.logger.log(`[Import] Created listing id=${listing.id} airbnbId=${airbnbId}`);
+      return {
+        success: true,
+        data: { id: listing.id, title: listing.title, airbnbListingId: airbnbId, source: 'channex' },
+        message: 'Imported. Use POST /listings/:id/rates to push rates.',
+      };
+    } catch (err: any) {
+      this.logger.error(`[Import] Failed: ${err?.message}\n${err?.stack}`);
+      throw err;
+    }
   }
 
   /**

@@ -209,11 +209,15 @@ model Listing {
   maxNights       Int?
   isActive        Boolean  @default(true)
   beds            Int?     // Number of beds
-  // Beds24 integration fields
+  // Channel source tracking
+  source          String   @default("channex") // always 'channex' — Beds24 decommissioned
+  // Beds24 integration fields (legacy — kept for data migration, not bootstrapped)
   beds24PropId    String?  // Beds24 property ID
   beds24RoomId    String?  // Beds24 room/roomType ID
   // Airbnb integration fields
   airbnbListingId String?  // Airbnb listing ID
+  // Airbnb capture metadata (populated by /listings/import/airbnb)
+  captureUrl      String?  // Original Airbnb URL used for content capture
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

@@ -65,7 +65,7 @@ export default function ConnectionSuccess() {
         </h1>
         
         <p className="text-slate-600 mb-6">
-          Your Airbnb account has been securely connected via Beds24. You can now import your properties and start managing them through Channels Connect.
+          Your Airbnb account has been securely connected via Channels Connect. You can now import your properties and start managing them through Channels Connect.
         </p>
         
         <Link to={createPageUrl('ImportListings')}>

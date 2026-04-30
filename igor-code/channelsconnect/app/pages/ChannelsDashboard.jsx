@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
 import AppLayout from '../components/app/AppLayout';
 import NewLoginRequired from '../components/auth/NewLoginRequired';
-import Beds24ConnectionSetup from '../components/dashboard/channels/Beds24ConnectionSetup';
+// Beds24ConnectionSetup replaced — using ChannelStatusCard for connection setup
+// import Beds24ConnectionSetup from '../components/dashboard/channels/Beds24ConnectionSetup';
 import ChannelStatusCard from '../components/dashboard/channels/ChannelStatusCard';
 import BulkChannelActions from '../components/dashboard/channels/BulkChannelActions';
 import PropertyChannelGrid from '../components/dashboard/channels/PropertyChannelGrid';
@@ -61,7 +62,12 @@ export default function ChannelsDashboard() {
     }
 
     if (connectionStatus === 'disconnected') {
-      return <Beds24ConnectionSetup onConnect={initializeDashboard} />;
+      return (
+        <div className="flex flex-col items-center justify-center h-64 gap-4 text-center">
+          <p className="text-gray-600">Channel setup required. Please configure your Channex connection.</p>
+          <Button onClick={initializeDashboard}>Connect Channex</Button>
+        </div>
+      );
     }
 
     if (connectionStatus === 'error') {
