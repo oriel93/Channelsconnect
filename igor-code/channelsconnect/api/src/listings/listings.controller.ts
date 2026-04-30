@@ -51,7 +51,7 @@ export class ListingsController {
   @Public()
   @Post('manual')
   async createManual(@Body() body: { title?: string }) {
-    const listing = await this.listingsService.create('cert-user', {
+    const listing = await this.listingsService.create('1d63e070-dbff-48b8-ba2a-be8ba3a41ae8', {
       title: body?.title || 'Channex Cert Villa',
       currency: 'USD',
       isActive: true,
