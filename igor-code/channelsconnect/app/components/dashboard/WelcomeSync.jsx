@@ -69,7 +69,7 @@ export default function WelcomeSync({ onSyncComplete, user: initialUser }) {
 
   const handleSync = async () => {
     setIsSyncing(true);
-    toast.info("Starting property sync from Beds24. This may take a few minutes...");
+    toast.info("Starting Channels Connect property sync. This may take a few minutes...");
     
     try {
       const { data } = await importBeds24Properties({});

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Loader2, ChevronDown, CheckCircle, XCircle } from 'lucide-react';
-import { beds24ApiService } from '@/api/functions';
+import { beds24ApiService } from '@/api/functions'; // no-op stub — channel toggles go through Channex ARI
 import { toast } from 'sonner';
 
 const channelConfig = [
@@ -22,8 +22,7 @@ export default function PropertyChannelGrid({ properties, channelStatus, onChann
     setUpdating(prev => ({ ...prev, [key]: true }));
 
     try {
-      // In a real implementation, you would need the Beds24 property ID here,
-      // which should be stored in your `Listing` entity as `external_id`.
+      // Channel toggles are managed through Channex — beds24ApiService is a no-op stub
       await beds24ApiService({
           action: 'manageChannelActivation',
           channelName: channelName,

@@ -186,6 +186,35 @@ export const api = {
     /** PMS Cert: single/multi date range update */
     updateARI: (payload) => apiClient.post('/connect/ari/update', payload),
   },
+
+  /**
+   * channexSync — Direct ARI sync API (/channex-sync/* and /listings/*)
+   * Use these from dashboard sync buttons.
+   */
+  channexSync: {
+    /** Apply a single ARI change (event-driven, 500 ms batch window) */
+    applyChange: (update) => apiClient.post('/channex-sync/apply', { update }),
+
+    /** Manually drain the queue (admin / cert testing) */
+    drainQueue: () => apiClient.post('/channex-sync/drain'),
+
+    /** Push a rate directly (synchronous — returns task_id immediately) */
+    pushRate: (listingId, rate, date, minStay) =>
+      apiClient.post(`/listings/${listingId}/rates`, { rate, date, minStay }),
+
+    /** Parity check (random sample of local vs Channex) */
+    parity: (apiKey, sample = 10) =>
+      apiClient.get('/channex-sync/parity', { params: { apiKey, sample } }),
+  },
+
+  /** Airbnb content capture — creates a local listing from an Airbnb URL */
+  listings: {
+    importAirbnb: (url) => apiClient.post('/listings/import/airbnb', { url }),
+    createManual: (title) => apiClient.post('/listings/manual', { title }),
+    list: () => apiClient.get('/listings'),
+    syncRate: (listingId, rate, date) =>
+      apiClient.post(`/listings/${listingId}/rates`, { rate, date }),
+  },
 };
 
 export default apiClient;

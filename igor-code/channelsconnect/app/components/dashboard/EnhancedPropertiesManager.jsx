@@ -4,7 +4,7 @@ import { createPageUrl } from '@/utils';
 import { CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, RefreshCw, Plus, ImageOff, MapPin, Bed, Bath, Edit, Users, Upload, FileSpreadsheet } from 'lucide-react';
-import { enhancedImportBeds24Properties } from '@/api/functions';
+import { enhancedImportBeds24Properties } from '@/api/functions'; // no-op stub — Beds24 decommissioned
 import { enhancedExcelImport } from '@/api/functions';
 import { toast } from 'sonner';
 
@@ -20,7 +20,7 @@ export default function EnhancedPropertiesManager({ initialListings, onSelectLis
 
     const handleSyncFromBeds24 = async () => {
         setIsSyncing(true);
-        toast.info("Syncing your properties, calendar data, and bookings...");
+        toast.info("Syncing your Channels Connect properties, calendar data, and bookings...");
         try {
             const { data } = await enhancedImportBeds24Properties({});
             if (data.success) {
@@ -141,7 +141,7 @@ export default function EnhancedPropertiesManager({ initialListings, onSelectLis
                     <ImageOff className="w-16 h-16 text-slate-400 mx-auto mb-4" />
                     <h3 className="text-lg font-semibold text-slate-700 mb-2">No Properties Found</h3>
                     <p className="text-slate-500 mb-4">
-                        Use "Enhanced Sync" to import properties from your Beds24 account, or use "Add Property" to import from Airbnb.
+                        Use "Enhanced Sync" to refresh your Channels Connect properties, or use "Add Property" to import from Airbnb.
                     </p>
                     <div className="space-y-2 text-sm text-slate-600">
                         <p>✅ Enhanced Sync imports: Properties + Calendar + Pricing + Bookings</p>

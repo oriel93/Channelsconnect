@@ -227,7 +227,7 @@ export class ChannexBookingWebhookController {
     const revision = payload?.booking_revision;
     if (!revision?.id) {
       this.logger.warn('[Webhook] Received payload with no booking_revision.id');
-      return { received: true, skipped: true, reason: 'no_revision_id' };
+      return { ack: true, received: true, skipped: true, reason: 'no_revision_id' };
     }
 
     this.logger.log(
@@ -352,7 +352,9 @@ export class ChannexBookingWebhookController {
         );
       }
 
+      // Rule 11: Channex certification requires { ack: true } in the response body
       return {
+        ack: true,
         received: true,
         bookingRevisionId: revision.id,
         bookingId: revision.booking_id,
@@ -372,7 +374,9 @@ export class ChannexBookingWebhookController {
 
       // Return 200 with error detail — returning non-2xx causes Channex to
       // retry indefinitely, which would flood our endpoint for a data error.
+      // Rule 11: must always include { ack: true }
       return {
+        ack: true,
         received: true,
         bookingRevisionId: revision.id,
         processed: false,

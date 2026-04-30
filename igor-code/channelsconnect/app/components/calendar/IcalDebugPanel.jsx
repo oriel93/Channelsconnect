@@ -67,7 +67,7 @@ export default function IcalDebugPanel({ listingId }) {
   };
 
   const handleQuickTest = () => {
-    setDebugUrl('https://api.beds24.com/ical/bookings.ics?roomid=584027');
+    setDebugUrl('https://www.airbnb.com/calendar/ical/12345.ics?s=XXXXXXXX');
   };
 
   if (!showDebugPanel) {
@@ -113,7 +113,7 @@ export default function IcalDebugPanel({ listingId }) {
           
           <div className="flex gap-2 mb-2">
             <Input
-              placeholder="https://api.beds24.com/ical/bookings.ics?roomid=584027"
+              placeholder="https://www.airbnb.com/calendar/ical/12345.ics?s=XXXXXXXX"
               value={debugUrl}
               onChange={(e) => setDebugUrl(e.target.value)}
               className="flex-1"

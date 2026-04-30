@@ -275,11 +275,19 @@ function SetupStep({ user, onComplete }) {
     if (!form.title.trim()) { toast.error('Property name is required.'); return; }
     setWorking(true);
     try {
-      await api.connect.onboard({ ...form, email: user?.email || '', userId: user?.id || '' });
-      toast.success('Property created! Now connect your channel.');
+      // Success gating: only advance if backend returns a valid property with an id
+      const res = await api.connect.onboard({ ...form, email: user?.email || '', userId: user?.id || '' });
+      const data = res?.data;
+      const propertyId = data?.data?.id ?? data?.id ?? data?.channexPropertyId;
+      if (!propertyId) {
+        throw new Error('Property created but no ID returned — please try again.');
+      }
+      toast.success(`Property created! (ID: ${propertyId}) Now connect your channel.`);
       onComplete();
     } catch (err) {
-      toast.error(err.response?.data?.message || err.message || 'Setup failed. Please try again.');
+      const msg = err.response?.data?.message || err.message || 'Setup failed. Please try again.';
+      toast.error(msg);
+      // Do NOT call onComplete() — stay on this step so the user can retry
     } finally {
       setWorking(false);
     }

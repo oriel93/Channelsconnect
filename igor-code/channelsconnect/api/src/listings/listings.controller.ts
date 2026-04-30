@@ -68,6 +68,7 @@ export class ListingsController {
         currency: 'USD',
         isActive: true,
         airbnbListingId: airbnbId ?? undefined,
+        captureUrl: url,
         source: 'channex',
       } as any);
       this.logger.log(`[Import] Created listing id=${listing.id} airbnbId=${airbnbId}`);

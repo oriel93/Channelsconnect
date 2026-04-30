@@ -146,7 +146,7 @@ export default function BookingsManager({ listingId }) {
                   </div>
                   {booking.externalId && (
                     <span className="text-xs text-gray-500 font-mono">
-                      #{booking.externalId.replace('beds24_', '')}
+                      #{booking.externalId.replace('beds24_', '').replace('channex_', '')}
                     </span>
                   )}
                 </div>

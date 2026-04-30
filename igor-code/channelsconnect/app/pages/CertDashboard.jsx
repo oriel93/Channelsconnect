@@ -247,10 +247,15 @@ export default function CertDashboard() {
         method: 'POST',
         body: JSON.stringify({ title: 'Channex Cert Villa' }),
       });
+      // Success gating: only update UI if backend returns a valid DB id
       const newListing = data?.data || data;
+      if (!newListing?.id) {
+        throw new Error(`Backend responded without a valid listing ID. Raw: ${JSON.stringify(data)}`);
+      }
       setListings(prev => [newListing, ...prev]);
     } catch (e) {
-      setVillaError(e.message);
+      setVillaError(`❌ ${e.message}`);
+      // Do NOT navigate away — stay here so user sees the error
     } finally {
       setCreatingVilla(false);
     }
