@@ -21,6 +21,7 @@ import {
   Body,
   Query,
   Req,
+  Res,
   UseGuards,
   Logger,
   HttpCode,
@@ -103,13 +104,87 @@ export class ChannexWhitelabelController {
 
   @Public()
   @Get('oauth-callback')
-  async oauthCallback(@Query('state') state: string, @Query('code') code: string) {
-    if (!state || !code) return { success: false, message: 'Missing parameters.' };
-    await this.onboarding.handleOAuthCallback(state, code);
-    return {
-      success: true,
-      message: 'Your account has been connected! You can close this window and return to Channels Connect.',
-    };
+  async oauthCallback(
+    @Query('state') state: string,
+    @Query('code') code: string,
+    @Query('returnUrl') returnUrl: string,
+    @Res({ passthrough: false }) res: any,
+  ) {
+    // Process the OAuth token exchange first
+    let success = false;
+    let errorMsg = '';
+    if (!state || !code) {
+      errorMsg = 'Missing state or code parameters.';
+    } else {
+      try {
+        await this.onboarding.handleOAuthCallback(state, code);
+        success = true;
+      } catch (err: any) {
+        errorMsg = err.message || 'OAuth callback failed.';
+        this.logger.error(`[OAuth] Callback error: ${err.message}`);
+      }
+    }
+
+    // If returnUrl is provided (full-page redirect fallback flow),
+    // redirect back to the app with a query param
+    if (returnUrl) {
+      const safe = returnUrl.startsWith('https://channelsconnect.com') ||
+                   returnUrl.startsWith('http://localhost');
+      if (safe) {
+        const sep = returnUrl.includes('?') ? '&' : '?';
+        return res.redirect(`${returnUrl}${sep}oauth=${success ? 'success' : 'error'}`);
+      }
+    }
+
+    // Default: return an HTML page that sends postMessage to opener and closes.
+    // This is the popup flow — the parent window listens for { type: 'oauth_success' }.
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Channels Connect — ${success ? 'Connected!' : 'Error'}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+           display: flex; align-items: center; justify-content: center;
+           height: 100vh; margin: 0; background: #f9fafb; }
+    .card { background: white; border-radius: 16px; padding: 40px 48px;
+            box-shadow: 0 4px 24px rgba(0,0,0,.10); text-align: center; max-width: 360px; }
+    .icon { font-size: 3rem; margin-bottom: 16px; }
+    h2 { margin: 0 0 8px; color: #111827; font-size: 1.25rem; }
+    p { margin: 0; color: #6b7280; font-size: .9rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">${success ? '✅' : '❌'}</div>
+    <h2>${success ? 'Account Connected!' : 'Connection Failed'}</h2>
+    <p>${success
+      ? 'Your Airbnb account has been linked. This window will close automatically.'
+      : `An error occurred: ${errorMsg} Please close this window and try again.`
+    }</p>
+  </div>
+  <script>
+    // Notify the parent window via postMessage (popup flow)
+    (function() {
+      try {
+        const msg = ${success
+          ? '{ type: \'oauth_success\', channelsConnectAuth: \'success\', success: true }'
+          : '{ type: \'oauth_error\', success: false }'
+        };
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage(msg, '*');
+        }
+      } catch(e) {}
+      // Auto-close after a short delay so the user can read the message
+      setTimeout(() => { try { window.close(); } catch(e) {} }, ${success ? 1500 : 4000});
+    })();
+  </script>
+</body>
+</html>`;
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN'); // allow our own popup but block third-party embeds
+    res.status(200).send(html);
   }
 
   // ── Deep Sync ─────────────────────────────────────────────────────────

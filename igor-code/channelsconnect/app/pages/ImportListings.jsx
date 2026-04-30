@@ -361,41 +361,120 @@ function SetupStep({ user, onComplete }) {
   );
 }
 
-// ─── OAuth Modal ─────────────────────────────────────────────────────────────
+// ─── OAuth Popup (replaces iframe) ──────────────────────────────────────────
+//
+// WHY NO IFRAME:
+// External OAuth providers (Airbnb, Channex staging) send
+//   X-Frame-Options: DENY  or  Content-Security-Policy: frame-ancestors 'none'
+// which causes the browser to block the iframe entirely — silent white box.
+//
+// SOLUTION: window.open() popup + postMessage cross-window communication.
+// Backend /connect/oauth-callback returns an HTML page that calls
+//   window.opener.postMessage({ type: 'oauth_success' }, origin)
+// and then window.close(), completing the handshake without an iframe.
+//
+// FALLBACK: if popup is blocked, full-page redirect with ?returnUrl=.
 
-function OAuthModal({ authUrl, onClose, onSuccess }) {
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.data?.type === 'oauth_success' || e.data?.channelsConnectAuth === 'success' ||
-          (e.origin === 'https://api.channelsconnect.com' && e.data?.success)) {
-        onSuccess();
+function openOAuthPopup(authUrl, onSuccess, onClosed) {
+  const POPUP_W = 600, POPUP_H = 700;
+  const left = Math.max(0, (window.screen.width  - POPUP_W) / 2 + window.screenX);
+  const top  = Math.max(0, (window.screen.height - POPUP_H) / 2 + window.screenY);
+
+  const popup = window.open(
+    authUrl,
+    'ChannelsConnectOAuth',
+    `width=${POPUP_W},height=${POPUP_H},left=${left},top=${top},` +
+    'scrollbars=yes,resizable=yes,toolbar=no,menubar=no,location=no,status=no',
+  );
+
+  // Popup blocked → fall back to full-page redirect
+  if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+    const returnUrl = encodeURIComponent(window.location.href);
+    window.location.href = `${authUrl}${authUrl.includes('?') ? '&' : '?'}returnUrl=${returnUrl}`;
+    return null;
+  }
+
+  // postMessage listener — backend callback page sends { type: 'oauth_success' }
+  const handler = (e) => {
+    const trusted =
+      e.origin === 'https://api.channelsconnect.com' ||
+      e.origin === window.location.origin;
+    const isSuccess =
+      e.data?.type === 'oauth_success' ||
+      e.data?.channelsConnectAuth === 'success' ||
+      (trusted && e.data?.success === true);
+    if (isSuccess) {
+      window.removeEventListener('message', handler);
+      clearInterval(pollTimer);
+      if (!popup.closed) popup.close();
+      onSuccess();
+    }
+  };
+  window.addEventListener('message', handler);
+
+  // Poll for popup close (user closed manually without completing OAuth)
+  const pollTimer = setInterval(() => {
+    try {
+      if (popup.closed) {
+        clearInterval(pollTimer);
+        window.removeEventListener('message', handler);
+        onClosed(); // let caller decide what to show
       }
+    } catch (_) { /* cross-origin SecurityError — ignore */ }
+  }, 500);
+
+  // Safety cleanup after 10 min
+  setTimeout(() => {
+    clearInterval(pollTimer);
+    window.removeEventListener('message', handler);
+    try { if (!popup.closed) popup.close(); } catch (_) {}
+  }, 10 * 60 * 1000);
+
+  return popup;
+}
+
+// Status overlay shown while popup is open (replaces the iframe modal)
+function OAuthModal({ authUrl, onClose, onSuccess }) {
+  const popupRef = React.useRef(null);
+
+  // Open popup immediately on mount
+  useEffect(() => {
+    if (!authUrl) return;
+    popupRef.current = openOAuthPopup(
+      authUrl,
+      () => onSuccess(),   // postMessage success
+      () => onClose(),     // popup closed without completing
+    );
+    return () => {
+      // Cleanup: close popup if parent unmounts
+      try { if (popupRef.current && !popupRef.current.closed) popupRef.current.close(); } catch (_) {}
     };
-    window.addEventListener('message', handler);
-    return () => window.removeEventListener('message', handler);
-  }, [onSuccess]);
+  }, [authUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b bg-white">
-          <div className="flex items-center gap-3">
-            <img src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/f50093011_channelsconnectlogo.png"
-              alt="Channels Connect" className="w-8 h-8 object-contain rounded-lg border border-gray-100" />
-            <div>
-              <p className="font-semibold text-gray-900 text-sm">Connect Your Airbnb Account</p>
-              <p className="text-xs text-gray-500">Authorize Channels Connect to sync your listings</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
-            <X className="w-4 h-4" />
-          </button>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center space-y-4">
+        <div className="w-14 h-14 bg-rose-100 rounded-full flex items-center justify-center mx-auto">
+          <Loader2 className="w-7 h-7 text-rose-500 animate-spin" />
         </div>
-        <iframe src={authUrl} className="w-full block" style={{ height: 460, border: 'none' }}
-          title="Connect Airbnb" sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-top-navigation" />
-        <div className="px-5 py-3 bg-gray-50 border-t text-center space-y-1">
-          <p className="text-xs text-gray-400">Your Airbnb password is entered directly on Airbnb's secure servers. Channels Connect never sees your credentials.</p>
-          <button onClick={onSuccess} className="text-xs text-blue-600 hover:underline">Already authorized? Click here to continue →</button>
+        <div>
+          <p className="font-semibold text-gray-900">Complete authorization in the popup</p>
+          <p className="text-sm text-gray-500 mt-1">
+            A new window opened for you to sign in to Airbnb.
+            This overlay closes automatically once authorized.
+          </p>
+        </div>
+        <div className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3">
+          🔒 Your Airbnb password is entered directly on Airbnb's secure servers.
+          Channels Connect never sees your credentials.
+        </div>
+        <div className="space-y-2">
+          <button onClick={onSuccess} className="w-full text-sm text-blue-600 hover:underline">
+            Already authorized? Click here to continue →
+          </button>
+          <button onClick={onClose} className="w-full text-xs text-gray-400 hover:text-gray-600">
+            Cancel
+          </button>
         </div>
       </div>
     </div>

@@ -697,10 +697,22 @@ export default function FinancialReports() {
 
   const loadListings = async () => {
     try {
+      // Guard: api.listings.getAll must exist (duplicate key in apiClient.js would break it)
+      if (typeof api.listings?.getAll !== 'function') {
+        console.error('[FinancialReports] api.listings.getAll is not a function — check apiClient.js');
+        setListings([]);
+        return;
+      }
       const response = await api.listings.getAll();
-      setListings(response.data || []);
+      // Handle both flat array and { data: [...] } response shapes
+      const raw = response?.data;
+      const items = Array.isArray(raw) ? raw
+        : Array.isArray(raw?.data) ? raw.data
+        : [];
+      setListings(items);
     } catch (error) {
-      console.error('Failed to load listings:', error);
+      console.error('[FinancialReports] Failed to load listings:', error?.message || error);
+      setListings([]); // safe fallback — prevents .map() crash on undefined
     } finally {
       setLoading(false);
     }

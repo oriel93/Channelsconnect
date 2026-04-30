@@ -182,13 +182,11 @@ export default function Layout({ children, currentPageName }) {
     // flicker + fetch-interception bugs. Channels Connect is a Channel Manager,
     // not a PWA — we don't need offline caching.
     //
-    // Instead, unregister any stale SW that may be cached from a prior build:
+    // Unregister ALL service workers unconditionally.
+    // We are a Channel Manager, not a PWA — no offline caching needed.
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then((regs) => {
-        regs.forEach((reg) => {
-          const url = reg.active?.scriptURL || reg.installing?.scriptURL || '';
-          if (url.startsWith('blob:') || url === '') reg.unregister();
-        });
+        regs.forEach((reg) => reg.unregister());
       });
     }
 

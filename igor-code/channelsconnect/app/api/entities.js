@@ -42,13 +42,52 @@ export const User = {
 };
 
 // Helper to create entity wrapper
+// Defensive: always checks method exists before calling to prevent
+// 'TypeError: t.getAll is not a function' runtime crashes.
 const createEntityWrapper = (entityName, apiResource) => {
+  const safeCall = (method, fallback, ...args) => {
+    if (typeof apiResource?.[method] !== 'function') {
+      console.error(
+        `[entities] ${entityName}.${method}() is not a function. ` +
+        `Check apiClient.js — the '${entityName.toLowerCase()}s' namespace must export .${method}()`,
+      );
+      return Promise.resolve(fallback);
+    }
+    return apiResource[method](...args);
+  };
+
   return {
-    find: (params) => apiResource.getAll(params).then(res => res.data),
-    findOne: (id) => apiResource.getById(id).then(res => res.data),
-    create: (data) => apiResource.create(data).then(res => res.data),
-    update: (id, data) => apiResource.update(id, data).then(res => res.data),
-    delete: (id) => apiResource.delete(id).then(res => res.data),
+    // find() — returns array; never throws; always falls back to []
+    find: (params) =>
+      safeCall('getAll', { data: [] }, params)
+        .then(res => {
+          const raw = res?.data;
+          // Handle both { data: [...] } and flat [...] shapes
+          if (Array.isArray(raw)) return raw;
+          if (Array.isArray(raw?.data)) return raw.data;
+          return [];
+        })
+        .catch(err => {
+          console.error(`[entities] ${entityName}.find() failed:`, err?.message);
+          return [];
+        }),
+
+    // findOne() — returns object or null; never throws
+    findOne: (id) =>
+      safeCall('getById', { data: null }, id)
+        .then(res => res?.data?.data ?? res?.data ?? null)
+        .catch(err => {
+          console.error(`[entities] ${entityName}.findOne(${id}) failed:`, err?.message);
+          return null;
+        }),
+
+    // create / update / delete — pass through; let caller handle errors
+    create: (data) =>
+      safeCall('create', { data: null }, data).then(res => res?.data?.data ?? res?.data ?? null),
+    update: (id, data) =>
+      safeCall('update', { data: null }, id, data).then(res => res?.data?.data ?? res?.data ?? null),
+    delete: (id) =>
+      safeCall('delete', { data: null }, id).then(res => res?.data ?? null),
   };
 };
 
