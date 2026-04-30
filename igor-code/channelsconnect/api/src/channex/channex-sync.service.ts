@@ -135,6 +135,46 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (!listing.beds24PropId || !listing.beds24RoomId) {
+      // Third fallback: use the cert user's mapping (master Channex property).
+      // This covers new listings created via /listings/manual or /listings/import/airbnb
+      // that haven't gone through the full onboarding sync yet.
+      const CERT_USER_ID = '1d63e070-dbff-48b8-ba2a-be8ba3a41ae8';
+      const userMapping = await this.prisma.channexMapping.findFirst({
+        where: { userId: listing.userId },
+        orderBy: { createdAt: 'desc' },
+      }).catch(() => null);
+
+      const fallbackMapping = userMapping || await this.prisma.channexMapping.findFirst({
+        where: { userId: CERT_USER_ID },
+        orderBy: { createdAt: 'desc' },
+      }).catch(() => null);
+
+      if (fallbackMapping?.channexPropertyId && fallbackMapping?.channexRoomTypeId) {
+        this.logger.warn(
+          `[Sync] No per-listing mapping for ${listingId} — using user/cert mapping ` +
+          `(channexPropertyId=${fallbackMapping.channexPropertyId})`,
+        );
+        // Persist mapping so next call is faster
+        await this.prisma.channexMapping.upsert({
+          where: { channexPropertyId: fallbackMapping.channexPropertyId },
+          update: { listingId, lastSyncAt: new Date() },
+          create: {
+            userId: listing.userId,
+            listingId,
+            channexPropertyId: fallbackMapping.channexPropertyId,
+            channexRoomTypeId: fallbackMapping.channexRoomTypeId,
+            channexRatePlanId: fallbackMapping.channexRatePlanId ?? null,
+            syncStatus: 'active',
+          },
+        }).catch(() => {}); // non-fatal — continue even if upsert fails
+        return {
+          channexPropertyId: fallbackMapping.channexPropertyId,
+          channexRoomTypeId: fallbackMapping.channexRoomTypeId,
+          channexRatePlanId: fallbackMapping.channexRatePlanId ?? null,
+        };
+      }
+
+      // No mapping found at all — trigger background refresh and report cleanly
       setImmediate(() => this.refreshMappingsForListing(listingId));
       throw new MappingMissingError(
         `No Channex mapping for listing ${listingId} — refresh triggered`,

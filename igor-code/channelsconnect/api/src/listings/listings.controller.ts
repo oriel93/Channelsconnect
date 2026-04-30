@@ -22,7 +22,7 @@ import { UpdateListingDto } from './dto/update-listing.dto';
 import { ListingEntity } from './entities/listing.entity';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
-import { ChannexSyncService } from '../channex/channex-sync.service';
+import { ChannexSyncService, MappingMissingError } from '../channex/channex-sync.service';
 
 @Controller('listings')
 @ApiTags('listings')
@@ -152,6 +152,18 @@ export class ListingsController {
       };
     } catch (err: any) {
       this.logger.error(`[Cert] syncRate failed listing=${id}: ${err?.message}\n${err?.stack}`);
+      // MappingMissingError = no Channex property linked yet — return 200 with explanation
+      // so the UI doesn't show a red 500 error for a legitimate 'not yet synced' state.
+      if (err instanceof MappingMissingError || err?.name === 'MappingMissingError') {
+        return {
+          success: false,
+          taskId: null,
+          task_id: null,
+          listingId: id,
+          error: 'Channex mapping not yet created for this listing. Complete onboarding sync first.',
+          hint: 'Use POST /connect/sync after connecting your Airbnb channel.',
+        };
+      }
       throw err;
     }
   }
