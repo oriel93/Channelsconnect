@@ -90,6 +90,12 @@ export class ListingEntity implements Listing {
   @ApiProperty({ required: false, nullable: true, description: 'Airbnb listing ID' })
   airbnbListingId: string | null;
 
+  @ApiProperty({ description: 'Channel source — always channex (Beds24 decommissioned)' })
+  source: string;
+
+  @ApiProperty({ required: false, nullable: true, description: 'Original Airbnb URL used for content capture' })
+  captureUrl: string | null;
+
   @ApiProperty()
   createdAt: Date;
 
