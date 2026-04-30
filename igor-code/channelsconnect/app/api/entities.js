@@ -134,7 +134,25 @@ export const PricingRule = {
 };
 
 export const PropertyImage = {
-  find: () => Promise.resolve([]),
+  filter: async (params, orderBy) => {
+    const { supabase } = await import('../lib/supabase');
+    let query = supabase.from('property_images').select('*');
+    if (params?.listing_id) query = query.eq('listing_id', params.listing_id);
+    if (orderBy) query = query.order(orderBy, { ascending: true });
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    return data || [];
+  },
+  update: async (id, fields) => {
+    const { supabase } = await import('../lib/supabase');
+    const { error } = await supabase.from('property_images').update(fields).eq('id', id);
+    if (error) throw new Error(error.message);
+  },
+  delete: async (id) => {
+    const { supabase } = await import('../lib/supabase');
+    const { error } = await supabase.from('property_images').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+  },
 };
 
 export const IcalConnection = {

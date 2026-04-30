@@ -7,7 +7,8 @@ import AppLayout from '../components/app/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Listing } from '@/api/entities';
-import { Loader2, Home, MapPin, Users, Plus } from 'lucide-react';
+import { Loader2, Home, MapPin, Users, Plus, Download } from 'lucide-react';
+import { downloadListingsCSV } from '../lib/exportListings';
 import { Button } from '@/components/ui/button';
 
 const ListingsContent = () => {
@@ -41,12 +42,20 @@ const ListingsContent = () => {
         <div>
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-3xl font-bold text-slate-800">Your Properties</h1>
-                <Link to={createPageUrl('ImportListings')}>
-                    <Button>
-                        <Plus className="w-4 h-4 mr-2" />
-                        Import Properties
-                    </Button>
-                </Link>
+                <div className="flex gap-2">
+                    {listings.length > 0 && (
+                        <Button variant="outline" onClick={() => downloadListingsCSV(listings)}>
+                            <Download className="w-4 h-4 mr-2" />
+                            Export CSV
+                        </Button>
+                    )}
+                    <Link to={createPageUrl('ImportListings')}>
+                        <Button>
+                            <Plus className="w-4 h-4 mr-2" />
+                            Import Properties
+                        </Button>
+                    </Link>
+                </div>
             </div>
             
             {listings.length === 0 ? (
