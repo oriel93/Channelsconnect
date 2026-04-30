@@ -360,7 +360,7 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
           ...(u.channexRatePlanId ? { rate_plan_id: u.channexRatePlanId } : {}),
           date_from: u.date,
           date_to: u.date,
-          rate: u.price,
+          rate: Math.round(u.price * 100), // Channex expects cents (integer)
           min_stay_arrival: u.minStay ?? 1,
         });
       }
@@ -613,7 +613,7 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
         ...(ids.channexRatePlanId ? { rate_plan_id: ids.channexRatePlanId } : {}),
         date_from: update.date,
         date_to: update.date,
-        rate: update.price,
+        rate: Math.round(update.price * 100), // Channex expects cents (integer)
         ...(update.minStay !== undefined ? { min_stay_arrival: update.minStay } : {}),
       }];
       const rateRes = await this.http.post<any>('/restrictions', apiKey, { values: ratePayload });

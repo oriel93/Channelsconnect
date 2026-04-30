@@ -403,7 +403,7 @@ export class ChannexDeepSyncService {
       rate_plan_id: mapping.channexRatePlanId,
       date_from: dateStr,
       date_to: dateStr,
-      rate: data.price,
+      rate: Math.round(data.price * 100), // Channex expects cents (integer)
       min_stay_arrival: data.minStay,
       closed: !data.available,
       closed_to_arrival: false,
@@ -632,7 +632,7 @@ export class ChannexDeepSyncService {
         rate_plan_id: ratePlanId,
         date_from: dateFrom,
         date_to: dateTo,
-        rate,
+        rate: Math.round(rate * 100), // Channex expects cents (integer)
         min_stay_arrival: minStay,
         closed: false,
         closed_to_arrival: false,
@@ -672,7 +672,7 @@ export class ChannexDeepSyncService {
       date_from: dateFrom,
       date_to: dateTo,
     };
-    if (values.rate !== undefined) rateAttrs.rate = values.rate;
+    if (values.rate !== undefined) rateAttrs.rate = Math.round(values.rate * 100); // cents
     if (values.minStay !== undefined) rateAttrs.min_stay_arrival = values.minStay;
     if (values.stopSell !== undefined) rateAttrs.closed = values.stopSell;
 
