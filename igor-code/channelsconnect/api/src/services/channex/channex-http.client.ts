@@ -17,7 +17,7 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { AxiosError } from 'axios';
 
-const CHANNEX_BASE = 'https://app.channex.io/api/v1';
+const CHANNEX_BASE = 'https://staging.channex.io/api/v1';
 const TIMEOUT_MS = 15_000;
 const MAX_RETRIES = 3;
 

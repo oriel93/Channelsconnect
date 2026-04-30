@@ -5,7 +5,7 @@ import { firstValueFrom } from 'rxjs';
 
 @Injectable()
 export class ChannexService {
-  private readonly baseUrl = 'https://app.channex.io/api/v1';
+  private readonly baseUrl = 'https://staging.channex.io/api/v1';
   private readonly headers: any;
 
   constructor(private readonly httpService: HttpService) {

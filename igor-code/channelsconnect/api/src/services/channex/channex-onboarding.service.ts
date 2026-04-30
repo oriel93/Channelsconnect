@@ -232,7 +232,7 @@ export class ChannexOnboardingService {
 
     // Fallback: construct standard Channex OAuth URL
     if (!authUrl) {
-      authUrl = `https://app.channex.io/api/v1/auth/${channelType}?property_id=${mapping.channexPropertyId}&state=${state}`;
+      authUrl = `https://staging.channex.io/api/v1/auth/${channelType}?property_id=${mapping.channexPropertyId}&state=${state}`;
     }
 
     this.logger.log(`[OAuth] Auth link generated for user ${userId} channel=${channelType}`);
