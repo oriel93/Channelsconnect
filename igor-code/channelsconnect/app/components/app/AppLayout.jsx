@@ -1,8 +1,8 @@
 
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { User } from '@/api/entities';
 import { createPageUrl } from '@/utils';
+import { useAuth } from '@/lib/authContext';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { LogOut, Calendar, Upload, Settings, Image as ImageIcon, Briefcase, Network, Menu, X, Bot, BarChart3, Crown } from 'lucide-react';
@@ -110,21 +110,11 @@ function MobileNavigation({ isOpen, setIsOpen, user }) {
 }
 
 export default function AppLayout({ children, headerActions }) {
-  const [user, setUser] = React.useState(null);
+  const { user, signOut } = useAuth();
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
-  React.useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const currentUser = await User.me();
-        setUser(currentUser);
-      } catch (e) { /* not logged in */ }
-    };
-    fetchUser();
-  }, []);
-
   const handleLogout = async () => {
-    await User.signOut();
+    await signOut();
     window.location.href = '/';
   };
   

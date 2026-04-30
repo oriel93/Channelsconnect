@@ -17,6 +17,8 @@ export const authHelpers = {
       password,
       options: {
         data: additionalData,
+        // Send email confirmation link back to Channels Connect, not Supabase
+        emailRedirectTo: `${window.location.origin}/AuthCallback`,
       },
     });
     return { data, error };
@@ -60,8 +62,12 @@ export const authHelpers = {
   },
 
   async resetPasswordRequest(email) {
+    // Always redirect to the canonical Channels Connect reset-password page
+    const resetUrl = process.env.NODE_ENV === 'production'
+      ? 'https://channelsconnect.com/ResetPassword'
+      : `${window.location.origin}/ResetPassword`;
     const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/ResetPassword`,
+      redirectTo: resetUrl,
     });
     return { data, error };
   },

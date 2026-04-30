@@ -36,19 +36,30 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401) {
-      // Token expired or invalid, try to refresh
-      const { data: { session }, error: refreshError } = await supabase.auth.refreshSession();
-      
-      if (!refreshError && session) {
-        // Retry the request with new token
-        error.config.headers.Authorization = `Bearer ${session.access_token}`;
-        return apiClient.request(error.config);
-      } else {
-        // Refresh failed, redirect to login
-        window.location.href = '/';
+    const status = error.response?.status;
+
+    if (status === 401) {
+      // Token expired — attempt a silent refresh before redirecting
+      try {
+        const { data: { session }, error: refreshError } = await supabase.auth.refreshSession();
+        if (!refreshError && session?.access_token) {
+          // Retry original request with new token
+          error.config.headers.Authorization = `Bearer ${session.access_token}`;
+          return apiClient.request(error.config);
+        }
+      } catch { /* ignore refresh errors */ }
+
+      // Only redirect to login if the caller hasn't opted out
+      if (!error.config?._suppressAuthRedirect) {
+        window.location.href = '/Login';
       }
     }
+
+    // 403 Forbidden — DO NOT redirect to login.
+    // The admin portal and role-guarded routes return 403 for non-admin users.
+    // Redirecting on 403 would cause the admin kick-out loop.
+    // Let callers handle 403 with their own error UI.
+
     return Promise.reject(error);
   }
 );

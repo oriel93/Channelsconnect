@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Mail, Lock, AlertCircle, CheckCircle, Shield } from 'lucide-react';
+import { Loader2, Mail, Lock, AlertCircle, CheckCircle } from 'lucide-react';
 import { createPageUrl } from '@/utils';
 import api from '@/lib/apiClient';
 
@@ -306,36 +306,28 @@ export default function Login() {
 
             {/* Legal Consent Checkbox — signup only */}
             {!isLogin && (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
-                <div className="flex items-start gap-3">
-                  <Shield className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs font-semibold text-slate-700">Channel Distribution Authorization</p>
-                </div>
-                <label className="flex items-start gap-3 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={tosAccepted}
-                    onChange={(e) => {
-                      setTosAccepted(e.target.checked);
-                      if (error?.includes('Terms of Service')) setError('');
-                    }}
-                    disabled={loading}
-                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 flex-shrink-0"
-                    required
-                  />
-                  <span className="text-xs text-slate-600 leading-relaxed">
-                    I agree to the{' '}
-                    <a href="/TermsOfService" target="_blank" className="text-blue-600 underline hover:text-blue-800">
-                      Terms of Service
-                    </a>
-                    , and I explicitly authorize Channels Connect to publish, distribute, and manage my
-                    property listings across all connected channels (including Airbnb, Booking.com, and Vrbo).
-                  </span>
-                </label>
-                {!tosAccepted && (
-                  <p className="text-xs text-amber-600">Required to create an account.</p>
-                )}
-              </div>
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={tosAccepted}
+                  onChange={(e) => {
+                    setTosAccepted(e.target.checked);
+                    if (error?.includes('Terms of Service')) setError('');
+                  }}
+                  disabled={loading}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 flex-shrink-0"
+                  required
+                />
+                <span className="text-xs text-slate-600 leading-relaxed">
+                  I agree to the{' '}
+                  <a href="/TermsOfService" target="_blank" className="text-blue-600 underline hover:text-blue-800">
+                    Terms of Service
+                  </a>{' '}and{' '}
+                  <a href="/PrivacyPolicy" target="_blank" className="text-blue-600 underline hover:text-blue-800">
+                    Privacy Policy
+                  </a>.
+                </span>
+              </label>
             )}
 
             <Button

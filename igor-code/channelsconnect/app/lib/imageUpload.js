@@ -145,6 +145,7 @@ export async function uploadImageToSupabase({ file, listingId, onProgress }) {
 
 /**
  * Save image metadata to the property_images table via Supabase directly.
+ * Uses camelCase column names that match the Prisma-managed schema.
  * Returns the inserted row.
  */
 export async function saveImageRecord({ listingId, filename, url, storagePath, sortOrder, isCover }) {
@@ -154,13 +155,14 @@ export async function saveImageRecord({ listingId, filename, url, storagePath, s
   const { data, error } = await supabase
     .from('property_images')
     .insert({
-      listing_id: listingId,
-      user_id: user.id,
+      // camelCase — these are the Prisma-managed columns in the DB
+      listingId,
+      userId: user.id,
       filename,
       url,
-      storage_path: storagePath,
-      sort_order: sortOrder ?? 0,
-      is_cover: isCover ?? false,
+      storagePath,
+      sortOrder: sortOrder ?? 0,
+      isCover: isCover ?? false,
     })
     .select()
     .single();
@@ -170,14 +172,15 @@ export async function saveImageRecord({ listingId, filename, url, storagePath, s
 }
 
 /**
- * Fetch all images for a listing from Supabase, ordered by sort_order.
+ * Fetch all images for a listing from Supabase, ordered by sortOrder.
+ * Uses camelCase column names matching the Prisma-managed schema.
  */
 export async function fetchListingImages(listingId) {
   const { data, error } = await supabase
     .from('property_images')
     .select('*')
-    .eq('listing_id', listingId)
-    .order('sort_order', { ascending: true });
+    .eq('listingId', listingId)
+    .order('sortOrder', { ascending: true });
 
   if (error) throw new Error(error.message);
   return data || [];
@@ -202,6 +205,7 @@ export async function deleteImageRecord(imageId, storagePath) {
 
 /**
  * Update a single image record field(s).
+ * Field names should be camelCase (Prisma-managed columns).
  */
 export async function updateImageRecord(imageId, fields) {
   const { error } = await supabase

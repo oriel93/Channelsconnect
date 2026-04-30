@@ -41,7 +41,7 @@ import {
   Crown,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { User } from '@/api/entities';
+import { useAuth } from '@/lib/authContext';
 import api from '@/lib/apiClient';
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
@@ -66,8 +66,8 @@ const StatCard = ({ title, value, icon: Icon, color = 'blue', subtitle }) => (
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function AdminDashboard() {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  // Auth from shared AuthProvider — no extra round-trip, role available immediately
+  const { user: currentUser, isAdmin, isLoadingAuth } = useAuth();
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
   const [listings, setListings] = useState([]);
@@ -76,22 +76,11 @@ export default function AdminDashboard() {
   const [userSearch, setUserSearch] = useState('');
   const [listingSearch, setListingSearch] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
-
-  // ── Auth check ─────────────────────────────────────────────────────────────
-  useEffect(() => {
-    (async () => {
-      try {
-        const u = await User.me();
-        setCurrentUser(u);
-      } catch {
-        setCurrentUser(null);
-      } finally {
-        setIsCheckingAuth(false);
-      }
-    })();
-  }, []);
-
-  const isAdmin = currentUser?.role?.toLowerCase() === 'admin';
+  const [mediaListingId, setMediaListingId] = useState(null);
+  const [mediaListingTitle, setMediaListingTitle] = useState('');
+  const [listingImages, setListingImages] = useState([]);
+  const [isLoadingImages, setIsLoadingImages] = useState(false);
+  const [convertingId, setConvertingId] = useState(null);
 
   // ── Data fetch ─────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
@@ -144,7 +133,7 @@ export default function AdminDashboard() {
 
   // ─────────────────────────────────────────────────────────────────────────
 
-  if (isCheckingAuth) {
+  if (isLoadingAuth) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
