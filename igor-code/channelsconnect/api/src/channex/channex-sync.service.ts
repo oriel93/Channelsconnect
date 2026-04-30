@@ -38,6 +38,10 @@ export interface ARIUpdate {
   price?: number;
   available?: boolean;
   minStay?: number;
+  maxStay?: number;
+  stopSell?: boolean;          // closed = true in Channex
+  closedToArrival?: boolean;   // closed_to_arrival
+  closedToDeparture?: boolean; // closed_to_departure
 }
 
 export interface ParityReport {
@@ -394,14 +398,25 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
         });
       }
 
-      if (u.price !== undefined) {
+      if (
+        u.price !== undefined ||
+        u.minStay !== undefined ||
+        u.maxStay !== undefined ||
+        u.stopSell !== undefined ||
+        u.closedToArrival !== undefined ||
+        u.closedToDeparture !== undefined
+      ) {
         rateValues.push({
           property_id: channexPropertyId,
           ...(u.channexRatePlanId ? { rate_plan_id: u.channexRatePlanId } : {}),
           date_from: u.date,
           date_to: u.date,
-          rate: Math.round(u.price * 100), // Channex expects cents (integer)
+          ...(u.price !== undefined ? { rate: Math.round(u.price * 100) } : {}),
           min_stay_arrival: u.minStay ?? 1,
+          ...(u.maxStay !== undefined ? { max_stay: u.maxStay } : {}),
+          ...(u.stopSell !== undefined ? { closed: u.stopSell } : {}),
+          ...(u.closedToArrival !== undefined ? { closed_to_arrival: u.closedToArrival } : {}),
+          ...(u.closedToDeparture !== undefined ? { closed_to_departure: u.closedToDeparture } : {}),
         });
       }
     }

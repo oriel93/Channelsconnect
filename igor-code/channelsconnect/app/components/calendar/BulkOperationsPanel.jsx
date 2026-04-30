@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 import { bulkUpdateRates } from '@/api/functions';
 import { bulkBlockDates } from '@/api/functions';
 import { bulkUnblockDates } from '@/api/functions';
+import { api } from '@/lib/apiClient';
 
 export default function BulkOperationsPanel({ 
   isOpen, 
@@ -42,6 +43,10 @@ export default function BulkOperationsPanel({
   const [bulkPriceAction, setBulkPriceAction] = useState('set');
   const [bulkPriceValue, setBulkPriceValue] = useState('');
   const [minStay, setMinStay] = useState(1);
+  const [maxStay, setMaxStay] = useState('');
+  const [stopSell, setStopSell] = useState(false);
+  const [closedToArrival, setClosedToArrival] = useState(false);
+  const [closedToDeparture, setClosedToDeparture] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectionMode, setSelectionMode] = useState('manual'); // manual, weekends, available, blocked
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
@@ -126,30 +131,43 @@ export default function BulkOperationsPanel({
       toast.error('Please select dates first');
       return;
     }
-    
-    if (!bulkPriceValue) {
-      toast.error('Please enter a price value');
+
+    const hasRestriction = stopSell || closedToArrival || closedToDeparture || maxStay;
+    if (!bulkPriceValue && !hasRestriction) {
+      toast.error('Enter a price or select at least one restriction');
       return;
     }
 
     setIsProcessing(true);
     try {
-      const { data } = await bulkUpdateRates({
-        listingId,
-        dates: selectedDates,
-        price: parseFloat(bulkPriceValue),
-        action: bulkPriceAction
-      });
+      // Sort selected dates so we can derive a contiguous range
+      const sorted = [...selectedDates].sort();
+      const startDate = sorted[0];
+      const endDate = sorted[sorted.length - 1];
 
-      if (data.success) {
-        toast.success(`Successfully updated ${selectedDates.length} dates`);
-        onBulkComplete();
-        clearSelection();
-      } else {
-        throw new Error(data.error);
-      }
+      // Use calendar.bulkUpdateRates → ChannexSyncService.applyChange() per date
+      // which drains into a single batched Channex API call.
+      const payload = {
+        listingId,
+        startDate,
+        endDate,
+        ...(bulkPriceValue ? { price: parseFloat(bulkPriceValue) } : {}),
+        minStay: minStay || 1,
+        ...(maxStay ? { maxStay: parseInt(maxStay, 10) } : {}),
+        ...(stopSell ? { stopSell } : {}),
+        ...(closedToArrival ? { closedToArrival } : {}),
+        ...(closedToDeparture ? { closedToDeparture } : {}),
+      };
+
+      const response = await api.calendar.bulkUpdateRates(payload);
+      const ok = response?.data?.success ?? response?.success;
+      if (!ok) throw new Error(response?.data?.message || 'Bulk update failed');
+
+      toast.success(`Updated ${selectedDates.length} date(s) — syncing to Channex…`);
+      onBulkComplete();
+      clearSelection();
     } catch (error) {
-      toast.error(`Bulk pricing failed: ${error.message}`);
+      toast.error(`Bulk update failed: ${error.message}`);
     } finally {
       setIsProcessing(false);
     }
@@ -409,26 +427,54 @@ export default function BulkOperationsPanel({
 
             <TabsContent value="availability" className="space-y-4">
               <div className="space-y-4">
-                <div>
-                  <Label htmlFor="min-stay">Minimum Stay (nights)</Label>
-                  <Input
-                    id="min-stay"
-                    type="number"
-                    min="1"
-                    value={minStay}
-                    onChange={(e) => setMinStay(parseInt(e.target.value))}
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="min-stay">Min Stay (nights)</Label>
+                    <Input
+                      id="min-stay"
+                      type="number"
+                      min="1"
+                      value={minStay}
+                      onChange={(e) => setMinStay(parseInt(e.target.value) || 1)}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="max-stay">Max Stay (nights, optional)</Label>
+                    <Input
+                      id="max-stay"
+                      type="number"
+                      min="1"
+                      placeholder="none"
+                      value={maxStay}
+                      onChange={(e) => setMaxStay(e.target.value)}
+                    />
+                  </div>
                 </div>
-                <Button 
-                  onClick={() => {
-                    // This would be handled by the bulk pricing function with min stay
-                    toast.info('Minimum stay updates coming soon!');
-                  }}
+
+                <div className="space-y-2 border rounded-md p-3 bg-gray-50">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Restrictions</p>
+                  {[['stopSell', stopSell, setStopSell, 'Stop Sell (close dates)'],
+                    ['closedToArrival', closedToArrival, setClosedToArrival, 'Closed to Arrival'],
+                    ['closedToDeparture', closedToDeparture, setClosedToDeparture, 'Closed to Departure']
+                  ].map(([key, val, setter, label]) => (
+                    <label key={key} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={val}
+                        onChange={e => setter(e.target.checked)}
+                        className="w-4 h-4 rounded"
+                      />
+                      <span className="text-sm text-gray-700">{label}</span>
+                    </label>
+                  ))}
+                </div>
+
+                <Button
+                  onClick={handleBulkPricing}
                   disabled={isProcessing || selectedCount === 0}
                   className="w-full"
                 >
-                  <Calendar className="w-4 h-4 mr-2" />
-                  Update Min Stay for {selectedCount} Dates
+                  {isProcessing ? <><span className="animate-spin mr-2">⏳</span>Updating…</> : <><Calendar className="w-4 h-4 mr-2" />Apply to {selectedCount} Date(s)</>}
                 </Button>
               </div>
             </TabsContent>

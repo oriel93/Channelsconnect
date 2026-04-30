@@ -223,6 +223,7 @@ export class ChannexWhitelabelController {
       body.rate ?? 100,
       body.availability ?? 1,
       body.minStay ?? 1,
+      body.listingId ?? undefined, // pass listingId for varied DB-backed rates
     );
     return {
       success: true,

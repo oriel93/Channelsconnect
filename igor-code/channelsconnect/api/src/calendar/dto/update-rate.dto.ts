@@ -7,14 +7,26 @@ export class UpdateRateDto {
   @ApiProperty()
   date: Date;
 
-  @ApiProperty()
-  price: number;
+  @ApiProperty({ required: false })
+  price?: number;
 
   @ApiProperty({ required: false })
   minStay?: number;
 
+  @ApiProperty({ required: false })
+  maxStay?: number;
+
   @ApiProperty({ required: false, default: true })
   available?: boolean;
+
+  @ApiProperty({ required: false, description: 'Stop sell — closed=true in Channex' })
+  stopSell?: boolean;
+
+  @ApiProperty({ required: false })
+  closedToArrival?: boolean;
+
+  @ApiProperty({ required: false })
+  closedToDeparture?: boolean;
 }
 
 export class BulkUpdateRatesDto {
@@ -27,13 +39,25 @@ export class BulkUpdateRatesDto {
   @ApiProperty()
   endDate: Date;
 
-  @ApiProperty()
-  price: number;
+  @ApiProperty({ required: false })
+  price?: number;
 
   @ApiProperty({ required: false })
   minStay?: number;
 
   @ApiProperty({ required: false })
+  maxStay?: number;
+
+  @ApiProperty({ required: false })
   available?: boolean;
+
+  @ApiProperty({ required: false })
+  stopSell?: boolean;
+
+  @ApiProperty({ required: false })
+  closedToArrival?: boolean;
+
+  @ApiProperty({ required: false })
+  closedToDeparture?: boolean;
 }
 
