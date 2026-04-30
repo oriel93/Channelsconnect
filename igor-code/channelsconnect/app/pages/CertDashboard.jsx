@@ -1,18 +1,45 @@
 /**
  * CertDashboard.jsx — Channex PMS Certification Control Panel
  *
- * Covers all 14 PMS certification tests using EXACT values from the Channex cert spec.
+ * Uses EXACT values from the Channex PMS Certification spec:
+ *   https://docs.channex.io/api-v.1-documentation/pms-certification-tests
+ *
+ * T1  — Full 500-day ARI sync: EXACTLY 2 Channex API calls
+ *        Call 1: POST /availability  (ALL room types × 500 days)
+ *        Call 2: POST /restrictions  (ALL rate plans × 500 days)
+ * T2  — Single date / single rate  → 1 call
+ * T3  — Single dates / multiple rates → 1 call (batch)
+ * T4  — Date ranges / multiple rates → 1 call (batch)
+ * T5  — Min stay update → 1 call
+ * T6  — Stop sell update → 1 call
+ * T7  — Multiple restrictions → 1 call (batch)
+ * T8  — Half-year update → 1 call
+ * T9  — Single date availability → 1-2 calls
+ * T10 — Multi-date availability → 1-2 calls
+ * T11-T14 — Booking receive (webhook auto-handles; Booking.com fires these)
+ *
  * All cert endpoints are @Public() — no login required.
  * Property IDs auto-loaded from GET /connect/cert/property-info.
  *
- * Anti-pattern note: This dashboard exists because Channels Connect IS the PMS.
- * The cert endpoints are wired into the real calendar/sync service code path.
- * The dashboard is the PMS UI that triggers those real code paths.
+ * NOTE: This dashboard IS the PMS UI for Channels Connect.
+ * These buttons trigger real code paths in the production calendar/sync service.
+ *
+ * CTD support: Channels Connect supports closed_to_departure via the ARI batch
+ * endpoint. See T7 which explicitly includes CTD=true for Twin B&B Nov 12-16.
+ * Min Stay is sent as min_stay_arrival (Channex standard field).
  */
 
 import { useState, useEffect, useCallback } from 'react';
 
 const API = (import.meta.env.VITE_API_URL || 'https://api.channelsconnect.com').replace(/\/+$/, '');
+
+// Channex cert room/rate UUIDs (staging property 3db72f15)
+const RT_TWIN   = '6b96aa09-eeb1-4b17-a35c-632af5d05462';
+const RT_DOUBLE = '56878137-7f9f-42d5-b2b7-96eb514045ba';
+const RP_TWIN_BAR  = '23a07c9b-2af0-4d6c-9c4e-d73011a7f752';
+const RP_TWIN_BB   = 'f4ab2c55-86f7-49d9-a954-9ea743ff3d8a';
+const RP_DBL_BAR   = '3040e917-4010-4242-a01f-f8b407f169f9';
+const RP_DBL_BB    = 'a3496a99-423f-466e-a930-62cf7e5e6acc';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -72,10 +99,10 @@ function TaskBox({ taskId, label }) {
   );
 }
 
-function Section({ title, badge, desc, children }) {
+function Section({ title, badge, desc, children, warn }) {
   return (
     <div style={{
-      background: '#1e293b', border: '1px solid #334155', borderRadius: 12,
+      background: '#1e293b', border: `1px solid ${warn ? '#92400e' : '#334155'}`, borderRadius: 12,
       padding: '20px 24px', marginBottom: 16,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: desc ? 8 : 14 }}>
@@ -88,6 +115,7 @@ function Section({ title, badge, desc, children }) {
         )}
       </div>
       {desc && <p style={{ margin: '0 0 14px', fontSize: 13, color: '#94a3b8', lineHeight: 1.6 }}>{desc}</p>}
+      {warn && <p style={{ margin: '0 0 14px', fontSize: 12, color: '#fcd34d', background: '#1c1007', padding: '8px 12px', borderRadius: 6 }}>{warn}</p>}
       {children}
     </div>
   );
@@ -107,6 +135,29 @@ function Btn({ loading, onClick, children, color = 'blue', disabled }) {
   );
 }
 
+function SpecTable({ rows }) {
+  return (
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginBottom: 12 }}>
+      <thead>
+        <tr>
+          {Object.keys(rows[0]).map(k => (
+            <th key={k} style={{ textAlign: 'left', padding: '4px 8px', color: '#64748b', borderBottom: '1px solid #334155' }}>{k}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row, i) => (
+          <tr key={i}>
+            {Object.values(row).map((v, j) => (
+              <td key={j} style={{ padding: '4px 8px', color: '#cbd5e1', borderBottom: '1px solid #1e293b' }}>{String(v)}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function CertDashboard() {
@@ -115,7 +166,7 @@ export default function CertDashboard() {
   const [propError, setPropError] = useState(null);
   const [taskLog, setTaskLog] = useState([]);
 
-  // Per-test state: { loading, error, result }
+  // Per-test state
   const [t1, setT1] = useState({});
   const [t2, setT2] = useState({});
   const [t3, setT3] = useState({});
@@ -156,159 +207,177 @@ export default function CertDashboard() {
     }
   }
 
-  // ── T1: Full 500-day ARI for ALL combos ──────────────────────────────────
+  // ── T1: Full 500-day ARI — EXACTLY 2 API calls (all rooms + all rates) ────
+  // Spec: "1 x 500 days for Availability (All Rooms)"
+  //       "1 x 500 days Rates & restrictions (All Rates)"
   const runT1 = () => run(setT1, async () => {
     const r = await apiFetch('/connect/ari/full', {
       method: 'POST',
       body: JSON.stringify({
         propertyId: P.propertyId,
-        listingId: P.listingId,
-        combos: P.combos,
-        rate: 100,
-        availability: 1,
-        minStay: 1,
+        listingId:  P.listingId,
+        // New shape: explicit lists so the backend never loops per-combo
+        roomTypes: [
+          { roomTypeId: RT_TWIN },
+          { roomTypeId: RT_DOUBLE },
+        ],
+        ratePlans: [
+          { roomTypeId: RT_TWIN,   ratePlanId: RP_TWIN_BAR },
+          { roomTypeId: RT_TWIN,   ratePlanId: RP_TWIN_BB  },
+          { roomTypeId: RT_DOUBLE, ratePlanId: RP_DBL_BAR  },
+          { roomTypeId: RT_DOUBLE, ratePlanId: RP_DBL_BB   },
+        ],
       }),
     });
-    (r.taskIds || []).forEach((id, i) => addTask(`T1 Full ARI call ${i + 1}`, id));
+    // Should always be exactly 2 task IDs
+    addTask('T1 Call 1 — Availability (ALL rooms)', r.availabilityTaskId || r.taskIds?.[0]);
+    addTask('T1 Call 2 — Restrictions (ALL rates)',  r.restrictionsTaskId  || r.taskIds?.[1]);
     return r;
   });
 
-  // ── T2: Single date rate update (Twin BAR, 2026-11-01) ───────────────────
+  // ── T2: Single Date Update for Single Rate ────────────────────────────────
+  // Spec: Twin Room | Best Available Rate | 22 Nov 2026 | $333
   const runT2 = () => run(setT2, async () => {
-    const combo = P.combos.find(c => c.roomTypeId === '6b96aa09-eeb1-4b17-a35c-632af5d05462' && c.ratePlanId === '23a07c9b-2af0-4d6c-9c4e-d73011a7f752') || P.combos[0];
     const r = await apiFetch('/connect/ari/update', {
       method: 'POST',
       body: JSON.stringify({
         propertyId: P.propertyId,
-        roomTypeId: combo.roomTypeId,
-        ratePlanId: combo.ratePlanId,
-        dateFrom: '2026-11-01',
-        dateTo: '2026-11-01',
-        rate: 185,
-        minStay: 1,
+        roomTypeId: RT_TWIN,
+        ratePlanId: RP_TWIN_BAR,
+        dateFrom:   '2026-11-22',
+        dateTo:     '2026-11-22',
+        rate:       333,
       }),
     });
-    addTask('T2 Single Date Rate', r.taskId);
+    addTask('T2 Single Date / Single Rate (Twin BAR Nov 22 = $333)', r.taskId);
     return r;
   });
 
-  // ── T3: Multi-date rate (all 4 combos, 1 API call) ──────────────────────
-  // Cert spec: Twin BAR 2026-11-05→10 @125, Twin B&B 2026-11-05→10 @145,
-  //            Double BAR 2026-11-05→10 @135, Double B&B 2026-11-05→10 @155
+  // ── T3: Single Date Update for Multiple Rates — 1 API call ───────────────
+  // Spec: Twin BAR Nov21=$333 | Double BAR Nov25=$444 | Double B&B Nov29=$456.23
   const runT3 = () => run(setT3, async () => {
-    const entries = [
-      { roomTypeId: '6b96aa09-eeb1-4b17-a35c-632af5d05462', ratePlanId: '23a07c9b-2af0-4d6c-9c4e-d73011a7f752', dateFrom: '2026-11-05', dateTo: '2026-11-10', rate: 125, minStay: 2 },
-      { roomTypeId: '6b96aa09-eeb1-4b17-a35c-632af5d05462', ratePlanId: 'f4ab2c55-86f7-49d9-a954-9ea743ff3d8a', dateFrom: '2026-11-05', dateTo: '2026-11-10', rate: 145, minStay: 2 },
-      { roomTypeId: '56878137-7f9f-42d5-b2b7-96eb514045ba', ratePlanId: '3040e917-4010-4242-a01f-f8b407f169f9', dateFrom: '2026-11-05', dateTo: '2026-11-10', rate: 135, minStay: 2 },
-      { roomTypeId: '56878137-7f9f-42d5-b2b7-96eb514045ba', ratePlanId: 'a3496a99-423f-466e-a930-62cf7e5e6acc', dateFrom: '2026-11-05', dateTo: '2026-11-10', rate: 155, minStay: 2 },
-    ];
     const r = await apiFetch('/connect/ari/batch', {
       method: 'POST',
-      body: JSON.stringify({ propertyId: P.propertyId, entries }),
+      body: JSON.stringify({
+        propertyId: P.propertyId,
+        entries: [
+          { roomTypeId: RT_TWIN,   ratePlanId: RP_TWIN_BAR, dateFrom: '2026-11-21', dateTo: '2026-11-21', rate: 333 },
+          { roomTypeId: RT_DOUBLE, ratePlanId: RP_DBL_BAR,  dateFrom: '2026-11-25', dateTo: '2026-11-25', rate: 444 },
+          { roomTypeId: RT_DOUBLE, ratePlanId: RP_DBL_BB,   dateFrom: '2026-11-29', dateTo: '2026-11-29', rate: 456.23 },
+        ],
+      }),
     });
-    addTask('T3 Multi-Date Rate (4 combos, 1 call)', r.taskId);
+    addTask('T3 Multi-Rate Single Dates (3 rates, 1 call)', r.taskId);
     return r;
   });
 
-  // ── T4: Min stay update (Twin BAR, single date) ─────────────────────────
+  // ── T4: Multiple Date Update for Multiple Rates — 1 API call ─────────────
+  // Spec: Twin BAR Nov1-10=$241 | Double BAR Nov10-16=$312.66 | Double B&B Nov1-20=$111
   const runT4 = () => run(setT4, async () => {
-    const r = await apiFetch('/connect/ari/update', {
-      method: 'POST',
-      body: JSON.stringify({
-        propertyId: P.propertyId,
-        roomTypeId: '6b96aa09-eeb1-4b17-a35c-632af5d05462',
-        ratePlanId: '23a07c9b-2af0-4d6c-9c4e-d73011a7f752',
-        dateFrom: '2026-11-15',
-        dateTo: '2026-11-15',
-        minStay: 3,
-      }),
-    });
-    addTask('T4 Min Stay Update', r.taskId);
-    return r;
-  });
-
-  // ── T5: Stop sell (Twin BAR, 2026-11-20) ────────────────────────────────
-  const runT5 = () => run(setT5, async () => {
-    const r = await apiFetch('/connect/ari/update', {
-      method: 'POST',
-      body: JSON.stringify({
-        propertyId: P.propertyId,
-        roomTypeId: '6b96aa09-eeb1-4b17-a35c-632af5d05462',
-        ratePlanId: '23a07c9b-2af0-4d6c-9c4e-d73011a7f752',
-        dateFrom: '2026-11-20',
-        dateTo: '2026-11-20',
-        stopSell: true,
-      }),
-    });
-    addTask('T5 Stop Sell', r.taskId);
-    return r;
-  });
-
-  // ── T6: Closed to arrival (Twin BAR, 2026-11-22) ────────────────────────
-  const runT6 = () => run(setT6, async () => {
-    const r = await apiFetch('/connect/ari/update', {
-      method: 'POST',
-      body: JSON.stringify({
-        propertyId: P.propertyId,
-        roomTypeId: '6b96aa09-eeb1-4b17-a35c-632af5d05462',
-        ratePlanId: '23a07c9b-2af0-4d6c-9c4e-d73011a7f752',
-        dateFrom: '2026-11-22',
-        dateTo: '2026-11-22',
-        closedToArrival: true,
-      }),
-    });
-    addTask('T6 Closed to Arrival', r.taskId);
-    return r;
-  });
-
-  // ── T7: Multiple restrictions (4 combos, 1 API call) ────────────────────
-  // Cert spec exact values:
-  // Twin BAR  Nov 1-10:  CTA=true, CTD=false, maxStay=4, minStay=1
-  // Twin B&B  Nov 12-16: CTA=false, CTD=true, minStay=6
-  // Double BAR Nov 10-16: CTA=true, minStay=2
-  // Double B&B Nov 1-20: minStay=10
-  const runT7 = () => run(setT7, async () => {
-    const entries = [
-      { roomTypeId: '6b96aa09-eeb1-4b17-a35c-632af5d05462', ratePlanId: '23a07c9b-2af0-4d6c-9c4e-d73011a7f752', dateFrom: '2026-11-01', dateTo: '2026-11-10', closedToArrival: true, closedToDeparture: false, maxStay: 4, minStay: 1 },
-      { roomTypeId: '6b96aa09-eeb1-4b17-a35c-632af5d05462', ratePlanId: 'f4ab2c55-86f7-49d9-a954-9ea743ff3d8a', dateFrom: '2026-11-12', dateTo: '2026-11-16', closedToArrival: false, closedToDeparture: true, minStay: 6 },
-      { roomTypeId: '56878137-7f9f-42d5-b2b7-96eb514045ba', ratePlanId: '3040e917-4010-4242-a01f-f8b407f169f9', dateFrom: '2026-11-10', dateTo: '2026-11-16', closedToArrival: true, minStay: 2 },
-      { roomTypeId: '56878137-7f9f-42d5-b2b7-96eb514045ba', ratePlanId: 'a3496a99-423f-466e-a930-62cf7e5e6acc', dateFrom: '2026-11-01', dateTo: '2026-11-20', minStay: 10 },
-    ];
     const r = await apiFetch('/connect/ari/batch', {
       method: 'POST',
-      body: JSON.stringify({ propertyId: P.propertyId, entries }),
+      body: JSON.stringify({
+        propertyId: P.propertyId,
+        entries: [
+          { roomTypeId: RT_TWIN,   ratePlanId: RP_TWIN_BAR, dateFrom: '2026-11-01', dateTo: '2026-11-10', rate: 241    },
+          { roomTypeId: RT_DOUBLE, ratePlanId: RP_DBL_BAR,  dateFrom: '2026-11-10', dateTo: '2026-11-16', rate: 312.66 },
+          { roomTypeId: RT_DOUBLE, ratePlanId: RP_DBL_BB,   dateFrom: '2026-11-01', dateTo: '2026-11-20', rate: 111    },
+        ],
+      }),
+    });
+    addTask('T4 Multi-Rate Date Ranges (3 rates, 1 call)', r.taskId);
+    return r;
+  });
+
+  // ── T5: Min Stay Update — 1 API call ─────────────────────────────────────
+  // Spec: Twin BAR Nov23=3 | Double BAR Nov25=2 | Double B&B Nov15=5
+  const runT5 = () => run(setT5, async () => {
+    const r = await apiFetch('/connect/ari/batch', {
+      method: 'POST',
+      body: JSON.stringify({
+        propertyId: P.propertyId,
+        entries: [
+          { roomTypeId: RT_TWIN,   ratePlanId: RP_TWIN_BAR, dateFrom: '2026-11-23', dateTo: '2026-11-23', minStay: 3 },
+          { roomTypeId: RT_DOUBLE, ratePlanId: RP_DBL_BAR,  dateFrom: '2026-11-25', dateTo: '2026-11-25', minStay: 2 },
+          { roomTypeId: RT_DOUBLE, ratePlanId: RP_DBL_BB,   dateFrom: '2026-11-15', dateTo: '2026-11-15', minStay: 5 },
+        ],
+      }),
+    });
+    addTask('T5 Min Stay Update (3 rates, 1 call)', r.taskId);
+    return r;
+  });
+
+  // ── T6: Stop Sell Update — 1 API call ────────────────────────────────────
+  // Spec: Twin BAR Nov14=true | Double BAR Nov16=true | Double B&B Nov20=true
+  const runT6 = () => run(setT6, async () => {
+    const r = await apiFetch('/connect/ari/batch', {
+      method: 'POST',
+      body: JSON.stringify({
+        propertyId: P.propertyId,
+        entries: [
+          { roomTypeId: RT_TWIN,   ratePlanId: RP_TWIN_BAR, dateFrom: '2026-11-14', dateTo: '2026-11-14', stopSell: true },
+          { roomTypeId: RT_DOUBLE, ratePlanId: RP_DBL_BAR,  dateFrom: '2026-11-16', dateTo: '2026-11-16', stopSell: true },
+          { roomTypeId: RT_DOUBLE, ratePlanId: RP_DBL_BB,   dateFrom: '2026-11-20', dateTo: '2026-11-20', stopSell: true },
+        ],
+      }),
+    });
+    addTask('T6 Stop Sell (3 rates, 1 call)', r.taskId);
+    return r;
+  });
+
+  // ── T7: Multiple Restrictions — 1 API call ───────────────────────────────
+  // Spec (exact):
+  //   Twin BAR  Nov01-10: CTA=true,  CTD=false, maxStay=4, minStay=1
+  //   Twin B&B  Nov12-16: CTA=false, CTD=true,  minStay=6
+  //   Double BAR Nov10-16: CTA=true,  minStay=2
+  //   Double B&B Nov01-20: minStay=10
+  const runT7 = () => run(setT7, async () => {
+    const r = await apiFetch('/connect/ari/batch', {
+      method: 'POST',
+      body: JSON.stringify({
+        propertyId: P.propertyId,
+        entries: [
+          { roomTypeId: RT_TWIN,   ratePlanId: RP_TWIN_BAR, dateFrom: '2026-11-01', dateTo: '2026-11-10', closedToArrival: true,  closedToDeparture: false, maxStay: 4, minStay: 1 },
+          { roomTypeId: RT_TWIN,   ratePlanId: RP_TWIN_BB,  dateFrom: '2026-11-12', dateTo: '2026-11-16', closedToArrival: false, closedToDeparture: true,  minStay: 6 },
+          { roomTypeId: RT_DOUBLE, ratePlanId: RP_DBL_BAR,  dateFrom: '2026-11-10', dateTo: '2026-11-16', closedToArrival: true,  minStay: 2 },
+          { roomTypeId: RT_DOUBLE, ratePlanId: RP_DBL_BB,   dateFrom: '2026-11-01', dateTo: '2026-11-20', minStay: 10 },
+        ],
+      }),
     });
     addTask('T7 Multiple Restrictions (4 combos, 1 call)', r.taskId);
     return r;
   });
 
-  // ── T8: Half-year update (2 combos, 1 API call) ─────────────────────────
-  // Cert spec: Twin BAR Dec 1 2026 → May 1 2027 @432, minStay=2
-  //            Double BAR Dec 1 2026 → May 1 2027 @342, minStay=3
+  // ── T8: Half-Year Update — 1 API call ────────────────────────────────────
+  // Spec: Twin BAR Dec1'26-May1'27 @$432 minStay=2 CTA=false CTD=false
+  //        Double BAR Dec1'26-May1'27 @$342 minStay=3
   const runT8 = () => run(setT8, async () => {
-    const entries = [
-      { roomTypeId: '6b96aa09-eeb1-4b17-a35c-632af5d05462', ratePlanId: '23a07c9b-2af0-4d6c-9c4e-d73011a7f752', dateFrom: '2026-12-01', dateTo: '2027-05-01', rate: 432, closedToArrival: false, closedToDeparture: false, minStay: 2 },
-      { roomTypeId: '56878137-7f9f-42d5-b2b7-96eb514045ba', ratePlanId: '3040e917-4010-4242-a01f-f8b407f169f9', dateFrom: '2026-12-01', dateTo: '2027-05-01', rate: 342, minStay: 3 },
-    ];
     const r = await apiFetch('/connect/ari/batch', {
       method: 'POST',
-      body: JSON.stringify({ propertyId: P.propertyId, entries }),
+      body: JSON.stringify({
+        propertyId: P.propertyId,
+        entries: [
+          { roomTypeId: RT_TWIN,   ratePlanId: RP_TWIN_BAR, dateFrom: '2026-12-01', dateTo: '2027-05-01', rate: 432, minStay: 2, closedToArrival: false, closedToDeparture: false },
+          { roomTypeId: RT_DOUBLE, ratePlanId: RP_DBL_BAR,  dateFrom: '2026-12-01', dateTo: '2027-05-01', rate: 342, minStay: 3 },
+        ],
+      }),
     });
-    addTask('T8 Half-Year Bulk (2 combos, 1 call)', r.taskId);
+    addTask('T8 Half-Year (2 combos, 1 call)', r.taskId);
     return r;
   });
 
-  // ── T9: Single date availability (Twin=7, Double=0) ─────────────────────
-  // Cert spec: Twin Nov 21 → 7, Double Nov 25 → 0 (1 or 2 API calls ok)
+  // ── T9: Single Date Availability — 1 or 2 calls ──────────────────────────
+  // Spec: Twin Nov21=7, Double Nov25=0
+  // Note: availability is per-room-type, NOT per-rate-plan.
+  // We send 2 calls (one per room type) which is within spec ("1 or 2 API calls").
   const runT9 = () => run(setT9, async () => {
     const r1 = await apiFetch('/connect/ari/update', {
       method: 'POST',
       body: JSON.stringify({
         propertyId: P.propertyId,
-        roomTypeId: '6b96aa09-eeb1-4b17-a35c-632af5d05462',
-        ratePlanId: '23a07c9b-2af0-4d6c-9c4e-d73011a7f752',
-        dateFrom: '2026-11-21',
-        dateTo: '2026-11-21',
+        roomTypeId: RT_TWIN,
+        ratePlanId: RP_TWIN_BAR, // rate plan needed for endpoint routing; availability uses room type
+        dateFrom: '2026-11-21', dateTo: '2026-11-21',
         availability: 7,
       }),
     });
@@ -317,10 +386,9 @@ export default function CertDashboard() {
       method: 'POST',
       body: JSON.stringify({
         propertyId: P.propertyId,
-        roomTypeId: '56878137-7f9f-42d5-b2b7-96eb514045ba',
-        ratePlanId: '3040e917-4010-4242-a01f-f8b407f169f9',
-        dateFrom: '2026-11-25',
-        dateTo: '2026-11-25',
+        roomTypeId: RT_DOUBLE,
+        ratePlanId: RP_DBL_BAR,
+        dateFrom: '2026-11-25', dateTo: '2026-11-25',
         availability: 0,
       }),
     });
@@ -328,16 +396,16 @@ export default function CertDashboard() {
     return { taskId: r1.taskId, taskId2: r2.taskId };
   });
 
-  // ── T10: Multi-date availability (Twin Nov10-16=3, Double Nov17-24=4) ───
+  // ── T10: Multi-Date Availability — 1 or 2 calls ──────────────────────────
+  // Spec: Twin Nov10-16=3, Double Nov17-24=4
   const runT10 = () => run(setT10, async () => {
     const r1 = await apiFetch('/connect/ari/update', {
       method: 'POST',
       body: JSON.stringify({
         propertyId: P.propertyId,
-        roomTypeId: '6b96aa09-eeb1-4b17-a35c-632af5d05462',
-        ratePlanId: '23a07c9b-2af0-4d6c-9c4e-d73011a7f752',
-        dateFrom: '2026-11-10',
-        dateTo: '2026-11-16',
+        roomTypeId: RT_TWIN,
+        ratePlanId: RP_TWIN_BAR,
+        dateFrom: '2026-11-10', dateTo: '2026-11-16',
         availability: 3,
       }),
     });
@@ -346,10 +414,9 @@ export default function CertDashboard() {
       method: 'POST',
       body: JSON.stringify({
         propertyId: P.propertyId,
-        roomTypeId: '56878137-7f9f-42d5-b2b7-96eb514045ba',
-        ratePlanId: '3040e917-4010-4242-a01f-f8b407f169f9',
-        dateFrom: '2026-11-17',
-        dateTo: '2026-11-24',
+        roomTypeId: RT_DOUBLE,
+        ratePlanId: RP_DBL_BAR,
+        dateFrom: '2026-11-17', dateTo: '2026-11-24',
         availability: 4,
       }),
     });
@@ -357,9 +424,12 @@ export default function CertDashboard() {
     return { taskId: r1.taskId, taskId2: r2.taskId };
   });
 
-  // ── T11–T14: Booking ACK ──────────────────────────────────────────────────
+  // ── T11–T14: Booking events (webhook auto-handles these) ─────────────────
+  // Booking.com fires webhooks → our endpoint at /connect/webhook/booking-revision
+  // always responds { ack: true }. T11=new, T12=modify, T13/T14=cancel.
+  // To get the task ID for the form, enter the Channex booking ID here.
   const runT11 = () => run(setT11, async () => {
-    if (!t11.bookingId.trim()) throw new Error('Enter a Channex booking ID');
+    if (!t11.bookingId?.trim()) throw new Error('Enter the Channex booking ID from the webhook payload');
     const r = await apiFetch(`/connect/booking/${t11.bookingId.trim()}/ack`, { method: 'POST' });
     addTask('T11-T14 Booking ACK', t11.bookingId.trim());
     return r;
@@ -367,26 +437,22 @@ export default function CertDashboard() {
 
   // ─── render ──────────────────────────────────────────────────────────────
 
-  const TWIN_BAR  = '6b96aa09 / 23a07c9b';
-  const TWIN_BB   = '6b96aa09 / f4ab2c55';
-  const DBL_BAR   = '56878137 / 3040e917';
-  const DBL_BB    = '56878137 / a3496a99';
-
   return (
     <div style={{
       minHeight: '100vh', background: '#0f172a', color: '#f1f5f9',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       padding: '28px 20px',
     }}>
-      <div style={{ maxWidth: 900, margin: '0 auto' }}>
+      <div style={{ maxWidth: 960, margin: '0 auto' }}>
 
         {/* Header */}
         <div style={{ marginBottom: 20 }}>
           <h1 style={{ margin: '0 0 4px', fontSize: 24, fontWeight: 800 }}>
-            🏨 Channex PMS Certification — All 14 Tests
+            🏨 Channex PMS Certification — Tests T1–T14
           </h1>
           <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>
-            API: <code style={{ color: '#38bdf8' }}>{API}</code> · Exact cert spec values · No auth required
+            API: <code style={{ color: '#38bdf8' }}>{API}</code>
+            {' · '}Exact values from <a href="https://docs.channex.io/api-v.1-documentation/pms-certification-tests" target="_blank" rel="noreferrer" style={{ color: '#38bdf8' }}>Channex cert spec</a>
           </p>
         </div>
 
@@ -398,204 +464,258 @@ export default function CertDashboard() {
           {propLoading && <span style={{ color: '#64748b' }}>⏳ Loading cert property info…</span>}
           {propError && <span style={{ color: '#fca5a5' }}>❌ {propError}</span>}
           {P && (
-            <div style={{ fontSize: 12, fontFamily: 'monospace', color: '#93c5fd', lineHeight: 2 }}>
-              <strong style={{ color: '#60a5fa', fontFamily: 'sans-serif', fontSize: 13 }}>
-                ✅ {P.listingTitle} — {P.combos?.length || 1} room/rate combos loaded
-              </strong><br />
-              propertyId: <span style={{ color: '#4ade80' }}>{P.propertyId}</span><br />
-              <span style={{ color: '#94a3b8' }}>
-                Twin BAR: 6b96aa09 / 23a07c9b &nbsp;|&nbsp;
-                Twin B&B: 6b96aa09 / f4ab2c55<br />
-                Double BAR: 56878137 / 3040e917 &nbsp;|&nbsp;
-                Double B&B: 56878137 / a3496a99
-              </span>
+            <div style={{ fontSize: 13, color: '#94a3b8', display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+              <span>Property: <code style={{ color: '#38bdf8' }}>{P.propertyId}</code></span>
+              <span>Listing: <code style={{ color: '#38bdf8' }}>{P.listingId}</code></span>
+              <span>Combos: <code style={{ color: '#38bdf8' }}>{P.combos?.length ?? 0}</code></span>
             </div>
           )}
         </div>
 
-        {/* Task Log */}
-        {taskLog.length > 0 && (
-          <div style={{
-            background: '#0d1f0d', border: '2px solid #22c55e',
-            borderRadius: 10, padding: '14px 18px', marginBottom: 16,
-          }}>
-            <div style={{ color: '#86efac', fontWeight: 700, marginBottom: 8, fontSize: 14 }}>
-              📋 Task ID Log — copy into certification form
-            </div>
-            {taskLog.map((e, i) => (
-              <div key={i} style={{ fontFamily: 'monospace', fontSize: 12, color: '#4ade80', padding: '2px 0' }}>
-                [{e.ts}] {e.label}: <strong>{e.id}</strong>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* T1 */}
-        <Section title="Test 1 — Full 500-Day ARI Push" badge="2 API calls per combo"
-          desc="Pushes availability + rates for today → +500 days across all 4 room/rate combos. Uses 2 Channex API calls per combo (availability + restrictions).">
-          <Btn loading={t1.loading} onClick={runT1} disabled={!P} color="purple">
-            🚀 Push Full 500-Day ARI (All Combos)
-          </Btn>
+        {/* T1 ── Full 500-day ARI (EXACTLY 2 API calls) */}
+        <Section
+          title="T1 — Full 500-Day ARI Sync"
+          badge="EXACTLY 2 API CALLS"
+          desc="Spec: '1 × 500 days for Availability (All Rooms)' + '1 × 500 days Rates & restrictions (All Rates)'. Data is realistic (varied by season, day-of-week, listing seed). Never flat uniform values."
+        >
+          <SpecTable rows={[
+            { 'Call': '1', 'Endpoint': 'POST /availability', 'Covers': 'Twin + Double room types × 500 days' },
+            { 'Call': '2', 'Endpoint': 'POST /restrictions', 'Covers': 'Twin BAR + Twin B&B + Double BAR + Double B&B × 500 days' },
+          ]} />
+          <Btn loading={t1.loading} onClick={runT1} color="purple">Push Full 500-Day ARI</Btn>
           <ErrBox msg={t1.error} />
           {t1.result && (
             <>
-              <div style={{ marginTop: 10, color: '#86efac', fontSize: 13 }}>✅ {t1.result.message}</div>
-              {(t1.result.taskIds || []).map((id, i) => (
-                <TaskBox key={id} taskId={id} label={`Call ${i + 1} Task ID`} />
-              ))}
+              <TaskBox taskId={t1.result.availabilityTaskId || t1.result.taskIds?.[0]} label="T1 Call 1 — Availability (ALL rooms)" />
+              <TaskBox taskId={t1.result.restrictionsTaskId  || t1.result.taskIds?.[1]} label="T1 Call 2 — Restrictions (ALL rates)" />
+              <div style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>
+                {t1.result.callCount === 2
+                  ? '✅ Exactly 2 API calls sent'
+                  : `⚠️ ${t1.result.callCount} calls sent (expected 2)`}
+              </div>
             </>
           )}
         </Section>
 
         {/* T2 */}
-        <Section title="Test 2 — Single Date Rate Update" badge="1 API call"
-          desc="Twin Room / Best Available Rate · 2026-11-01 · Rate: $185 · minStay: 1">
-          <Btn loading={t2.loading} onClick={runT2} disabled={!P} color="blue">
-            ⚡ Update Twin BAR — Nov 1 @ $185
-          </Btn>
+        <Section
+          title="T2 — Single Date / Single Rate"
+          badge="1 API call"
+          desc="Spec: Twin Room | Best Available Rate | 22 Nov 2026 | $333"
+        >
+          <SpecTable rows={[{ 'Room': 'Twin', 'Rate Plan': 'Best Available', 'Date': '22 Nov 2026', 'Value': '$333' }]} />
+          <Btn loading={t2.loading} onClick={runT2}>Send T2</Btn>
           <ErrBox msg={t2.error} />
-          <TaskBox taskId={t2.result?.taskId} label="T2 Task ID" />
+          <TaskBox taskId={t2.result?.taskId} label="T2 Restrictions Task ID" />
         </Section>
 
         {/* T3 */}
-        <Section title="Test 3 — Multiple Dates Rate Update (All 4 combos)" badge="1 API call"
-          desc="Twin BAR + Twin B&B + Double BAR + Double B&B · Nov 5–10 · Varied rates · Sent in a single POST /restrictions call.">
-          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 12, fontFamily: 'monospace', lineHeight: 1.8 }}>
-            Twin BAR  Nov 5-10: $125, minStay=2<br/>
-            Twin B&B  Nov 5-10: $145, minStay=2<br/>
-            Double BAR Nov 5-10: $135, minStay=2<br/>
-            Double B&B Nov 5-10: $155, minStay=2
-          </div>
-          <Btn loading={t3.loading} onClick={runT3} disabled={!P} color="blue">
-            ⚡ Update All 4 Combos — Nov 5–10
-          </Btn>
+        <Section
+          title="T3 — Single Date / Multiple Rates"
+          badge="1 API call"
+          desc="Spec: 3 rate plan updates for different rooms/dates — batched into a single POST /restrictions."
+        >
+          <SpecTable rows={[
+            { 'Room': 'Twin',   'Rate Plan': 'Best Available', 'Date': '21 Nov 2026', 'Value': '$333'    },
+            { 'Room': 'Double', 'Rate Plan': 'Best Available', 'Date': '25 Nov 2026', 'Value': '$444'    },
+            { 'Room': 'Double', 'Rate Plan': 'Bed & Breakfast','Date': '29 Nov 2026', 'Value': '$456.23' },
+          ]} />
+          <Btn loading={t3.loading} onClick={runT3}>Send T3</Btn>
           <ErrBox msg={t3.error} />
-          <TaskBox taskId={t3.result?.taskId} label="T3 Task ID (1 call)" />
+          <TaskBox taskId={t3.result?.taskId} label="T3 Batch Restrictions Task ID" />
         </Section>
 
         {/* T4 */}
-        <Section title="Test 4 — Min Stay Restriction" badge="1 API call"
-          desc="Twin Room / Best Available Rate · 2026-11-15 · minStay: 3 nights">
-          <Btn loading={t4.loading} onClick={runT4} disabled={!P} color="amber">
-            🔒 Set Min Stay 3 — Twin BAR Nov 15
-          </Btn>
+        <Section
+          title="T4 — Date Ranges / Multiple Rates"
+          badge="1 API call"
+          desc="Spec: 3 rate plan updates with date ranges — single POST /restrictions."
+        >
+          <SpecTable rows={[
+            { 'Room': 'Twin',   'Rate Plan': 'Best Available', 'Dates': '01–10 Nov 2026', 'Value': '$241'    },
+            { 'Room': 'Double', 'Rate Plan': 'Best Available', 'Dates': '10–16 Nov 2026', 'Value': '$312.66' },
+            { 'Room': 'Double', 'Rate Plan': 'Bed & Breakfast','Dates': '01–20 Nov 2026', 'Value': '$111'    },
+          ]} />
+          <Btn loading={t4.loading} onClick={runT4}>Send T4</Btn>
           <ErrBox msg={t4.error} />
-          <TaskBox taskId={t4.result?.taskId} label="T4 Task ID" />
+          <TaskBox taskId={t4.result?.taskId} label="T4 Batch Restrictions Task ID" />
         </Section>
 
         {/* T5 */}
-        <Section title="Test 5 — Stop Sell (Close Date)" badge="1 API call"
-          desc="Twin Room / Best Available Rate · 2026-11-20 · stop_sell: true">
-          <Btn loading={t5.loading} onClick={runT5} disabled={!P} color="amber">
-            🔒 Close Nov 20 (Stop Sell)
-          </Btn>
+        <Section
+          title="T5 — Min Stay Update"
+          badge="1 API call"
+          desc="Spec: min_stay_arrival for 3 rate plans. Sent as closed=false, only min_stay_arrival changes."
+        >
+          <SpecTable rows={[
+            { 'Room': 'Twin',   'Rate Plan': 'Best Available', 'Date': '23 Nov 2026', 'Min Stay': '3' },
+            { 'Room': 'Double', 'Rate Plan': 'Best Available', 'Date': '25 Nov 2026', 'Min Stay': '2' },
+            { 'Room': 'Double', 'Rate Plan': 'Bed & Breakfast','Date': '15 Nov 2026', 'Min Stay': '5' },
+          ]} />
+          <Btn loading={t5.loading} onClick={runT5} color="amber">Send T5</Btn>
           <ErrBox msg={t5.error} />
-          <TaskBox taskId={t5.result?.taskId} label="T5 Task ID" />
+          <TaskBox taskId={t5.result?.taskId} label="T5 Min Stay Task ID" />
         </Section>
 
         {/* T6 */}
-        <Section title="Test 6 — Closed to Arrival" badge="1 API call"
-          desc="Twin Room / Best Available Rate · 2026-11-22 · closed_to_arrival: true">
-          <Btn loading={t6.loading} onClick={runT6} disabled={!P} color="amber">
-            🔒 Closed to Arrival — Nov 22
-          </Btn>
+        <Section
+          title="T6 — Stop Sell Update"
+          badge="1 API call"
+          desc="Spec: closed=true for 3 rate plans on specific dates."
+        >
+          <SpecTable rows={[
+            { 'Room': 'Twin',   'Rate Plan': 'Best Available', 'Date': '14 Nov 2026', 'Stop Sell': 'true' },
+            { 'Room': 'Double', 'Rate Plan': 'Best Available', 'Date': '16 Nov 2026', 'Stop Sell': 'true' },
+            { 'Room': 'Double', 'Rate Plan': 'Bed & Breakfast','Date': '20 Nov 2026', 'Stop Sell': 'true' },
+          ]} />
+          <Btn loading={t6.loading} onClick={runT6} color="red">Send T6</Btn>
           <ErrBox msg={t6.error} />
-          <TaskBox taskId={t6.result?.taskId} label="T6 Task ID" />
+          <TaskBox taskId={t6.result?.taskId} label="T6 Stop Sell Task ID" />
         </Section>
 
         {/* T7 */}
-        <Section title="Test 7 — Multiple Restrictions (All 4 combos)" badge="1 API call"
-          desc="Exact values from cert spec — all 4 room/rate combos with different restrictions, sent in ONE API call.">
-          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 12, fontFamily: 'monospace', lineHeight: 1.8 }}>
-            Twin BAR  Nov 1-10:  CTA=true, CTD=false, maxStay=4, minStay=1<br/>
-            Twin B&B  Nov 12-16: CTA=false, CTD=true, minStay=6<br/>
-            Double BAR Nov 10-16: CTA=true, minStay=2<br/>
-            Double B&B Nov 1-20: minStay=10
-          </div>
-          <Btn loading={t7.loading} onClick={runT7} disabled={!P} color="amber">
-            🔒 Apply All Restrictions (1 call)
-          </Btn>
+        <Section
+          title="T7 — Multiple Restrictions"
+          badge="1 API call"
+          desc="Spec: 4 combos with CTA/CTD/maxStay/minStay. Channels Connect supports all restriction types including closed_to_departure."
+        >
+          <SpecTable rows={[
+            { 'Room/Rate': 'Twin BAR',    'Dates': '01–10 Nov', 'CTA': 'true',  'CTD': 'false', 'maxStay': '4', 'minStay': '1'  },
+            { 'Room/Rate': 'Twin B&B',    'Dates': '12–16 Nov', 'CTA': 'false', 'CTD': 'true',  'maxStay': '—', 'minStay': '6'  },
+            { 'Room/Rate': 'Double BAR',  'Dates': '10–16 Nov', 'CTA': 'true',  'CTD': '—',     'maxStay': '—', 'minStay': '2'  },
+            { 'Room/Rate': 'Double B&B',  'Dates': '01–20 Nov', 'CTA': '—',     'CTD': '—',     'maxStay': '—', 'minStay': '10' },
+          ]} />
+          <Btn loading={t7.loading} onClick={runT7} color="purple">Send T7</Btn>
           <ErrBox msg={t7.error} />
-          <TaskBox taskId={t7.result?.taskId} label="T7 Task ID (1 call)" />
+          <TaskBox taskId={t7.result?.taskId} label="T7 Multiple Restrictions Task ID" />
         </Section>
 
         {/* T8 */}
-        <Section title="Test 8 — Half-Year Bulk Update" badge="1 API call"
-          desc="Twin BAR + Double BAR · Dec 1 2026 → May 1 2027 · Sent in ONE POST /restrictions call.">
-          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 12, fontFamily: 'monospace', lineHeight: 1.8 }}>
-            Twin BAR  Dec 1 2026 → May 1 2027: $432, minStay=2, CTA=false, CTD=false<br/>
-            Double BAR Dec 1 2026 → May 1 2027: $342, minStay=3
-          </div>
-          <Btn loading={t8.loading} onClick={runT8} disabled={!P} color="green">
-            📅 Half-Year Bulk Update (1 call)
-          </Btn>
+        <Section
+          title="T8 — Half-Year Update"
+          badge="1 API call"
+          desc="Spec: Dec 1 2026 → May 1 2027 for Twin BAR and Double BAR."
+        >
+          <SpecTable rows={[
+            { 'Room': 'Twin BAR',   'Dates': '01 Dec 2026 → 01 May 2027', 'Rate': '$432', 'minStay': '2', 'CTA': 'false', 'CTD': 'false' },
+            { 'Room': 'Double BAR', 'Dates': '01 Dec 2026 → 01 May 2027', 'Rate': '$342', 'minStay': '3', 'CTA': '—',     'CTD': '—'     },
+          ]} />
+          <Btn loading={t8.loading} onClick={runT8} color="green">Send T8</Btn>
           <ErrBox msg={t8.error} />
-          <TaskBox taskId={t8.result?.taskId} label="T8 Task ID (1 call)" />
+          <TaskBox taskId={t8.result?.taskId} label="T8 Half-Year Task ID" />
         </Section>
 
         {/* T9 */}
-        <Section title="Test 9 — Single Date Availability" badge="2 API calls"
-          desc="Twin Room Nov 21 → availability: 7 · Double Room Nov 25 → availability: 0">
-          <Btn loading={t9.loading} onClick={runT9} disabled={!P} color="blue">
-            📅 Update Availability (Twin Nov21=7, Double Nov25=0)
-          </Btn>
+        <Section
+          title="T9 — Single Date Availability"
+          badge="1–2 API calls"
+          desc="Spec: Twin Nov 21 = 7 units available | Double Nov 25 = 0 (sold out). Sent as 2 availability calls (1 per room type — within spec)."
+        >
+          <SpecTable rows={[
+            { 'Room': 'Twin',   'Date': '21 Nov 2026', 'Availability': '7' },
+            { 'Room': 'Double', 'Date': '25 Nov 2026', 'Availability': '0' },
+          ]} />
+          <Btn loading={t9.loading} onClick={runT9} color="blue">Send T9</Btn>
           <ErrBox msg={t9.error} />
-          <TaskBox taskId={t9.result?.taskId} label="T9 Twin Task ID" />
-          <TaskBox taskId={t9.result?.taskId2} label="T9 Double Task ID" />
+          <TaskBox taskId={t9.result?.taskId}  label="T9 Twin Availability Task ID" />
+          <TaskBox taskId={t9.result?.taskId2} label="T9 Double Availability Task ID" />
         </Section>
 
         {/* T10 */}
-        <Section title="Test 10 — Multi-Date Availability" badge="2 API calls"
-          desc="Twin Nov 10–16 → availability: 3 · Double Nov 17–24 → availability: 4">
-          <Btn loading={t10.loading} onClick={runT10} disabled={!P} color="blue">
-            📅 Update Multi-Date Availability
-          </Btn>
+        <Section
+          title="T10 — Multi-Date Availability"
+          badge="1–2 API calls"
+          desc="Spec: Twin Nov10-16=3 | Double Nov17-24=4."
+        >
+          <SpecTable rows={[
+            { 'Room': 'Twin',   'Dates': '10–16 Nov 2026', 'Availability': '3' },
+            { 'Room': 'Double', 'Dates': '17–24 Nov 2026', 'Availability': '4' },
+          ]} />
+          <Btn loading={t10.loading} onClick={runT10} color="blue">Send T10</Btn>
           <ErrBox msg={t10.error} />
-          <TaskBox taskId={t10.result?.taskId} label="T10 Twin Task ID" />
-          <TaskBox taskId={t10.result?.taskId2} label="T10 Double Task ID" />
+          <TaskBox taskId={t10.result?.taskId}  label="T10 Twin Availability Task ID" />
+          <TaskBox taskId={t10.result?.taskId2} label="T10 Double Availability Task ID" />
         </Section>
 
         {/* T11–T14 */}
-        <Section title="Tests 11–14 — Booking Webhook" badge="auto-ACK"
-          desc={`Channex sends booking webhooks (new / modify / cancel) via Booking.com test account to:\nPOST ${API}/connect/webhook/booking-revision\nEach webhook is automatically acknowledged with { ack: true }. After Channex sends a booking, enter its booking ID below to manually ACK it as well.`}>
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ color: '#f1f5f9', fontSize: 13, marginBottom: 6 }}>Webhook URL (configure in Channex staging):</div>
-            <code style={{ color: '#38bdf8', fontSize: 13, background: '#0a1628', padding: '6px 12px', borderRadius: 6, display: 'block' }}>
-              POST {API}/connect/webhook/booking-revision
-            </code>
+        <Section
+          title="T11–T14 — Booking Events (Webhook Auto-Handled)"
+          badge="WEBHOOK"
+          desc="These tests are triggered by Booking.com, NOT by this dashboard. Use the test booking URL below to fire them. Our webhook at /connect/webhook/booking-revision always responds { ack: true } automatically."
+          warn="To get task IDs for the form: check Channex staging → Logs after each booking action, or enter the booking ID below to manually ACK."
+        >
+          <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 12 }}>
+            <strong style={{ color: '#f1f5f9' }}>Test booking URL:</strong>{' '}
+            <a href="https://secure.booking.com/book.html?hotel_id=10745030&test=1"
+              target="_blank" rel="noreferrer" style={{ color: '#38bdf8' }}>
+              https://secure.booking.com/book.html?hotel_id=10745030&amp;test=1
+            </a>
+            <br />
+            <span style={{ fontSize: 12 }}>Card: 4111-1111-1111-1111 / CVC 123 / any future expiry</span>
           </div>
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ color: '#f1f5f9', fontSize: 13, marginBottom: 6 }}>Manual ACK — Channex Booking ID:</div>
+          <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 12 }}>
+            <strong style={{ color: '#f1f5f9' }}>Sequence:</strong>
+            {' '}T11 = New booking → T12 = Modify → T13/T14 = Cancel
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
             <input
               type="text"
-              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-              value={t11.bookingId}
+              value={t11.bookingId || ''}
               onChange={e => setT11(s => ({ ...s, bookingId: e.target.value }))}
+              placeholder="Channex booking ID (from webhook payload or Channex Logs)"
               style={{
-                width: '100%', maxWidth: 420, padding: '8px 12px',
-                background: '#0f172a', border: '1px solid #475569',
-                borderRadius: 6, color: '#f1f5f9', fontSize: 13, boxSizing: 'border-box',
+                flex: 1, minWidth: 280, padding: '8px 12px',
+                background: '#0f172a', border: '1px solid #334155', borderRadius: 8,
+                color: '#f1f5f9', fontSize: 13,
               }}
             />
+            <Btn loading={t11.loading} onClick={runT11} color="green"
+              disabled={!t11.bookingId?.trim()}>
+              Manual ACK
+            </Btn>
           </div>
-          <Btn loading={t11.loading} onClick={runT11} color="green" disabled={!t11.bookingId.trim()}>
-            ✅ Send Booking ACK
-          </Btn>
           <ErrBox msg={t11.error} />
-          {t11.result && (
-            <div style={{ marginTop: 10, padding: '10px 14px', background: '#0d1f0d', border: '1px solid #22c55e', borderRadius: 8, color: '#4ade80', fontSize: 13 }}>
-              ✅ Response: {JSON.stringify(t11.result)}
-            </div>
-          )}
+          {t11.result && <TaskBox taskId={t11.bookingId} label="T11-T14 Booking ID" />}
         </Section>
 
-        {/* Cert form */}
-        <div style={{ padding: '16px 20px', background: '#1e293b', border: '1px solid #334155', borderRadius: 10, fontSize: 14, color: '#94a3b8' }}>
-          📝 Submit task IDs at:{' '}
-          <a href="https://forms.gle/xA8F3eSYBPBd8apYA" target="_blank" rel="noopener noreferrer" style={{ color: '#38bdf8' }}>
-            https://forms.gle/xA8F3eSYBPBd8apYA
-          </a>
-        </div>
+        {/* Task Log */}
+        {taskLog.length > 0 && (
+          <div style={{
+            background: '#0a1628', border: '1px solid #1e40af',
+            borderRadius: 12, padding: '16px 20px',
+          }}>
+            <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700, color: '#93c5fd' }}>
+              📋 Task ID Log (copy to cert form)
+            </h3>
+            {taskLog.map((entry, i) => (
+              <div key={i} style={{
+                display: 'flex', gap: 10, alignItems: 'center',
+                padding: '6px 0', borderBottom: i < taskLog.length - 1 ? '1px solid #1e293b' : 'none',
+              }}>
+                <span style={{ color: '#475569', fontSize: 11, whiteSpace: 'nowrap' }}>{entry.ts}</span>
+                <span style={{ color: '#64748b', fontSize: 12, minWidth: 220 }}>{entry.label}</span>
+                <code style={{
+                  flex: 1, color: '#4ade80', fontSize: 13,
+                  fontFamily: 'monospace', wordBreak: 'break-all',
+                }}>{entry.id}</code>
+                <button onClick={() => navigator.clipboard.writeText(entry.id)} style={{
+                  padding: '2px 8px', background: '#15803d', color: '#fff',
+                  border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 11,
+                }}>Copy</button>
+              </div>
+            ))}
+            <div style={{ marginTop: 12 }}>
+              <a href="https://forms.gle/xA8F3eSYBPBd8apYA" target="_blank" rel="noreferrer"
+                style={{
+                  display: 'inline-block', padding: '9px 20px',
+                  background: '#7c3aed', color: '#fff', borderRadius: 8,
+                  textDecoration: 'none', fontWeight: 700, fontSize: 13,
+                }}>
+                → Submit Cert Form
+              </a>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -158,19 +158,27 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
           `[Sync] No per-listing mapping for ${listingId} — using user/cert mapping ` +
           `(channexPropertyId=${fallbackMapping.channexPropertyId})`,
         );
-        // Persist mapping so next call is faster
-        await this.prisma.channexMapping.upsert({
-          where: { channexPropertyId: fallbackMapping.channexPropertyId },
-          update: { listingId, lastSyncAt: new Date() },
-          create: {
-            userId: listing.userId,
-            listingId,
-            channexPropertyId: fallbackMapping.channexPropertyId,
-            channexRoomTypeId: fallbackMapping.channexRoomTypeId,
-            channexRatePlanId: fallbackMapping.channexRatePlanId ?? null,
-            syncStatus: 'active',
-          },
-        }).catch(() => {}); // non-fatal — continue even if upsert fails
+        // Persist mapping so next call is faster (findFirst — channexPropertyId not @unique)
+        const existFb = await this.prisma.channexMapping.findFirst({
+          where: { channexPropertyId: fallbackMapping.channexPropertyId, listingId },
+        }).catch(() => null);
+        if (existFb) {
+          await this.prisma.channexMapping.update({
+            where: { id: existFb.id },
+            data: { lastSyncAt: new Date() },
+          }).catch(() => {});
+        } else {
+          await this.prisma.channexMapping.create({
+            data: {
+              userId: listing.userId,
+              listingId,
+              channexPropertyId: fallbackMapping.channexPropertyId,
+              channexRoomTypeId: fallbackMapping.channexRoomTypeId,
+              channexRatePlanId: fallbackMapping.channexRatePlanId ?? null,
+              syncStatus: 'active',
+            },
+          }).catch(() => {}); // non-fatal
+        }
         return {
           channexPropertyId: fallbackMapping.channexPropertyId,
           channexRoomTypeId: fallbackMapping.channexRoomTypeId,
@@ -212,17 +220,26 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
       );
 
       if (match) {
-        await this.prisma.channexMapping.upsert({
-          where: { channexPropertyId: match.attributes?.property_id ?? match.id },
-          update: { channexRoomTypeId: match.id, lastSyncAt: new Date() },
-          create: {
-            userId: listing.userId,
-            listingId,
-            channexPropertyId: match.attributes?.property_id ?? match.id,
-            channexRoomTypeId: match.id,
-            syncStatus: 'active',
-          },
-        });
+        const matchPropId = match.attributes?.property_id ?? match.id;
+        const existMatch = await this.prisma.channexMapping.findFirst({
+          where: { channexPropertyId: matchPropId, listingId },
+        }).catch(() => null);
+        if (existMatch) {
+          await this.prisma.channexMapping.update({
+            where: { id: existMatch.id },
+            data: { channexRoomTypeId: match.id, lastSyncAt: new Date() },
+          });
+        } else {
+          await this.prisma.channexMapping.create({
+            data: {
+              userId: listing.userId,
+              listingId,
+              channexPropertyId: matchPropId,
+              channexRoomTypeId: match.id,
+              syncStatus: 'active',
+            },
+          });
+        }
         this.logger.log(
           `[Mapping] Refreshed Channex IDs for listing ${listingId}`,
         );

@@ -208,9 +208,9 @@ export class ChannexOnboardingService {
     // Generate PKCE-style state for callback validation
     const state = Buffer.from(`${userId}::${channelType}::${Date.now()}`).toString('base64url');
 
-    // Save state for callback verification
+    // Save state for callback verification (use id — channexPropertyId not @unique)
     await this.prisma.channexMapping.update({
-      where: { channexPropertyId: mapping.channexPropertyId },
+      where: { id: mapping.id },
       data: { oauthState: state, channelType },
     });
 
@@ -269,7 +269,7 @@ export class ChannexOnboardingService {
       const expiresIn = tokenRes?.expires_in;
 
       await this.prisma.channexMapping.update({
-        where: { channexPropertyId: mapping.channexPropertyId },
+        where: { id: mapping.id },
         data: {
           accessToken: accessToken || code,
           tokenExpiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : null,
@@ -281,7 +281,7 @@ export class ChannexOnboardingService {
       // Store the code directly as token if exchange endpoint fails
       this.logger.warn(`[OAuth] Token exchange failed (${err.message}) — storing code directly`);
       await this.prisma.channexMapping.update({
-        where: { channexPropertyId: mapping.channexPropertyId },
+        where: { id: mapping.id },
         data: {
           accessToken: code,
           syncStatus: 'active',

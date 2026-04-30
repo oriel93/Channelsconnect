@@ -256,31 +256,66 @@ export class ChannexWhitelabelController {
   @Public()
   @Post('ari/full')
   async pushFullARI(@Body() body: any) {
-    // If combos array provided, push ARI for each combo (2 calls per combo)
-    const combos: Array<{roomTypeId: string; ratePlanId: string}> = body.combos || [
-      { roomTypeId: body.roomTypeId, ratePlanId: body.ratePlanId },
-    ];
+    /**
+     * T1 Full Sync — Channex cert requires EXACTLY 2 API calls total:
+     *   Call 1: POST /availability  — ALL room types × 500 days
+     *   Call 2: POST /restrictions  — ALL rate plans × 500 days
+     *
+     * Body shape:
+     * {
+     *   propertyId: string,
+     *   listingId:  number,
+     *   roomTypes:  Array<{ roomTypeId: string }>,          // ALL room types
+     *   ratePlans:  Array<{ roomTypeId: string, ratePlanId: string }> // ALL rate plans
+     * }
+     *
+     * Legacy: if body.combos is provided (old shape), derive roomTypes/ratePlans from it.
+     */
+    const propertyId: string = body.propertyId;
+    const listingId: number  = body.listingId ?? 35;
 
-    const allTaskIds: string[] = [];
-    for (const combo of combos) {
-      if (!combo.roomTypeId || !combo.ratePlanId) continue;
-      const ids = await this.deepSync.pushCertificationARI(
-        body.propertyId,
-        combo.roomTypeId,
-        combo.ratePlanId,
-        body.rate ?? 100,
-        body.availability ?? 1,
-        body.minStay ?? 1,
-        body.listingId ?? undefined,
-      );
-      allTaskIds.push(...ids);
+    // Normalise room types and rate plans from either new shape or legacy combos
+    let roomTypes: Array<{ roomTypeId: string }>;
+    let ratePlans: Array<{ roomTypeId: string; ratePlanId: string }>;
+
+    if (body.roomTypes && body.ratePlans) {
+      roomTypes = body.roomTypes;
+      ratePlans = body.ratePlans;
+    } else if (Array.isArray(body.combos)) {
+      // Legacy combos shape: deduplicate room types
+      const seenRooms = new Set<string>();
+      roomTypes = [];
+      ratePlans = [];
+      for (const c of body.combos) {
+        if (!c.roomTypeId || !c.ratePlanId) continue;
+        if (!seenRooms.has(c.roomTypeId)) {
+          seenRooms.add(c.roomTypeId);
+          roomTypes.push({ roomTypeId: c.roomTypeId });
+        }
+        ratePlans.push({ roomTypeId: c.roomTypeId, ratePlanId: c.ratePlanId });
+      }
+    } else {
+      // Minimal fallback: single combo from flat body fields
+      roomTypes = [{ roomTypeId: body.roomTypeId }];
+      ratePlans = [{ roomTypeId: body.roomTypeId, ratePlanId: body.ratePlanId }];
     }
 
+    // Single call — produces exactly 2 Channex API requests
+    const taskIds = await this.deepSync.pushFullPropertyARI(
+      propertyId,
+      roomTypes,
+      ratePlans,
+      listingId,
+    );
+
     return {
-      success: true,
-      message: `500-day ARI sent for ${combos.length} room/rate combo(s). ${allTaskIds.length} total API call(s).`,
-      taskIds: allTaskIds,
-      callCount: allTaskIds.length,
+      success:   true,
+      message:   `T1 Full 500-day ARI sent. Exactly 2 API calls: availability (${roomTypes.length} room type${roomTypes.length === 1 ? '' : 's'}) + restrictions (${ratePlans.length} rate plan${ratePlans.length === 1 ? '' : 's'}).`,
+      taskIds,
+      callCount: taskIds.length,
+      // For the cert form — clearly labelled
+      availabilityTaskId:  taskIds[0] ?? null,
+      restrictionsTaskId:  taskIds[1] ?? null,
     };
   }
 
