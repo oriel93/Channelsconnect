@@ -51,13 +51,18 @@ export class ListingsController {
   @Public()
   @Post('manual')
   async createManual(@Body() body: { title?: string }) {
-    const listing = await this.listingsService.create('1d63e070-dbff-48b8-ba2a-be8ba3a41ae8', {
-      title: body?.title || 'Channex Cert Villa',
-      currency: 'USD',
-      isActive: true,
-    });
-    this.logger.log(`[Cert] Manual listing created id=${listing.id} title="${listing.title}"`);
-    return { success: true, data: listing };
+    try {
+      const listing = await this.listingsService.create('1d63e070-dbff-48b8-ba2a-be8ba3a41ae8', {
+        title: body?.title || 'Channex Cert Villa',
+        currency: 'USD',
+        isActive: true,
+      });
+      this.logger.log(`[Cert] Manual listing created id=${listing.id} title="${listing.title}"`);
+      return { success: true, data: listing };
+    } catch (err: any) {
+      this.logger.error(`[Cert] createManual failed: ${err?.message}\n${err?.stack}`);
+      throw err;
+    }
   }
 
   /**
@@ -82,28 +87,33 @@ export class ListingsController {
 
     this.logger.log(`[Cert] Direct rate push — listing=${id} rate=${rate} date=${date}`);
 
-    const taskId = await this.channexSyncService.pushRateSync({
-      listingId: id,
-      date,
-      price: rate,
-      available: true,
-      ...(body.minStay !== undefined ? { minStay: body.minStay } : {}),
-    });
+    try {
+      const taskId = await this.channexSyncService.pushRateSync({
+        listingId: id,
+        date,
+        price: rate,
+        available: true,
+        ...(body.minStay !== undefined ? { minStay: body.minStay } : {}),
+      });
 
-    this.logger.log(
-      taskId
-        ? `[CHANNEX_CERT] TASK_ID=${taskId} listing=${id}`
-        : `[Cert] No task_id returned — check CHANNEX_API_KEY and mapping for listing=${id}`,
-    );
+      this.logger.log(
+        taskId
+          ? `[CHANNEX_CERT] TASK_ID=${taskId} listing=${id}`
+          : `[Cert] No task_id returned — check CHANNEX_API_KEY and mapping for listing=${id}`,
+      );
 
-    return {
-      success: true,
-      taskId: taskId ?? null,
-      task_id: taskId ?? null,   // alias — dashboard accepts either key
-      listingId: id,
-      date,
-      rate,
-    };
+      return {
+        success: true,
+        taskId: taskId ?? null,
+        task_id: taskId ?? null,   // alias — dashboard accepts either key
+        listingId: id,
+        date,
+        rate,
+      };
+    } catch (err: any) {
+      this.logger.error(`[Cert] syncRate failed listing=${id}: ${err?.message}\n${err?.stack}`);
+      throw err;
+    }
   }
 
   @Get()
