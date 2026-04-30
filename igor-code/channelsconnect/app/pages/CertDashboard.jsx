@@ -23,7 +23,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-const API = import.meta.env.VITE_API_URL || 'https://api.channelsconnect.com';
+const API = (import.meta.env.VITE_API_URL || 'https://api.channelsconnect.com').replace(/\/+$/, '');
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
