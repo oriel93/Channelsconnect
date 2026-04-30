@@ -99,6 +99,7 @@ import Settings from "./Settings";
 
 import FinancialReports from "./FinancialReports";
 
+import AdminDashboard from "./AdminDashboard";
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
 
 const PAGES = {
@@ -200,7 +201,7 @@ const PAGES = {
     Settings: Settings,
     
     FinancialReports: FinancialReports,
-    
+    AdminDashboard: AdminDashboard,
 }
 
 function _getCurrentPage(url) {
@@ -323,6 +324,9 @@ function PagesContent() {
                 <Route path="/Settings" element={<Settings />} />
                 
                 <Route path="/FinancialReports" element={<FinancialReports />} />
+
+                <Route path="/AdminDashboard" element={<AdminDashboard />} />
+                <Route path="/admin" element={<AdminDashboard />} />
 
                 {/* Channex PMS Certification — hidden route, no auth required */}
                 <Route path="/cert-test" element={<CertDashboard />} />

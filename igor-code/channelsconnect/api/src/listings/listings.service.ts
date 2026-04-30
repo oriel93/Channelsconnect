@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateListingDto } from './dto/create-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
@@ -130,43 +130,63 @@ export class ListingsService {
     return listing;
   }
 
-  async findAll(userId?: string) {
-    if (userId) {
-      return this.prisma.listing.findMany({
-        where: { userId },
-        orderBy: { createdAt: 'desc' },
-      });
-    }
+  // ─── Standard user-scoped queries (multi-tenancy) ─────────────────────────
+
+  /**
+   * Returns listings for the authenticated user ONLY.
+   * Never returns listings belonging to other users.
+   */
+  async findAll(userId: string) {
     return this.prisma.listing.findMany({
+      where: { userId },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async findActive(userId?: string) {
-    if (userId) {
-      return this.prisma.listing.findMany({
-        where: { userId, isActive: true },
-        orderBy: { createdAt: 'desc' },
-      });
-    }
+  async findActive(userId: string) {
     return this.prisma.listing.findMany({
-      where: { isActive: true },
+      where: { userId, isActive: true },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async findOne(id: number) {
-    return this.prisma.listing.findUnique({
+  /**
+   * Fetch a single listing by id.
+   * @param ownerUserId  When supplied, throws 403 if the listing doesn't belong to this user.
+   *                     Omit only for admin / internal service calls.
+   */
+  async findOne(id: number, ownerUserId?: string) {
+    const listing = await this.prisma.listing.findUnique({
       where: { id },
       include: {
         roomTypes: true,
         propertyImages: true,
       },
     });
+
+    if (!listing) throw new NotFoundException(`Listing ${id} not found`);
+
+    if (ownerUserId && listing.userId !== ownerUserId) {
+      throw new ForbiddenException('You do not have access to this listing');
+    }
+
+    return listing;
   }
 
-  async update(id: number, updateListingDto: UpdateListingDto) {
-    // Allow all schema fields — filter only unknown keys to be safe
+  /**
+   * Update a listing — verifies ownership before writing.
+   */
+  async update(id: number, updateListingDto: UpdateListingDto, ownerUserId?: string) {
+    // Ownership check — throws 403 for cross-tenant attempts
+    if (ownerUserId) {
+      const existing = await this.prisma.listing.findUnique({ where: { id } });
+      if (!existing) throw new NotFoundException(`Listing ${id} not found`);
+      if (existing.userId !== ownerUserId) {
+        throw new ForbiddenException('You do not have permission to update this listing');
+      }
+    }
+
+    // Allow only known schema fields
     const schemaFields = new Set([
       'title', 'description', 'address', 'city', 'state', 'country', 'postalCode',
       'latitude', 'longitude', 'propertyType', 'bedrooms', 'bathrooms', 'beds',
@@ -186,9 +206,36 @@ export class ListingsService {
     });
   }
 
-  async remove(id: number) {
-    return this.prisma.listing.delete({
-      where: { id },
+  /**
+   * Delete a listing — verifies ownership before deleting.
+   */
+  async remove(id: number, ownerUserId?: string) {
+    if (ownerUserId) {
+      const existing = await this.prisma.listing.findUnique({ where: { id } });
+      if (!existing) throw new NotFoundException(`Listing ${id} not found`);
+      if (existing.userId !== ownerUserId) {
+        throw new ForbiddenException('You do not have permission to delete this listing');
+      }
+    }
+
+    return this.prisma.listing.delete({ where: { id } });
+  }
+
+  // ─── Admin-only queries (no user filter) ──────────────────────────────────
+
+  /** All listings across all users — admin use only */
+  async findAllGlobal() {
+    return this.prisma.listing.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: { user: { select: { id: true, email: true, name: true, role: true } } },
+    });
+  }
+
+  /** Count listings per user — for admin stats */
+  async countByUser() {
+    return this.prisma.listing.groupBy({
+      by: ['userId'],
+      _count: { id: true },
     });
   }
 }

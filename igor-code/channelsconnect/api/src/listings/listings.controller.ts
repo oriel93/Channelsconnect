@@ -9,6 +9,7 @@ import {
   ParseIntPipe,
   Logger,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -188,8 +189,12 @@ export class ListingsController {
 
   @Get(':id')
   @ApiOkResponse({ type: ListingEntity })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.listingsService.findOne(id);
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    // Ownership enforced inside service — throws 403 if listing belongs to another user
+    return this.listingsService.findOne(id, user.id);
   }
 
   @Patch(':id')
@@ -197,14 +202,18 @@ export class ListingsController {
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateListingDto: UpdateListingDto,
+    @CurrentUser() user: CurrentUserData,
   ) {
-    return this.listingsService.update(id, updateListingDto);
+    return this.listingsService.update(id, updateListingDto, user.id);
   }
 
   @Delete(':id')
   @ApiOkResponse({ type: ListingEntity })
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.listingsService.remove(id);
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    return this.listingsService.remove(id, user.id);
   }
 }
 

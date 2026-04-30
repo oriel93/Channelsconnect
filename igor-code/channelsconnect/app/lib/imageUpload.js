@@ -15,7 +15,10 @@
 
 import { supabase } from './supabase';
 
-const BUCKET = 'property-images';
+// ⚠️ Canonical bucket name — must match Supabase Storage bucket exactly.
+// If you see "Bucket not found", create a PUBLIC bucket named 'property-media' in
+// Supabase Dashboard → Storage → New Bucket.
+const BUCKET = 'property-media';
 
 // OTA channel target resolution
 const OTA_MAX_PX = 4096;
@@ -114,7 +117,21 @@ export async function uploadImageToSupabase({ file, listingId, onProgress }) {
 
   onProgress?.(85);
 
-  if (error) throw new Error(error.message || 'Storage upload failed');
+  if (error) {
+    // Surface a clear, actionable message for the "Bucket not found" case
+    if (
+      error.message?.toLowerCase().includes('bucket not found') ||
+      error.message?.toLowerCase().includes('the resource was not found') ||
+      error.statusCode === 404 ||
+      error.error === 'Bucket not found'
+    ) {
+      const msg =
+        "Admin setup required: Create a public bucket named 'property-media' in Supabase.";
+      console.error('[ImageUpload]', msg, error);
+      throw new Error(msg);
+    }
+    throw new Error(error.message || 'Storage upload failed');
+  }
 
   // Step 4: Get public URL
   const { data: urlData } = supabase.storage

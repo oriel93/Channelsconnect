@@ -25,6 +25,9 @@ import { ChannexModule } from './channex/channex.module'; // <--- New Import
 // White-label Services Module
 import { ChannexServicesModule } from './services/channex/channex-services.module';
 
+// Admin Module
+import { AdminModule } from './admin/admin.module';
+
 @Module({
   imports: [
     // Core Configuration
@@ -59,6 +62,7 @@ import { ChannexServicesModule } from './services/channex/channex-services.modul
     AnalyticsModule,
     // Beds24Module, // Decommissioned
     ReportsModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],

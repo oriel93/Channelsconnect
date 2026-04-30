@@ -5,9 +5,9 @@ import { User } from '@/api/entities';
 import { createPageUrl } from '@/utils';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { LogOut, Calendar, Upload, Settings, Image as ImageIcon, Briefcase, Network, Menu, X, Bot, BarChart3 } from 'lucide-react';
+import { LogOut, Calendar, Upload, Settings, Image as ImageIcon, Briefcase, Network, Menu, X, Bot, BarChart3, Crown } from 'lucide-react';
 
-const navItems = [
+const BASE_NAV_ITEMS = [
   { name: 'Import Listings', href: createPageUrl('ImportListings'), icon: Upload },
   { name: 'Dashboard', href: createPageUrl('Dashboard'), icon: Calendar },
   { name: 'Financial Reports', href: createPageUrl('FinancialReports'), icon: BarChart3 },
@@ -18,8 +18,21 @@ const navItems = [
   { name: 'Settings', href: createPageUrl('Settings'), icon: Settings },
 ];
 
-function Sidebar() {
+const ADMIN_NAV_ITEM = {
+  name: 'Admin Portal',
+  href: '/admin',
+  icon: Crown,
+  adminOnly: true,
+};
+
+function getNavItems(user) {
+  const isAdmin = user?.role?.toLowerCase() === 'admin';
+  return isAdmin ? [...BASE_NAV_ITEMS, ADMIN_NAV_ITEM] : BASE_NAV_ITEMS;
+}
+
+function Sidebar({ user }) {
   const location = useLocation();
+  const navItems = getNavItems(user);
 
   return (
     <div className="hidden md:flex md:flex-shrink-0">
@@ -40,7 +53,9 @@ function Sidebar() {
                   className={`flex items-center px-2 py-2 text-sm font-medium rounded-md ${
                     location.pathname === item.href
                       ? 'bg-slate-100 text-slate-900'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                      : item.adminOnly
+                        ? 'text-yellow-700 hover:bg-yellow-50 hover:text-yellow-900'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                   }`}
                 >
                   <item.icon className="mr-3 flex-shrink-0 h-6 w-6" aria-hidden="true" />
@@ -55,8 +70,9 @@ function Sidebar() {
   );
 }
 
-function MobileNavigation({ isOpen, setIsOpen }) {
+function MobileNavigation({ isOpen, setIsOpen, user }) {
   const location = useLocation();
+  const navItems = getNavItems(user);
 
   return (
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
@@ -77,7 +93,9 @@ function MobileNavigation({ isOpen, setIsOpen }) {
                 className={`flex items-center px-3 py-3 text-sm font-medium rounded-lg transition-colors ${
                   location.pathname === item.href
                     ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    : item.adminOnly
+                      ? 'text-yellow-700 hover:bg-yellow-50 border border-yellow-200'
+                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
                 <item.icon className="mr-3 flex-shrink-0 h-5 w-5" aria-hidden="true" />
@@ -112,8 +130,8 @@ export default function AppLayout({ children, headerActions }) {
   
   return (
      <div className="h-screen flex overflow-hidden bg-slate-100">
-      <Sidebar />
-      <MobileNavigation isOpen={isMobileNavOpen} setIsOpen={setIsMobileNavOpen} />
+      <Sidebar user={user} />
+      <MobileNavigation isOpen={isMobileNavOpen} setIsOpen={setIsMobileNavOpen} user={user} />
       
       <div className="flex flex-col w-0 flex-1 overflow-hidden">
          {/* Mobile Header */}

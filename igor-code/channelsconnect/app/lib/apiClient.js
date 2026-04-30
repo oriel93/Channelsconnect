@@ -198,6 +198,25 @@ export const api = {
    * channexSync — Direct ARI sync API (/channex-sync/* and /listings/*)
    * Use these from dashboard sync buttons.
    */
+  /**
+   * admin — Super Admin Portal API
+   * All routes require role='admin' in the users table.
+   * Returns 403 for non-admin users.
+   */
+  admin: {
+    getStats: () => apiClient.get('/admin/stats'),
+    getUsers: () => apiClient.get('/admin/users'),
+    getListings: () => apiClient.get('/admin/listings'),
+    /** Returns a Blob — use with URL.createObjectURL for download */
+    exportListingsBlob: () =>
+      apiClient.get('/admin/export/listings', { responseType: 'blob' }),
+    /** Direct browser download — opens the CSV download in a new tab */
+    exportListingsUrl: () => {
+      const base = apiClient.defaults.baseURL || '';
+      return `${base}/admin/export/listings`;
+    },
+  },
+
   channexSync: {
     /** Apply a single ARI change (event-driven, 500 ms batch window) */
     applyChange: (update) => apiClient.post('/channex-sync/apply', { update }),
