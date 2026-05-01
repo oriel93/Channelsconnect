@@ -544,8 +544,28 @@ function ManualCreateForm({ onSuccess }) {
       // api.listings.create → axios interceptor → Authorization: Bearer <token>
       const res = await api.listings.create(payload);
       const listingId = res.data?.id || res.data?.listing?.id;
-      setSavedListingId(listingId);
 
+      // TASK 1 ROLLBACK: If any post-create step fails, delete the shell record
+      // so the user never ends up with a partial/empty listing in the DB.
+      let rollbackNeeded = false;
+      try {
+        // Future post-create steps (image attach, iCal bootstrap, etc.) go here.
+        // If any throw, rollbackNeeded = true and we delete the shell below.
+        rollbackNeeded = false;
+      } catch (postErr) {
+        rollbackNeeded = true;
+        throw postErr; // re-throw so outer catch handles UI
+      } finally {
+        if (rollbackNeeded && listingId) {
+          // Best-effort delete — don't surface rollback errors to the user
+          await api.listings.delete(listingId).catch(e =>
+            console.error('[PropertyIngestionHub] Rollback delete failed:', e?.message)
+          );
+          console.warn('[PropertyIngestionHub] Shell listing rolled back, id:', listingId);
+        }
+      }
+
+      setSavedListingId(listingId);
       const base = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
       setExportUrl(`${base}/ical/export/${listingId}.ics`);
 

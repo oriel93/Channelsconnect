@@ -1005,158 +1005,217 @@ export default function AdminDashboard() {
         {/* ── Review Queue Tab ─────────────────────────────────────────────────────────── */}
         <TabsContent value="review">
           {reviewListing ? (
-            // ─ Edit Modal View ────────────────────────────────────────────────────────
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => setReviewListing(null)}>
-                    <ArrowLeft className="w-4 h-4" />
-                  </Button>
-                  Editing: <span className="font-normal text-slate-600 ml-1 truncate max-w-xs">{reviewListing.title}</span>
-                  <span className="ml-auto text-xs text-slate-400">ID #{reviewListing.id} • {reviewListing.user?.email}</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
+            <div className="font-sans antialiased text-gray-900 bg-gray-50 min-h-screen p-0">
+              {/* Breadcrumb / back nav */}
+              <div className="flex items-center gap-3 mb-6">
+                <button
+                  onClick={() => setReviewListing(null)}
+                  className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
+                >
+                  <ArrowLeft className="w-4 h-4" />Back to Queue
+                </button>
+                <span className="text-gray-300">/</span>
+                <span className="text-sm font-medium text-gray-900 truncate max-w-xs">{reviewListing.title || 'Untitled Listing'}</span>
+                <span className="ml-auto text-xs text-gray-400">ID #{reviewListing.id} · {reviewListing.user?.email}</span>
+              </div>
 
-                {/* Images preview */}
-                {reviewListing.propertyImages?.length > 0 && (
-                  <div>
-                    <p className="text-sm font-medium text-slate-600 mb-2">Media ({reviewListing.propertyImages.length} images)</p>
-                    <div className="flex gap-2 overflow-x-auto pb-2">
-                      {reviewListing.propertyImages.map(img => (
-                        <img
-                          key={img.id}
-                          src={img.highResUrl || img.url}
-                          alt=""
-                          className="w-28 h-20 object-cover rounded-lg border flex-shrink-0"
-                        />
-                      ))}
-                    </div>
+              {/* Media strip */}
+              {reviewListing.propertyImages?.length > 0 && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-5">
+                  <p className="block mb-1.5 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Media <span className="normal-case font-normal text-gray-400 ml-1">{reviewListing.propertyImages.length} images</span>
+                  </p>
+                  <div className="flex gap-3 overflow-x-auto pb-1 mt-3">
+                    {reviewListing.propertyImages.map(img => (
+                      <img
+                        key={img.id}
+                        src={img.highResUrl || img.url}
+                        alt=""
+                        className="w-32 h-24 object-cover rounded-lg border border-gray-100 flex-shrink-0 shadow-sm"
+                      />
+                    ))}
                   </div>
-                )}
+                </div>
+              )}
 
-                {/* Editable fields - 2 column grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {[{label:'Title',key:'title'},{label:'Address',key:'address'},{label:'City',key:'city'},
-                    {label:'State',key:'state'},{label:'Country',key:'country'},{label:'Postal Code',key:'postalCode'},
-                    {label:'Property Type',key:'propertyType'},{label:'Bedrooms',key:'bedrooms',type:'number'},
-                    {label:'Bathrooms',key:'bathrooms',type:'number'},{label:'Max Guests',key:'maxGuests',type:'number'},
-                    {label:'Base Price (USD)',key:'basePrice',type:'number'},
-                  ].map(({label, key, type}) => (
-                    <div key={key} className="space-y-1">
-                      <Label className="text-xs text-slate-500">{label}</Label>
-                      <Input
-                        type={type || 'text'}
+              {/* ── Property details card ─────────────────────────────────────── */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-5">
+                <p className="block mb-1.5 text-xs font-semibold text-gray-600 uppercase tracking-wider mb-5">Property Details</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+
+                  {/* Title — full width */}
+                  <div className="sm:col-span-2">
+                    <label className="block mb-1.5 text-xs font-semibold text-gray-600 uppercase tracking-wider">Title</label>
+                    <input
+                      type="text"
+                      value={reviewForm.title ?? ''}
+                      onChange={e => setReviewForm(f => ({...f, title: e.target.value}))}
+                      className="w-full px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all shadow-sm"
+                      placeholder="Property title"
+                    />
+                  </div>
+
+                  {[
+                    {label:'Address',    key:'address',      placeholder:'Street address'},
+                    {label:'City',       key:'city',         placeholder:'City'},
+                    {label:'State',      key:'state',        placeholder:'State / Province'},
+                    {label:'Country',    key:'country',      placeholder:'Country'},
+                    {label:'Postal Code',key:'postalCode',   placeholder:'ZIP / Postal code'},
+                    {label:'Property Type',key:'propertyType',placeholder:'House / Apartment / Villa…'},
+                  ].map(({label, key, placeholder}) => (
+                    <div key={key}>
+                      <label className="block mb-1.5 text-xs font-semibold text-gray-600 uppercase tracking-wider">{label}</label>
+                      <input
+                        type="text"
                         value={reviewForm[key] ?? ''}
                         onChange={e => setReviewForm(f => ({...f, [key]: e.target.value}))}
-                        className="text-sm"
+                        className="w-full px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all shadow-sm"
+                        placeholder={placeholder}
                       />
                     </div>
                   ))}
 
-                  {/* Amenities - full width */}
-                  <div className="sm:col-span-2 space-y-1">
-                    <Label className="text-xs text-slate-500">Amenities (comma-separated)</Label>
-                    <Input
-                      value={reviewForm.amenities ?? ''}
-                      onChange={e => setReviewForm(f => ({...f, amenities: e.target.value}))}
-                      placeholder="WiFi, Pool, AC, Parking..."
-                    />
-                  </div>
+                  {[
+                    {label:'Bedrooms',  key:'bedrooms',  placeholder:'0'},
+                    {label:'Bathrooms', key:'bathrooms', placeholder:'0'},
+                    {label:'Max Guests',key:'maxGuests', placeholder:'1'},
+                    {label:'Base Price (USD)', key:'basePrice', placeholder:'0.00'},
+                  ].map(({label, key, placeholder}) => (
+                    <div key={key}>
+                      <label className="block mb-1.5 text-xs font-semibold text-gray-600 uppercase tracking-wider">{label}</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step={key === 'bathrooms' ? '0.5' : key === 'basePrice' ? '0.01' : '1'}
+                        value={reviewForm[key] ?? ''}
+                        onChange={e => setReviewForm(f => ({...f, [key]: e.target.value}))}
+                        className="w-full px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all shadow-sm"
+                        placeholder={placeholder}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-                  {/* Description - full width */}
-                  <div className="sm:col-span-2 space-y-1">
-                    <Label className="text-xs text-slate-500">Description</Label>
-                    <Textarea
+              {/* ── Content card ─────────────────────────────────────────────── */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-5">
+                <p className="block mb-1.5 text-xs font-semibold text-gray-600 uppercase tracking-wider mb-5">Content & Policies</p>
+                <div className="space-y-5">
+                  <div>
+                    <label className="block mb-1.5 text-xs font-semibold text-gray-600 uppercase tracking-wider">Description</label>
+                    <textarea
                       rows={4}
                       value={reviewForm.description ?? ''}
                       onChange={e => setReviewForm(f => ({...f, description: e.target.value}))}
+                      className="w-full px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all shadow-sm resize-y"
+                      placeholder="Describe the property…"
                     />
                   </div>
-
-                  {/* House Rules - full width */}
-                  <div className="sm:col-span-2 space-y-1">
-                    <Label className="text-xs text-slate-500">House Rules</Label>
-                    <Textarea
+                  <div>
+                    <label className="block mb-1.5 text-xs font-semibold text-gray-600 uppercase tracking-wider">House Rules</label>
+                    <textarea
                       rows={2}
                       value={reviewForm.houseRules ?? ''}
                       onChange={e => setReviewForm(f => ({...f, houseRules: e.target.value}))}
+                      className="w-full px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all shadow-sm resize-y"
+                      placeholder="No smoking, no parties…"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1.5 text-xs font-semibold text-gray-600 uppercase tracking-wider">Amenities <span className="normal-case font-normal text-gray-400">(comma-separated)</span></label>
+                    <input
+                      type="text"
+                      value={reviewForm.amenities ?? ''}
+                      onChange={e => setReviewForm(f => ({...f, amenities: e.target.value}))}
+                      className="w-full px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all shadow-sm"
+                      placeholder="WiFi, Pool, AC, Parking…"
                     />
                   </div>
                 </div>
+              </div>
 
-                {/* Source / import URL */}
-                {reviewListing.captureUrl && (
-                  <div className="text-xs text-slate-400">
-                    Source URL: <a href={reviewListing.captureUrl} target="_blank" rel="noreferrer" className="underline text-blue-500 truncate">{reviewListing.captureUrl}</a>
-                  </div>
-                )}
-
-                {/* Sync error banner — verbatim Channex error message */}
-                {syncError?.listingId === reviewListing.id && (
-                  <Alert className="border-red-300 bg-red-50">
-                    <AlertTriangle className="w-4 h-4 text-red-600" />
-                    <AlertDescription className="text-sm text-red-700">
-                      <strong>Sync Failed:</strong> {syncError.message}
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {/* Action bar */}
-                <div className="flex flex-wrap gap-3 pt-2 border-t">
-                  {/* Save edits */}
-                  <Button onClick={handleSaveReview} disabled={savingReview || syncingListingId === reviewListing.id} variant="outline">
-                    {savingReview
-                      ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" />Saving…</>
-                      : <><Save className="w-4 h-4 mr-1" />Save Edits</>}
-                  </Button>
-
-                  {/* Approve & Go Live */}
-                  <Button
-                    onClick={() => handleApprove(reviewListing.id)}
-                    disabled={approvingId === reviewListing.id || savingReview}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              {/* Source URL */}
+              {reviewListing.captureUrl && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-5 flex items-center gap-3">
+                  <span className="block mb-1.5 text-xs font-semibold text-gray-600 uppercase tracking-wider shrink-0 mb-0">Source URL</span>
+                  <a
+                    href={reviewListing.captureUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-blue-600 hover:underline truncate flex-1"
                   >
-                    {approvingId === reviewListing.id
-                      ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" />Approving…</>
-                      : <><CheckCircle2 className="w-4 h-4 mr-1" />Approve & Go Live</>}
-                  </Button>
-
-                  {/* Smart Channex sync button — lazy-loads sync state on first render */}
-                  <SyncButton
-                    listingId={reviewListing.id}
-                    syncStates={syncStates}
-                    syncingListingId={syncingListingId}
-                    onSync={handleSyncToChannex}
-                    onLoadState={loadSyncState}
-                    listingTitle={reviewListing.title}
-                  />
-
-                  {/* Deactivate on Channex (only shown if already published) */}
-                  {syncStates[reviewListing.id]?.hasChannexRecord && (
-                    <Button
-                      variant="outline"
-                      className="border-orange-400 text-orange-700 hover:bg-orange-50"
-                      disabled={deactivatingId === reviewListing.id}
-                      onClick={() => handleDeactivate(reviewListing.id, reviewListing.title)}
-                    >
-                      {deactivatingId === reviewListing.id
-                        ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" />Deactivating…</>
-                        : <><Power className="w-4 h-4 mr-1" />Deactivate on Channex</>}
-                    </Button>
-                  )}
-
-                  {/* Reject */}
-                  <Button
-                    variant="destructive"
-                    onClick={() => { setRejectTarget(reviewListing); setShowRejectDialog(true); }}
-                    disabled={savingReview}
-                  >
-                    <XCircle className="w-4 h-4 mr-1" />Reject
-                  </Button>
+                    {reviewListing.captureUrl}
+                  </a>
                 </div>
-              </CardContent>
-            </Card>
+              )}
+
+              {/* Sync error banner */}
+              {syncError?.listingId === reviewListing.id && (
+                <Alert className="border-red-200 bg-red-50 mb-5">
+                  <AlertTriangle className="w-4 h-4 text-red-600" />
+                  <AlertDescription className="text-sm text-red-700">
+                    <strong>Sync Failed:</strong> {syncError.message}
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* ── Action bar ───────────────────────────────────────────────── */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-wrap gap-3">
+                {/* Save */}
+                <button
+                  onClick={handleSaveReview}
+                  disabled={savingReview || syncingListingId === reviewListing.id}
+                  className="px-6 py-2.5 bg-gray-900 hover:bg-black text-white text-sm font-medium rounded-lg transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                >
+                  {savingReview
+                    ? <><Loader2 className="w-4 h-4 animate-spin" />Saving…</>
+                    : <><Save className="w-4 h-4" />Save Changes</>}
+                </button>
+
+                {/* Approve */}
+                <button
+                  onClick={() => handleApprove(reviewListing.id)}
+                  disabled={approvingId === reviewListing.id || savingReview}
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                >
+                  {approvingId === reviewListing.id
+                    ? <><Loader2 className="w-4 h-4 animate-spin" />Approving…</>
+                    : <><CheckCircle2 className="w-4 h-4" />Approve & Go Live</>}
+                </button>
+
+                {/* Smart sync */}
+                <SyncButton
+                  listingId={reviewListing.id}
+                  syncStates={syncStates}
+                  syncingListingId={syncingListingId}
+                  onSync={handleSyncToChannex}
+                  onLoadState={loadSyncState}
+                  listingTitle={reviewListing.title}
+                />
+
+                {/* Deactivate — only shown if published */}
+                {syncStates[reviewListing.id]?.hasChannexRecord && (
+                  <button
+                    disabled={deactivatingId === reviewListing.id}
+                    onClick={() => handleDeactivate(reviewListing.id, reviewListing.title)}
+                    className="px-6 py-2.5 bg-white border border-orange-300 text-orange-700 hover:bg-orange-50 text-sm font-medium rounded-lg transition-colors shadow-sm disabled:opacity-50 inline-flex items-center gap-2"
+                  >
+                    {deactivatingId === reviewListing.id
+                      ? <><Loader2 className="w-4 h-4 animate-spin" />Deactivating…</>
+                      : <><Power className="w-4 h-4" />Deactivate on Channex</>}
+                  </button>
+                )}
+
+                {/* Reject */}
+                <button
+                  onClick={() => { setRejectTarget(reviewListing); setShowRejectDialog(true); }}
+                  disabled={savingReview}
+                  className="px-6 py-2.5 bg-white border border-red-300 text-red-700 hover:bg-red-50 text-sm font-medium rounded-lg transition-colors shadow-sm disabled:opacity-50 inline-flex items-center gap-2 ml-auto"
+                >
+                  <XCircle className="w-4 h-4" />Reject
+                </button>
+              </div>
+            </div>
           ) : (
             // ─ Queue List ────────────────────────────────────────────────────────────────
             <Card>

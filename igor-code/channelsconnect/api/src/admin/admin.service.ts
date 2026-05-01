@@ -456,7 +456,49 @@ export class AdminService {
       minNights?: number;
     },
   ) {
-    return this.prisma.listing.update({ where: { id: listingId }, data });
+    // TASK 1: Strip immutable / non-schema fields before update to prevent 500s.
+    // Destructure out id, createdAt, updatedAt, userId, and any other Prisma-
+    // managed or relation fields that Prisma rejects in a data payload.
+    const {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      id: _id,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      created_at: _ca,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      createdAt: _cat,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      updatedAt: _uat,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      userId: _uid,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      user: _user,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      propertyImages: _imgs,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      bookings: _bk,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      _count: _cnt,
+      ...updateData
+    } = data as any;
+
+    // Further restrict to known-safe listing fields only
+    const allowedKeys = new Set([
+      'title','description','address','city','state','country','postalCode',
+      'latitude','longitude','propertyType','bedrooms','bathrooms','beds',
+      'maxGuests','basePrice','currency','amenities',
+      'houseRules','cancellationPolicy','checkInTime','checkOutTime',
+      'minNights','maxNights','isActive','reviewStatus',
+    ]);
+    const safeData: Record<string, any> = Object.fromEntries(
+      Object.entries(updateData).filter(([k]) => allowedKeys.has(k)),
+    );
+
+    try {
+      return await this.prisma.listing.update({ where: { id: listingId }, data: safeData });
+    } catch (err: any) {
+      this.logger.error(`[AdminService] updateReviewListing ${listingId} failed: ${err?.message}`, err?.stack);
+      throw err; // NestJS global filter will return 500 with the real message
+    }
   }
 
   async approveListing(listingId: number) {
