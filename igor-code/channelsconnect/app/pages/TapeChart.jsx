@@ -37,6 +37,7 @@ import {
   ChevronLeft, ChevronRight, Loader2, Lock, DollarSign, Clock,
   Calendar, User, Phone, Mail, RefreshCw, X, Check,
 } from 'lucide-react';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -411,7 +412,7 @@ const GridCell = React.memo(function GridCell({
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function TapeChart() {
+function HorizontalTapeChart() {
   const { user } = useAuth();
 
   // ── Viewport window ────────────────────────────────────────────────────────
@@ -875,5 +876,18 @@ export default function TapeChart() {
         onClose={() => setDrawerBooking(null)}
       />
     </div>
+  );
+}
+
+// ─── ErrorBoundary wrapper — Phase 1 Stability Shield ────────────────────────
+// Wraps the entire Horizontal Resource Timeline so that a malformed booking date
+// or any other render error is caught here, showing a localised fallback without
+// unmounting the rest of the dashboard.
+
+export default function TapeChart() {
+  return (
+    <ErrorBoundary label="timeline">
+      <HorizontalTapeChart />
+    </ErrorBoundary>
   );
 }
