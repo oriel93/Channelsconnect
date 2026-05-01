@@ -20,11 +20,11 @@ const apiClient = axios.create({
 apiClient.interceptors.request.use(
   async (config) => {
     const { data: { session } } = await supabase.auth.getSession();
-    
+
     if (session?.access_token) {
       config.headers.Authorization = `Bearer ${session.access_token}`;
     }
-    
+
     return config;
   },
   (error) => {
@@ -89,6 +89,20 @@ export const api = {
     list: () => apiClient.get('/listings'),
     syncRate: (listingId, rate, date) =>
       apiClient.post(`/listings/${listingId}/rates`, { rate, date }),
+    // ── Path 2: Excel bulk upload ────────────────────────────────────────────
+    /** Download the .xlsx template as a Blob (use with URL.createObjectURL) */
+    downloadBulkTemplate: () =>
+      apiClient.get('/listings/bulk-import/template', { responseType: 'blob' }),
+    /** Upload a filled-in .xlsx; body must be FormData with field "file" */
+    bulkUpload: (formData) =>
+      apiClient.post('/listings/bulk-import/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }),
+    // ── Path 4: Website / URL import ────────────────────────────────────────
+    /** Scrape a property listing URL and create a draft listing */
+    importFromWebsite: (data) => apiClient.post('/listings/import/website', data),
+    // ── Path 1: iCal import (convenience alias → /ical/import) ──────────────
+    importIcal: (data) => apiClient.post('/ical/import', data),
   },
 
   // Bookings
@@ -261,4 +275,3 @@ export const api = {
 };
 
 export default apiClient;
-

@@ -41,19 +41,24 @@ function useMapsLoaded() {
 
 // ─── Tab 1: iCal / PMS Import ────────────────────────────────────────────────
 function ICalTab({ onImported }) {
-  const [url, setUrl] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [events, setEvents] = useState(null);
-  const [error, setError] = useState('');
+  const [url, setUrl]             = useState('');
+  const [listingId, setListingId] = useState('');
+  const [loading, setLoading]     = useState(false);
+  const [result, setResult]       = useState(null);
+  const [error, setError]         = useState('');
 
   const handleImport = async () => {
-    if (!url.trim()) { setError('Please enter a URL'); return; }
-    setLoading(true); setError(''); setEvents(null);
+    if (!url.trim())       { setError('Please enter an iCal URL'); return; }
+    if (!listingId.trim()) { setError('Please enter the listing ID to link this calendar to'); return; }
+    setLoading(true); setError(''); setResult(null);
     try {
-      const res = await apiClient.post('/listings/import/ical', { url: url.trim() });
-      setEvents(res.data.events || []);
-      toast.success(`Parsed ${res.data.count} events from iCal feed`);
-      onImported?.(res.data.events);
+      const res = await api.ical.importIcal({
+        icalUrl: url.trim(),
+        listingId: parseInt(listingId, 10),
+      });
+      setResult(res.data);
+      toast.success(`Imported ${res.data.imported ?? 0} booking(s) from calendar`);
+      onImported?.();
     } catch (err) {
       const msg = err?.response?.data?.message || err?.message || 'Import failed';
       setError(msg);
@@ -66,42 +71,56 @@ function ICalTab({ onImported }) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-slate-600">
-        Paste an iCal (.ics) URL from Airbnb, VRBO, Google Calendar, or any PMS that exports iCal.
+        Paste an iCal (.ics) URL from Airbnb, VRBO, Google Calendar, or any calendar app.
+        Availability blocks will be imported and synced automatically.
       </p>
       <div className="space-y-2">
-        <Label htmlFor="ical-url">iCal URL</Label>
-        <div className="flex gap-2">
-          <Input
-            id="ical-url"
-            placeholder="https://airbnb.com/calendar/ical/..."
-            value={url}
-            onChange={(e) => { setUrl(e.target.value); setError(''); }}
-            disabled={loading}
-            className="flex-1"
-          />
-          <Button onClick={handleImport} disabled={loading || !url.trim()}>
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Import'}
-          </Button>
-        </div>
+        <Label htmlFor="ical-url">iCal / Calendar URL</Label>
+        <Input
+          id="ical-url"
+          placeholder="https://airbnb.com/calendar/ical/..."
+          value={url}
+          onChange={(e) => { setUrl(e.target.value); setError(''); }}
+          disabled={loading}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="ical-listing">Listing ID (link to an existing property)</Label>
+        <Input
+          id="ical-listing"
+          placeholder="e.g. 42"
+          value={listingId}
+          onChange={(e) => { setListingId(e.target.value); setError(''); }}
+          disabled={loading}
+          type="number"
+          className="w-32"
+        />
       </div>
 
+      <Button
+        onClick={handleImport}
+        disabled={loading || !url.trim() || !listingId.trim()}
+        className="w-full"
+      >
+        {loading
+          ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Importing…</>
+          : <><Calendar className="w-4 h-4 mr-2" />Import Calendar</>}
+      </Button>
+
       {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
+        <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>
       )}
 
-      {events !== null && (
-        <div className="border rounded-lg p-4 bg-green-50 border-green-200">
+      {result && (
+        <div className="border rounded-lg p-4 bg-green-50 border-green-200 space-y-1">
           <p className="text-sm font-medium text-green-800">
-            ✓ {events.length} events parsed successfully
+            ✓ Import complete
           </p>
-          {events.slice(0, 5).map((ev, i) => (
-            <div key={i} className="text-xs text-green-700 mt-1">
-              • {ev.summary} — {new Date(ev.dtstart).toLocaleDateString()} → {new Date(ev.dtend).toLocaleDateString()}
-            </div>
-          ))}
-          {events.length > 5 && <div className="text-xs text-green-600 mt-1">…and {events.length - 5} more</div>}
+          <p className="text-xs text-green-700">Imported: {result.imported ?? 0} bookings</p>
+          <p className="text-xs text-green-700">Skipped: {result.skipped ?? 0}</p>
+          {result.errors?.length > 0 && (
+            <p className="text-xs text-amber-600">{result.errors.length} warning(s): {result.errors[0]}</p>
+          )}
         </div>
       )}
     </div>
@@ -135,54 +154,71 @@ function ExcelTab({ onImported }) {
   const [error, setError] = useState('');
   const fileInputRef = useRef(null);
 
-  const handleDownloadTemplate = () => {
-    window.location.href = `${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/listings/bulk-template`;
+  const handleDownloadTemplate = async () => {
+    try {
+      const res = await api.listings.downloadBulkTemplate();
+      const blob = new Blob([res.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'channels-connect-property-template.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+    } catch (err) {
+      toast.error('Could not download template. Please try again.');
+    }
   };
 
   const handleFileSelect = (f) => {
     if (!f) return;
-    if (!f.name.match(/\.(xlsx|xls|csv)$/i)) {
-      setError('Please select an .xlsx, .xls, or .csv file');
+    if (!f.name.match(/\.(xlsx|xls)$/i)) {
+      setError('Please select an .xlsx file');
       return;
     }
     setError('');
+    setRows(null);
+    setResults(null);
     setFile(f);
+    // Preview row count client-side
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const wb = XLSX.read(e.target.result, { type: 'array' });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
-        const headers = data[0] || [];
-        const parsed = data.slice(1)
-          .filter((row) => row.some((cell) => cell !== '' && cell != null))
-          .map((row) => {
-            const obj = {};
-            headers.forEach((h, i) => {
-              const key = EXCEL_COLUMN_MAP[h];
-              if (key) obj[key] = row[i] != null ? String(row[i]).trim() : '';
-            });
-            return obj;
-          });
-        setRows(parsed);
+        const dataRows = data.slice(1).filter((row) => row.some((c) => c !== '' && c != null));
+        setRows(dataRows); // just for count display; real parsing happens server-side
       } catch (err) {
-        setError(`Could not parse file: ${err?.message}`);
+        setError(`Could not preview file: ${err?.message}`);
       }
     };
     reader.readAsArrayBuffer(f);
   };
 
   const handleImport = async () => {
-    if (!rows?.length) return;
+    if (!file) return;
     setLoading(true); setResults(null); setError('');
     try {
-      const res = await apiClient.post('/listings/bulk-import', rows);
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await api.listings.bulkUpload(formData);
       setResults(res.data);
-      toast.success(`Imported ${res.data.created} listing(s)`);
-      onImported?.(res.data.created);
+      toast.success(`${res.data.created} listing(s) imported successfully!`);
+      onImported?.();
     } catch (err) {
-      const msg = err?.response?.data?.message || err?.message || 'Import failed';
-      setError(msg); toast.error(msg);
+      if (err?.response?.status === 422) {
+        // Validation errors — display cell-level errors
+        const data = err.response.data;
+        setError(data.message || 'Validation errors found');
+        setResults({ validationErrors: data.errors || [] });
+      } else {
+        const msg = err?.response?.data?.message || err?.message || 'Import failed';
+        setError(msg);
+        toast.error(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -234,12 +270,23 @@ function ExcelTab({ onImported }) {
       )}
 
       {results && (
-        <div className="border rounded-lg p-4 bg-green-50 border-green-200 space-y-1">
-          <p className="text-sm font-medium text-green-800">✓ {results.created} listing(s) created</p>
-          {results.failed?.map((f, i) => (
-            <p key={i} className="text-xs text-red-600">Row {f.index + 1}: {f.error}</p>
-          ))}
-        </div>
+        results.validationErrors ? (
+          <div className="border rounded-lg p-4 bg-red-50 border-red-200 space-y-2">
+            <p className="text-sm font-medium text-red-800">⚠ Validation errors — fix the cells below and re-upload</p>
+            <div className="max-h-48 overflow-y-auto space-y-1">
+              {results.validationErrors.map((e, i) => (
+                <p key={i} className="text-xs text-red-700">
+                  Row {e.row}, <strong>{e.field}</strong>: {e.message}
+                </p>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="border rounded-lg p-4 bg-green-50 border-green-200 space-y-1">
+            <p className="text-sm font-medium text-green-800">✓ {results.created} listing(s) imported</p>
+            <p className="text-xs text-green-700">{results.message}</p>
+          </div>
+        )
       )}
     </div>
   );
@@ -402,6 +449,92 @@ function ManualTab({ onImported }) {
   );
 }
 
+// ─── Tab 4: Website Import ───────────────────────────────────────────────────
+function WebsiteImportTab({ onImported }) {
+  const [url, setUrl]         = useState('');
+  const [consent, setConsent] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult]   = useState(null);
+  const [error, setError]     = useState('');
+
+  const canSubmit = url.trim().length > 0 && consent && !loading;
+
+  const handleImport = async () => {
+    if (!canSubmit) return;
+    setLoading(true); setError(''); setResult(null);
+    try {
+      const res = await api.listings.importFromWebsite({ url: url.trim(), consentGiven: true });
+      setResult(res.data);
+      toast.success(`Property data imported: "${res.data.title}"`);
+      onImported?.();
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.message || 'Import failed';
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-slate-600">
+        Enter the URL of a property listing page and we'll automatically extract the name,
+        description, and details to create a draft property in your account.
+      </p>
+
+      <div className="space-y-2">
+        <Label htmlFor="website-url">Property Listing URL</Label>
+        <Input
+          id="website-url"
+          placeholder="https://www.airbnb.com/rooms/..."
+          value={url}
+          onChange={(e) => { setUrl(e.target.value); setError(''); }}
+          disabled={loading}
+        />
+      </div>
+
+      {/* Legal consent — required before import */}
+      <div className="flex items-start gap-3 border rounded-lg p-3 bg-slate-50">
+        <input
+          type="checkbox"
+          id="website-consent"
+          checked={consent}
+          onChange={(e) => setConsent(e.target.checked)}
+          disabled={loading}
+          className="mt-0.5 h-4 w-4 cursor-pointer"
+        />
+        <label htmlFor="website-consent" className="text-xs text-slate-600 cursor-pointer leading-relaxed">
+          I authorize Channels Connect to import property data, text, and media from this URL
+          to create a draft listing in my account.
+        </label>
+      </div>
+
+      {error && (
+        <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>
+      )}
+
+      {result && (
+        <div className="border rounded-lg p-4 bg-green-50 border-green-200 space-y-1">
+          <p className="text-sm font-medium text-green-800">✓ Property imported as draft</p>
+          <p className="text-xs text-green-700">Title: <strong>{result.title}</strong></p>
+          <p className="text-xs text-slate-500">{result.message}</p>
+        </div>
+      )}
+
+      <Button
+        onClick={handleImport}
+        disabled={!canSubmit}
+        className="w-full"
+      >
+        {loading
+          ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Importing…</>
+          : <><ChevronRight className="w-4 h-4 mr-2" />Import Property Data</>}
+      </Button>
+    </div>
+  );
+}
+
 // ─── Onboarding Modal ────────────────────────────────────────────────────────
 function OnboardingModal({ open, onClose, onSuccess }) {
   return (
@@ -415,18 +548,22 @@ function OnboardingModal({ open, onClose, onSuccess }) {
         </DialogHeader>
 
         <Tabs defaultValue="ical" className="mt-2">
-          <TabsList className="grid grid-cols-3 mb-4">
+          <TabsList className="grid grid-cols-4 mb-4">
             <TabsTrigger value="ical" className="text-xs sm:text-sm">
               <Calendar className="w-4 h-4 mr-1" />
-              PMS / iCal
+              iCal
             </TabsTrigger>
             <TabsTrigger value="excel" className="text-xs sm:text-sm">
               <FileSpreadsheet className="w-4 h-4 mr-1" />
-              Excel Bulk
+              Excel
             </TabsTrigger>
             <TabsTrigger value="manual" className="text-xs sm:text-sm">
               <MapIcon className="w-4 h-4 mr-1" />
               Manual
+            </TabsTrigger>
+            <TabsTrigger value="website" className="text-xs sm:text-sm">
+              <ChevronRight className="w-4 h-4 mr-1" />
+              Website
             </TabsTrigger>
           </TabsList>
 
@@ -440,6 +577,10 @@ function OnboardingModal({ open, onClose, onSuccess }) {
 
           <TabsContent value="manual">
             <ManualTab onImported={() => { onSuccess?.(); onClose(); }} />
+          </TabsContent>
+
+          <TabsContent value="website">
+            <WebsiteImportTab onImported={() => { onSuccess?.(); onClose(); }} />
           </TabsContent>
         </Tabs>
       </DialogContent>
