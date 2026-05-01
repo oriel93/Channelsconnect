@@ -15,7 +15,9 @@ import api from '@/lib/apiClient';
 export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { isLoadingAuth, isAuthenticated } = useAuth();
+  const { authState, AUTH_STATE: _AS } = useAuth();
+  // Import AUTH_STATE from context for state machine checks
+  const { isAuthenticated } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -30,15 +32,14 @@ export default function Login() {
   // Legal consent checkbox — must be checked before signup submission
   const [tosAccepted, setTosAccepted] = useState(false);
 
-  // After signIn() succeeds we set pendingRedirect=true, then this effect
-  // watches for isLoadingAuth to finish (dbUser + session both resolved)
-  // before navigating — eliminates the race condition that kicked admins to /Login.
+  // After signIn() succeeds set pendingRedirect=true, then wait for SYSTEM_READY
+  // before navigating. AuthGate ensures the profile is fully loaded first.
   useEffect(() => {
-    if (pendingRedirect && !isLoadingAuth && isAuthenticated) {
+    if (pendingRedirect && isAuthenticated) {
       const redirect = searchParams.get('redirect') || '/Dashboard';
       navigate(redirect, { replace: true });
     }
-  }, [pendingRedirect, isLoadingAuth, isAuthenticated, navigate, searchParams]);
+  }, [pendingRedirect, isAuthenticated, navigate, searchParams]);
 
   const handleChange = (e) => {
     setFormData({

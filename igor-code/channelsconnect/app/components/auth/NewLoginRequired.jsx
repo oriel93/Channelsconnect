@@ -1,44 +1,42 @@
 /**
- * NewLoginRequired — gates app pages behind authentication.
+ * NewLoginRequired — per-page authentication gate.
  *
- * IMPORTANT: Uses useAuth() from AuthProvider (shared context) instead of a
- * direct authHelpers.getUser() call. This prevents the race condition where
- * Supabase's session hasn't restored yet and the component incorrectly
- * redirects an authenticated user to /Login.
+ * Delegates entirely to the AuthProvider state machine (authState).
+ * AuthGate in App.jsx already blocks rendering during INITIALIZING globally,
+ * so by the time any page mounts, auth is always SYSTEM_READY or UNAUTHENTICATED.
+ *
+ * This component is kept for backward compatibility with pages that wrap
+ * themselves in <NewLoginRequired>. It is now a thin pass-through.
  */
-import React, { useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import React from 'react';
+import { Navigate, useLocation } from 'react-router-dom';
+import { useAuth, AUTH_STATE } from '@/lib/authContext';
 import { Loader2 } from 'lucide-react';
-import { useAuth } from '@/lib/authContext';
 
 export default function NewLoginRequired({ children }) {
-  const { isLoadingAuth, isAuthenticated } = useAuth();
-  const navigate = useNavigate();
+  const { authState } = useAuth();
   const location = useLocation();
 
-  useEffect(() => {
-    // Only redirect once auth has fully resolved — never while still loading
-    if (!isLoadingAuth && !isAuthenticated) {
-      navigate(`/Login?redirect=${encodeURIComponent(location.pathname)}`, { replace: true });
-    }
-  }, [isLoadingAuth, isAuthenticated, navigate, location.pathname]);
-
-  // Still resolving session — show spinner
-  if (isLoadingAuth) {
+  // AuthGate should have handled this, but defensive fallback
+  if (authState === AUTH_STATE.INITIALIZING) {
     return (
       <div className="flex justify-center items-center h-screen bg-slate-50">
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">Loading...</p>
-        </div>
+        <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto" />
       </div>
     );
   }
 
-  // Not authenticated — render nothing (redirect fires in useEffect above)
-  if (!isAuthenticated) {
-    return null;
+  // Not logged in — send to login with return path
+  if (authState === AUTH_STATE.UNAUTHENTICATED) {
+    return (
+      <Navigate
+        to={`/Login?redirect=${encodeURIComponent(location.pathname)}`}
+        replace
+      />
+    );
   }
 
+  // SYSTEM_READY or AUTHENTICATED_NO_PROFILE — render children
+  // (AUTHENTICATED_NO_PROFILE shows its own error UI via ProfileErrorFallback in AuthGate)
   return <>{children}</>;
 }
