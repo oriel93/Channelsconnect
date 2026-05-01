@@ -100,7 +100,7 @@ function ICalTab({ onImported }) {
       <Button
         onClick={handleImport}
         disabled={loading || !url.trim() || !listingId.trim()}
-        className="w-full"
+        className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white transition-all shadow-md hover:shadow-lg"
       >
         {loading
           ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Importing…</>
@@ -263,7 +263,7 @@ function ExcelTab({ onImported }) {
       {rows?.length > 0 && !results && (
         <div className="space-y-2">
           <p className="text-sm text-slate-600">{rows.length} listings ready to import.</p>
-          <Button onClick={handleImport} disabled={loading} className="w-full">
+          <Button onClick={handleImport} disabled={loading} className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white transition-all shadow-md hover:shadow-lg">
             {loading ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Importing…</> : <><Upload className="w-4 h-4 mr-2" />Import {rows.length} Listings</>}
           </Button>
         </div>
@@ -442,7 +442,7 @@ function ManualTab({ onImported }) {
 
       {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
 
-      <Button onClick={handleSubmit} disabled={loading || !form.title.trim()} className="w-full">
+      <Button onClick={handleSubmit} disabled={loading || !form.title.trim()} className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white transition-all shadow-md hover:shadow-lg">
         {loading ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Creating…</> : <><Plus className="w-4 h-4 mr-2" />Create Listing</>}
       </Button>
     </div>
@@ -525,7 +525,7 @@ function WebsiteImportTab({ onImported }) {
       <Button
         onClick={handleImport}
         disabled={!canSubmit}
-        className="w-full"
+        className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white transition-all shadow-md hover:shadow-lg"
       >
         {loading
           ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Importing…</>
@@ -628,7 +628,7 @@ const ListingsContent = () => {
                             Export CSV
                         </Button>
                     )}
-                    <Button onClick={() => setShowModal(true)}>
+                    <Button onClick={() => setShowModal(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white transition-all shadow-md hover:shadow-lg">
                         <Plus className="w-4 h-4 mr-2" />
                         Add Properties
                     </Button>
@@ -640,7 +640,7 @@ const ListingsContent = () => {
                     <Home className="w-16 h-16 text-slate-400 mx-auto mb-4" />
                     <h3 className="text-lg font-semibold text-slate-700 mb-2">No properties yet</h3>
                     <p className="text-slate-500 mb-4">Import your first property to get started.</p>
-                    <Button onClick={() => setShowModal(true)}>
+                    <Button onClick={() => setShowModal(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white transition-all shadow-md hover:shadow-lg">
                         <Plus className="w-4 h-4 mr-2" />
                         Add Properties
                     </Button>

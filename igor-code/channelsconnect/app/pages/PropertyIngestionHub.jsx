@@ -101,8 +101,9 @@ const colorMap = {
 
 function SuccessOverlay({ title, message, onClose, onViewListings }) {
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center space-y-4">
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="overflow-y-auto flex-1 p-8 text-center space-y-4">
         <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto">
           <CheckCircle2 className="w-9 h-9 text-emerald-600" />
         </div>
@@ -110,9 +111,10 @@ function SuccessOverlay({ title, message, onClose, onViewListings }) {
         <p className="text-slate-600 text-sm leading-relaxed">{message}</p>
         <div className="flex gap-3 pt-2">
           <Button variant="outline" onClick={onClose} className="flex-1">Close</Button>
-          <Button onClick={onViewListings} className="flex-1 bg-blue-600 hover:bg-blue-700">
+          <Button onClick={onViewListings} className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white transition-all shadow-md">
             View My Listings
           </Button>
+        </div>
         </div>
       </div>
     </div>
@@ -202,7 +204,7 @@ function OtaImportForm({ onSuccess }) {
         <span>Our team will extract your photos, descriptions, room configuration, and amenities. You'll be notified once it's ready.</span>
       </div>
 
-      <Button type="submit" disabled={loading || !otaUrl.trim()} className="w-full bg-blue-600 hover:bg-blue-700">
+      <Button type="submit" disabled={loading || !otaUrl.trim()} className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white transition-all shadow-md hover:shadow-lg">
         {loading
           ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Submitting…</>
           : <>Submit for Extraction <ArrowRight className="w-4 h-4 ml-2" /></>}
@@ -316,7 +318,7 @@ function ExcelImportForm({ onSuccess }) {
           </div>
         </div>
 
-        <Button type="submit" disabled={loading || !file} className="w-full bg-emerald-600 hover:bg-emerald-700">
+        <Button type="submit" disabled={loading || !file} className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white transition-all shadow-md hover:shadow-lg">
           {loading
             ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Uploading & geocoding…</>
             : <>Upload & Import <ArrowRight className="w-4 h-4 ml-2" /></>}
@@ -442,7 +444,7 @@ function WebsiteImportForm({ onSuccess }) {
       <Button
         type="submit"
         disabled={loading || !url.trim() || !consent}
-        className="w-full bg-violet-600 hover:bg-violet-700"
+        className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white transition-all shadow-md hover:shadow-lg"
       >
         {loading
           ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Submitting…</>
@@ -757,7 +759,7 @@ function ManualCreateForm({ onSuccess }) {
             <Textarea rows={4} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Describe your property…" />
           </div>
 
-          <Button type="submit" disabled={loading} className="w-full bg-amber-500 hover:bg-amber-600 text-white">
+          <Button type="submit" disabled={loading} className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white transition-all shadow-md hover:shadow-lg">
             {loading
               ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Saving…</>
               : <>Save & Continue to Amenities <ArrowRight className="w-4 h-4 ml-2" /></>}

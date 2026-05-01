@@ -46,7 +46,7 @@ const ADMIN_NAV = [
 
 function NavLink({ item, active, onClick }) {
   const base = 'flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors';
-  const activeStyle  = 'bg-slate-100 text-slate-900';
+  const activeStyle  = 'bg-gradient-to-r from-blue-50 to-purple-50 text-purple-700 border-l-2 border-purple-600';
   const adminStyle   = 'text-yellow-700 hover:bg-yellow-50 hover:text-yellow-900';
   const defaultStyle = 'text-slate-600 hover:bg-slate-50 hover:text-slate-900';
 
@@ -72,11 +72,11 @@ const LOGO_URL = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/pub
 
 function LogoBar({ mobile }) {
   return (
-    <div className={`flex items-center flex-shrink-0 px-4 bg-white border-b ${mobile ? 'h-14' : 'h-16'}`}>
-      <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-sm overflow-hidden bg-white border border-slate-100">
+    <div className={`flex items-center flex-shrink-0 px-4 bg-gradient-to-r from-blue-600 to-purple-600 border-b border-purple-700 ${mobile ? 'h-14' : 'h-16'}`}>
+      <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-sm overflow-hidden bg-white/20 border border-white/30">
         <img src={LOGO_URL} alt="Channels Connect" className="w-full h-full object-contain" />
       </div>
-      <span className={`ml-3 font-bold text-slate-800 ${mobile ? 'text-base' : 'text-xl'}`}>
+      <span className={`ml-3 font-bold text-white ${mobile ? 'text-base' : 'text-xl'}`}>
         Channels Connect
       </span>
     </div>

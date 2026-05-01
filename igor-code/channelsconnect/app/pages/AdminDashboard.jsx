@@ -986,7 +986,7 @@ export default function AdminDashboard() {
                         <Button
                           onClick={() => handleCompleteConciergeListing(listing.id)}
                           disabled={completingId === listing.id || !draft.title}
-                          className="w-full bg-violet-600 hover:bg-violet-700"
+                          className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
                         >
                           {completingId === listing.id
                             ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Approving…</>
@@ -1165,7 +1165,7 @@ export default function AdminDashboard() {
                 <button
                   onClick={handleSaveReview}
                   disabled={savingReview || syncingListingId === reviewListing.id}
-                  className="px-6 py-2.5 bg-gray-900 hover:bg-black text-white text-sm font-medium rounded-lg transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                  className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white text-sm font-medium rounded-lg transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
                 >
                   {savingReview
                     ? <><Loader2 className="w-4 h-4 animate-spin" />Saving…</>
