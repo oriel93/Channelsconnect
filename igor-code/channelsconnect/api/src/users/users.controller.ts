@@ -76,7 +76,7 @@ export class UsersController {
       (dbUser.role || 'user').toLowerCase() !== 'admin'
     ) {
       dbUser = await this.usersService.update(user.id, { role: 'admin' } as any);
-      this.logger['log']?.(`[Auth] Super-admin ${user.email} auto-promoted to admin`);
+      console.log(`[Auth] Super-admin ${user.email} auto-promoted to admin`);
     }
 
     return dbUser;
