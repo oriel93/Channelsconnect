@@ -419,7 +419,7 @@ export class BulkImportController {
         reviewStatus: 'pending_website_extract',
         currency:     'USD',
         minNights:    1,
-        notes:        auditNote,   // stored for admin audit trail
+        houseRules:   auditNote,   // consent audit trail stored here — website imports have no house rules at creation
       },
     });
 

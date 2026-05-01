@@ -928,9 +928,9 @@ export default function AdminDashboard() {
                               {listing.captureUrl} <ExternalLink className="w-3 h-3" />
                             </a>
                             {/* Consent audit badge */}
-                            {listing.notes?.startsWith('[WEBSITE_CONSENT]') && (() => {
-                              const m = listing.notes.match(/authorized_at=([^|]+)/);
-                              const ipM = listing.notes.match(/ip=([^|]+)/);
+                            {listing.houseRules?.startsWith('[WEBSITE_CONSENT]') && (() => {
+                              const m = listing.houseRules.match(/authorized_at=([^|]+)/);
+                              const ipM = listing.houseRules.match(/ip=([^|]+)/);
                               const ts = m ? new Date(m[1].trim()).toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'short', timeStyle: 'short' }) : null;
                               return ts ? (
                                 <span className="inline-flex items-center gap-1 text-[10px] text-purple-700 bg-purple-50 border border-purple-200 rounded-full px-2 py-0.5 mt-1">
@@ -1160,9 +1160,9 @@ export default function AdminDashboard() {
                     </a>
                   </div>
                   {/* Consent audit record — parsed from notes field */}
-                  {reviewListing.notes?.startsWith('[WEBSITE_CONSENT]') && (() => {
+                  {reviewListing.houseRules?.startsWith('[WEBSITE_CONSENT]') && (() => {
                     const parts = {};
-                    reviewListing.notes.replace('[WEBSITE_CONSENT] ', '').split(' | ').forEach(p => {
+                    reviewListing.houseRules.replace('[WEBSITE_CONSENT] ', '').split(' | ').forEach(p => {
                       const [k, ...v] = p.split('=');
                       parts[k.trim()] = v.join('=').trim();
                     });
