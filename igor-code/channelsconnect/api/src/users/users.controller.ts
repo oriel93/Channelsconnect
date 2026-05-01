@@ -61,11 +61,23 @@ export class UsersController {
     // or user signed up via Supabase dashboard / OAuth before the trigger existed).
     // ensureUserExists() upserts: returns existing row or creates a new one.
     // This prevents the AUTHENTICATED_NO_PROFILE error screen on first visit.
-    const dbUser = await this.usersService.ensureUserExists(
+    let dbUser = await this.usersService.ensureUserExists(
       user.id,
       user.email,
       user.name,
     );
+
+    // Super-admin auto-promotion: if this email is the super-admin, ensure role=admin
+    // in the DB so the frontend sees isAdmin=true immediately on first login.
+    const SUPER_ADMIN_EMAIL = 'oriel@erorentals.com';
+    if (
+      dbUser &&
+      user.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase() &&
+      (dbUser.role || 'user').toLowerCase() !== 'admin'
+    ) {
+      dbUser = await this.usersService.update(user.id, { role: 'admin' } as any);
+      this.logger['log']?.(`[Auth] Super-admin ${user.email} auto-promoted to admin`);
+    }
 
     return dbUser;
   }
