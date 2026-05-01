@@ -46,11 +46,17 @@ import {
   Save,
   ClipboardList,
   ImageIcon,
-  Sparkles,
   ArrowLeft,
   Zap,
   Power,
   AlertTriangle,
+  Sparkles,
+  Globe,
+  Link2,
+  ExternalLink,
+  CheckCircle,
+  Loader,
+  Shield,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -154,6 +160,10 @@ export default function AdminDashboard() {
 
   // ── Review Queue state ───────────────────────────────────────────────────────────
   const [pendingListings, setPendingListings] = useState([]);
+  const [conciergeQueue, setConciergeQueue]   = useState([]);
+  const [isLoadingConcierge, setIsLoadingConcierge] = useState(false);
+  const [conciergeDraft, setConciergeDraft]   = useState({}); // listingId → patch fields
+  const [completingId, setCompletingId]       = useState(null);
   const [reviewListing, setReviewListing]     = useState(null);  // currently open in edit modal
   const [reviewForm, setReviewForm]           = useState({});    // live-edited fields
   const [savingReview, setSavingReview]       = useState(false);
@@ -199,6 +209,35 @@ export default function AdminDashboard() {
       setIsLoadingQueue(false);
     }
   }, [isAdmin]);
+
+  const fetchConciergeQueue = useCallback(async () => {
+    if (!isAdmin) return;
+    setIsLoadingConcierge(true);
+    try {
+      const res = await api.admin.getConciergeQueue();
+      setConciergeQueue(res.data || []);
+    } catch (err) {
+      toast.error('Could not load concierge queue');
+    } finally {
+      setIsLoadingConcierge(false);
+    }
+  }, [isAdmin]);
+
+  const handleCompleteConciergeListing = async (listingId) => {
+    const draft = conciergeDraft[listingId] || {};
+    if (!draft.title) { toast.error('Title is required before approving'); return; }
+    setCompletingId(listingId);
+    try {
+      await api.admin.completeConciergeListing(listingId, draft);
+      setConciergeQueue(prev => prev.filter(l => l.id !== listingId));
+      setConciergeDraft(prev => { const n = {...prev}; delete n[listingId]; return n; });
+      toast.success('Listing approved and sent to user!');
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Could not complete listing');
+    } finally {
+      setCompletingId(null);
+    }
+  };
 
   const handleOpenReview = (listing) => {
     setReviewListing(listing);
@@ -508,6 +547,15 @@ export default function AdminDashboard() {
           <TabsTrigger value="users">Users ({users.length})</TabsTrigger>
           <TabsTrigger value="listings">Listings ({listings.length})</TabsTrigger>
           <TabsTrigger value="media">Media Manager</TabsTrigger>
+          <TabsTrigger value="concierge" onClick={fetchConciergeQueue} className="relative">
+            <Sparkles className="w-4 h-4 mr-1" />
+            Concierge Queue
+            {conciergeQueue.length > 0 && (
+              <span className="ml-1.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-violet-500 text-white text-xs font-bold">
+                {conciergeQueue.length}
+              </span>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="review" onClick={fetchPendingQueue} className="relative">
             <ClipboardList className="w-4 h-4 mr-1" />
             Review Queue
@@ -817,6 +865,137 @@ export default function AdminDashboard() {
                       )}
                     </TableBody>
                   </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Concierge Queue Tab ─────────────────────────────────────────────────────── */}
+        <TabsContent value="concierge">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-violet-500" />
+                Concierge Extraction Queue
+              </CardTitle>
+              <Button variant="outline" size="sm" onClick={fetchConciergeQueue} disabled={isLoadingConcierge}>
+                {isLoadingConcierge ? <Loader className="w-4 h-4 animate-spin" /> : 'Refresh'}
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {isLoadingConcierge ? (
+                <div className="flex justify-center py-8"><Loader className="w-8 h-8 animate-spin text-violet-400" /></div>
+              ) : conciergeQueue.length === 0 ? (
+                <div className="text-center py-12 text-slate-400">
+                  <Sparkles className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                  <p className="text-sm">No pending extractions</p>
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  {conciergeQueue.map(listing => {
+                    const draft = conciergeDraft[listing.id] || {
+                      title: listing.title || '',
+                      description: '',
+                      address: listing.address || '',
+                      city: listing.city || '',
+                      state: listing.state || '',
+                      country: listing.country || '',
+                      propertyType: listing.propertyType || '',
+                      maxGuests: listing.maxGuests || '',
+                      bedrooms: listing.bedrooms || '',
+                      bathrooms: listing.bathrooms || '',
+                      basePrice: listing.basePrice || '',
+                      currency: listing.currency || 'USD',
+                    };
+                    const setDraft = (fields) => setConciergeDraft(prev => ({ ...prev, [listing.id]: { ...draft, ...fields } }));
+                    const isOta     = listing.reviewStatus === 'pending_ota_scrape';
+                    const isWeb     = listing.reviewStatus === 'pending_website_extract';
+
+                    return (
+                      <div key={listing.id} className="border border-slate-200 rounded-xl p-5 space-y-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              {isOta  ? <Link2 className="w-4 h-4 text-blue-500" />  : <Globe className="w-4 h-4 text-violet-500" />}
+                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${isOta ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-violet-50 text-violet-700 border-violet-200'}`}>
+                                {isOta ? 'OTA Scrape' : 'Website Extract'}
+                              </span>
+                              <span className="text-xs text-slate-400">#{listing.id}</span>
+                            </div>
+                            <p className="font-semibold text-slate-800">{listing.user?.email}</p>
+                            <a href={listing.captureUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-1 mt-1">
+                              {listing.captureUrl} <ExternalLink className="w-3 h-3" />
+                            </a>
+                          </div>
+                          <span className="text-xs text-slate-400 whitespace-nowrap">{listing.createdAt ? new Date(listing.createdAt).toLocaleDateString() : ''}</span>
+                        </div>
+
+                        {/* Editable fields */}
+                        <div className="grid sm:grid-cols-2 gap-3 text-sm">
+                          <div className="sm:col-span-2 space-y-1">
+                            <label className="text-xs font-medium text-slate-500">Title *</label>
+                            <input className="w-full border border-slate-200 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" value={draft.title} onChange={e => setDraft({ title: e.target.value })} placeholder="Property title" />
+                          </div>
+                          <div className="sm:col-span-2 space-y-1">
+                            <label className="text-xs font-medium text-slate-500">Description</label>
+                            <textarea rows={3} className="w-full border border-slate-200 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" value={draft.description} onChange={e => setDraft({ description: e.target.value })} placeholder="Property description" />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium text-slate-500">Address</label>
+                            <input className="w-full border border-slate-200 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" value={draft.address} onChange={e => setDraft({ address: e.target.value })} />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium text-slate-500">City</label>
+                            <input className="w-full border border-slate-200 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" value={draft.city} onChange={e => setDraft({ city: e.target.value })} />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium text-slate-500">State</label>
+                            <input className="w-full border border-slate-200 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" value={draft.state} onChange={e => setDraft({ state: e.target.value })} />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium text-slate-500">Country</label>
+                            <input className="w-full border border-slate-200 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" value={draft.country} onChange={e => setDraft({ country: e.target.value })} />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium text-slate-500">Property Type</label>
+                            <input className="w-full border border-slate-200 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" value={draft.propertyType} onChange={e => setDraft({ propertyType: e.target.value })} placeholder="House / Apartment / Villa…" />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium text-slate-500">Max Guests</label>
+                            <input type="number" min="1" className="w-full border border-slate-200 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" value={draft.maxGuests} onChange={e => setDraft({ maxGuests: parseInt(e.target.value) || '' })} />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium text-slate-500">Bedrooms</label>
+                            <input type="number" min="0" className="w-full border border-slate-200 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" value={draft.bedrooms} onChange={e => setDraft({ bedrooms: parseInt(e.target.value) || 0 })} />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium text-slate-500">Bathrooms</label>
+                            <input type="number" min="0" step="0.5" className="w-full border border-slate-200 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" value={draft.bathrooms} onChange={e => setDraft({ bathrooms: parseFloat(e.target.value) || 0 })} />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium text-slate-500">Base Price</label>
+                            <input type="number" min="1" className="w-full border border-slate-200 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" value={draft.basePrice} onChange={e => setDraft({ basePrice: parseFloat(e.target.value) || '' })} />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium text-slate-500">Currency</label>
+                            <input maxLength={3} className="w-full border border-slate-200 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" value={draft.currency} onChange={e => setDraft({ currency: e.target.value.toUpperCase() })} />
+                          </div>
+                        </div>
+
+                        <Button
+                          onClick={() => handleCompleteConciergeListing(listing.id)}
+                          disabled={completingId === listing.id || !draft.title}
+                          className="w-full bg-violet-600 hover:bg-violet-700"
+                        >
+                          {completingId === listing.id
+                            ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Approving…</>
+                            : <><CheckCircle className="w-4 h-4 mr-2" />Map Data & Send to User</>
+                          }
+                        </Button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </CardContent>

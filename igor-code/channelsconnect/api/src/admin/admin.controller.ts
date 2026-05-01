@@ -131,6 +131,26 @@ export class AdminController {
 
   // ── Review Queue endpoints ─────────────────────────────────────────────────────
 
+  // ── Concierge Queue (OTA + Website extraction) ──────────────────────────────
+
+  @Get('concierge')
+  @ApiOperation({ summary: 'Listings pending OTA/website extraction (admin concierge queue)' })
+  getConciergeQueue() {
+    this.logger.log('[Admin] GET /admin/concierge');
+    return this.adminService.getConciergeQueue();
+  }
+
+  @Post('concierge/:listingId/complete')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Patch extracted data into a concierge listing and approve it' })
+  completeConciergeListing(
+    @Param('listingId', ParseIntPipe) listingId: number,
+    @Body() body: Record<string, any>,
+  ) {
+    this.logger.log(`[Admin] POST /admin/concierge/${listingId}/complete`);
+    return this.adminService.completeConciergeListing(listingId, body);
+  }
+
   @Get('review')
   @ApiOperation({ summary: 'All listings pending admin review' })
   getPendingReview() {

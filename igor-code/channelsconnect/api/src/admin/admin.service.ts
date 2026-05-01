@@ -360,6 +360,51 @@ export class AdminService {
 
   // ── Review Queue ──────────────────────────────────────────────────────────
 
+  // ── Concierge Scrape Queue (OTA + Website extract) ────────────────────────
+
+  async getConciergeQueue() {
+    return this.prisma.listing.findMany({
+      where: {
+        reviewStatus: { in: ['pending_ota_scrape', 'pending_website_extract'] },
+      },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: { select: { id: true, email: true, name: true } },
+        propertyImages: { take: 5 },
+      },
+    });
+  }
+
+  /**
+   * Admin manually patches extracted data onto a scrape-pending listing,
+   * then marks it approved — making it visible and active for the user.
+   */
+  async completeConciergeListing(listingId: number, data: Record<string, any>) {
+    const listing = await this.prisma.listing.findUnique({ where: { id: listingId } });
+    if (!listing) throw new NotFoundException(`Listing ${listingId} not found`);
+
+    const safeFields: Record<string, any> = {};
+    const allowed = [
+      'title','description','address','city','state','country','postalCode',
+      'latitude','longitude','propertyType','maxGuests','bedrooms','bathrooms',
+      'basePrice','currency','amenities','houseRules','cancellationPolicy',
+      'checkInTime','checkOutTime','minNights','maxNights',
+    ];
+    for (const key of allowed) {
+      if (key in data && data[key] !== undefined && data[key] !== '') {
+        safeFields[key] = data[key];
+      }
+    }
+
+    const updated = await this.prisma.listing.update({
+      where: { id: listingId },
+      data: { ...safeFields, reviewStatus: 'approved', isActive: true },
+    });
+
+    this.logger.log(`[Concierge] Listing ${listingId} completed and approved by admin`);
+    return updated;
+  }
+
   async getPendingReviewListings() {
     return this.prisma.listing.findMany({
       where: { reviewStatus: 'pending_admin_review' },

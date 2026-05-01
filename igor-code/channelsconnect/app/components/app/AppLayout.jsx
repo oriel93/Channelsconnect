@@ -28,7 +28,7 @@ import {
 
 /** Items visible to ALL authenticated users */
 const USER_NAV = [
-  { name: 'Import Listings',   href: createPageUrl('ImportListings'),   icon: Upload      },
+  { name: 'Add Properties',    href: createPageUrl('PropertyIngestionHub'), icon: Upload  },
   { name: 'Dashboard',         href: createPageUrl('Dashboard'),        icon: Calendar    },
   { name: 'Tape Chart',        href: createPageUrl('TapeChart'),        icon: LayoutGrid  },
   { name: 'Financial Reports', href: createPageUrl('FinancialReports'), icon: BarChart3   },

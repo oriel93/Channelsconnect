@@ -1,5 +1,11 @@
 /**
- * BulkImportController — Excel / website ingestion endpoints.
+ * BulkImportController — 4-Tier Property Ingestion Engine
+ *
+ * Tier 1  POST /listings/ingest/ota-url       — OTA URL + optional iCal → pending_ota_scrape
+ * Tier 2  GET  /listings/bulk-import/template — Download XLSX template (no lat/lng)
+ *         POST /listings/bulk-import/upload   — Upload & geocode via Nominatim → pending_admin_review
+ * Tier 3  POST /listings/ingest/website       — Website URL + consent → pending_website_extract
+ * Tier 4  Handled by listings.controller.ts   — Manual form POST /listings/manual
  *
  * SAFE: No dependency on Channex sync, ARI, or webhook logic.
  */
@@ -7,42 +13,80 @@ import {
   Controller, Get, Post, Body, Res, Req,
   UploadedFile, UseInterceptors, BadRequestException,
   UnprocessableEntityException, HttpCode, HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiConsumes, ApiOperation } from '@nestjs/swagger';
 import { Response } from 'express';
 import { memoryStorage } from 'multer';
 import * as XLSX from 'xlsx';
 import { z } from 'zod';
+import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
 
-// ─── Zod row schema ──────────────────────────────────────────────────────────
+// ─── Nominatim geocoder (OpenStreetMap — no API key required) ────────────────
 
-const RowSchema = z.object({
-  Title:        z.string().min(2, 'Title must be at least 2 characters'),
-  Address:      z.string().min(5, 'Address must be at least 5 characters'),
-  Latitude:     z.coerce.number().min(-90).max(90),
-  Longitude:    z.coerce.number().min(-180).max(180),
-  BasePrice:    z.coerce.number().positive('BasePrice must be positive'),
-  MaxGuests:    z.coerce.number().int().positive(),
-  Bedrooms:     z.coerce.number().int().nonnegative(),
-  Bathrooms:    z.coerce.number().nonnegative(),
-  PropertyType: z.string().optional().default(''),
-  City:         z.string().optional().default(''),
-  Country:      z.string().optional().default(''),
-  Amenities:    z.string().optional().default(''),
-  Description:  z.string().optional().default(''),
+async function geocodeAddress(address: string, city: string, state: string, zip: string, country: string): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const parts = [address, city, state, zip, country].filter(Boolean).join(', ');
+    const res = await axios.get('https://nominatim.openstreetmap.org/search', {
+      params: { q: parts, format: 'json', limit: 1, addressdetails: 0 },
+      headers: { 'User-Agent': 'ChannelsConnect-PMS/1.0 (support@channelsconnect.com)' },
+      timeout: 8000,
+    });
+    if (res.data?.length > 0) {
+      return { lat: parseFloat(res.data[0].lat), lng: parseFloat(res.data[0].lon) };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// ─── Excel row schema (human-friendly, no lat/lng) ───────────────────────────
+
+const ExcelRowSchema = z.object({
+  // Required
+  Title:          z.string().min(2, 'Title must be at least 2 characters'),
+  Address:        z.string().min(5, 'Street address required'),
+  City:           z.string().min(1, 'City required'),
+  State:          z.string().optional().default(''),
+  Zip:            z.string().optional().default(''),
+  Country:        z.string().optional().default(''),
+  PropertyType:   z.string().optional().default(''),
+  MaxGuests:      z.coerce.number().int().positive('MaxGuests must be a positive integer'),
+  Bedrooms:       z.coerce.number().int().min(0).optional().default(0),
+  Bathrooms:      z.coerce.number().min(0).optional().default(0),
+  Beds:           z.string().optional().default(''),       // e.g. "1 King, 2 Queen"
+  BaseRate:       z.coerce.number().positive('BaseRate must be positive'),
+  MinRate:        z.coerce.number().positive().optional(),
+  MaxRate:        z.coerce.number().positive().optional(),
+  Amenities:      z.string().optional().default(''),       // comma-separated
+  Description:    z.string().optional().default(''),
+  CheckInTime:    z.string().optional().default(''),
+  CheckOutTime:   z.string().optional().default(''),
+  MinNights:      z.coerce.number().int().positive().optional().default(1),
+  Currency:       z.string().length(3).optional().default('USD'),
+  HouseRules:     z.string().optional().default(''),
+  CancellationPolicy: z.string().optional().default(''),
+});
+type ValidRow = z.infer<typeof ExcelRowSchema>;
+
+// ─── OTA URL schema ──────────────────────────────────────────────────────────
+
+const OtaUrlSchema = z.object({
+  otaUrl:   z.string().url('Must be a valid Airbnb or VRBO URL'),
+  icalUrl:  z.string().url('Must be a valid iCal URL').optional().or(z.literal('')),
+  title:    z.string().optional().default(''),
 });
 
-type ValidRow = z.infer<typeof RowSchema>;
-
-// ─── Website import Zod schema ───────────────────────────────────────────────
+// ─── Website import schema ───────────────────────────────────────────────────
 
 const WebsiteImportSchema = z.object({
-  url:          z.string().url('Must be a valid URL'),
-  consentGiven: z.literal(true, {
-    error: 'User consent is required to import from this URL',
+  url:           z.string().url('Must be a valid URL'),
+  consentGiven:  z.literal(true, {
+    error: 'Your authorisation is required to extract property data from this URL',
   }),
 });
 
@@ -52,244 +96,293 @@ const WebsiteImportSchema = z.object({
 @ApiTags('listings-ingestion')
 @ApiBearerAuth()
 export class BulkImportController {
+  private readonly logger = new Logger(BulkImportController.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
-  // ── Template Download ─────────────────────────────────────────────────────
+  // ── Tier 1: OTA URL Import ────────────────────────────────────────────────
+
+  @Post('ingest/ota-url')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Submit Airbnb/VRBO URL for async extraction — creates pending_ota_scrape listing' })
+  async ingestOtaUrl(
+    @CurrentUser() user: CurrentUserData,
+    @Body() body: unknown,
+  ) {
+    const parsed = OtaUrlSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.issues.map(i => i.message).join('; '));
+    }
+    const { otaUrl, icalUrl, title } = parsed.data;
+
+    // Detect OTA source
+    const source = otaUrl.includes('airbnb') ? 'airbnb_url'
+                 : otaUrl.includes('vrbo') || otaUrl.includes('homeaway') ? 'vrbo_url'
+                 : 'ota_url';
+
+    // Create listing placeholder
+    const listing = await this.prisma.listing.create({
+      data: {
+        userId:       user.id,
+        title:        title || `Importing from ${source.replace('_', ' ')}…`,
+        source,
+        isActive:     false,
+        reviewStatus: 'pending_ota_scrape',
+        captureUrl:   otaUrl,
+        currency:     'USD',
+        minNights:    1,
+      },
+    });
+
+    // If iCal URL provided, save it immediately for calendar sync
+    if (icalUrl) {
+      await this.prisma.icalConnection.create({
+        data: {
+          userId:        user.id,
+          listingId:     listing.id,
+          name:          'OTA Calendar',
+          icalUrl,
+          syncDirection: 'import',
+          syncEnabled:   true,
+        },
+      }).catch(() => {}); // non-fatal
+    }
+
+    this.logger.log(`[Ingest] OTA URL submitted by ${user.id} → listingId=${listing.id} source=${source}`);
+
+    return {
+      listingId: listing.id,
+      status:    'pending_ota_scrape',
+      message:   'We are extracting your photos and descriptions. We will notify you when your listing is ready for review.',
+    };
+  }
+
+  // ── Tier 2: Excel Template Download ──────────────────────────────────────
 
   @Get('bulk-import/template')
+  @ApiOperation({ summary: 'Download the Excel import template (.xlsx)' })
   downloadTemplate(@Res() res: Response) {
     const headers = [
-      'Title', 'Address', 'Latitude', 'Longitude', 'BasePrice',
-      'MaxGuests', 'Bedrooms', 'Bathrooms', 'PropertyType',
-      'City', 'Country', 'Amenities', 'Description',
+      'Title', 'Address', 'City', 'State', 'Zip', 'Country',
+      'PropertyType', 'MaxGuests', 'Bedrooms', 'Bathrooms', 'Beds',
+      'BaseRate', 'MinRate', 'MaxRate', 'Currency',
+      'Amenities', 'Description', 'CheckInTime', 'CheckOutTime',
+      'MinNights', 'HouseRules', 'CancellationPolicy',
     ];
 
-    const exampleRows = [
-      [
-        'Luxury Beach Villa',
-        '123 Ocean Drive, Miami Beach, FL 33139',
-        25.7826, -80.1340, 350, 8, 4, 3.5,
-        'villa', 'Miami Beach', 'USA',
-        'WiFi, Pool, AC, Parking, Kitchen, Washer, Balcony',
-        'Stunning beachfront villa with private pool and ocean views.',
-      ],
-      [
-        'Downtown Studio Apartment',
-        '456 Main Street, New York, NY 10001',
-        40.7506, -73.9971, 150, 2, 0, 1,
-        'apartment', 'New York', 'USA',
-        'WiFi, AC, Kitchen, Elevator',
-        'Modern studio in the heart of Manhattan, steps from Times Square.',
-      ],
+    const exampleRow = [
+      'Beachfront Villa', '123 Ocean Drive', 'Miami Beach', 'FL', '33139', 'USA',
+      'House', '6', '3', '2', '1 King, 2 Queen, 1 Twin',
+      '350', '200', '600', 'USD',
+      'WiFi, Pool, Air Conditioning, Parking, Kitchen, BBQ',
+      'Stunning ocean views, 3-min walk to beach.',
+      '3:00 PM', '11:00 AM',
+      '2', 'No smoking, No parties', 'Strict',
     ];
 
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...exampleRows]);
+    const notesRow = [
+      '* Required', '* Required', '* Required', 'Optional', 'Optional', 'Optional (e.g. USA)',
+      'e.g. House/Apartment/Villa', '* Required integer', 'Integer ≥ 0', 'Number ≥ 0', 'e.g. 1 King, 2 Queen',
+      '* Required (USD)', 'Optional', 'Optional', '3-letter code',
+      'Comma-separated list', 'Free text', '12/24hr format', '12/24hr format',
+      'Integer ≥ 1', 'Free text', 'e.g. Strict/Moderate/Flexible',
+    ];
+
+    const wb  = XLSX.utils.book_new();
+    const ws  = XLSX.utils.aoa_to_sheet([headers, exampleRow, notesRow]);
 
     // Column widths
     ws['!cols'] = headers.map((h) => ({
-      wch: Math.max(h.length + 4, 15),
+      wch: Math.max(h.length + 4, 18),
     }));
 
-    const wb = XLSX.utils.book_new();
+    // Style header row bold (xlsx lite — just set the value objects)
+    headers.forEach((_, ci) => {
+      const addr = XLSX.utils.encode_cell({ r: 0, c: ci });
+      if (ws[addr]) ws[addr].s = { font: { bold: true } };
+    });
+
     XLSX.utils.book_append_sheet(wb, ws, 'Properties');
 
-    const buffer: Buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    // Legend sheet
+    const legend = XLSX.utils.aoa_to_sheet([
+      ['Field', 'Required?', 'Notes'],
+      ['Title', 'Yes', 'Full property name'],
+      ['Address', 'Yes', 'Street address only — do NOT include city/state here'],
+      ['City', 'Yes', ''],
+      ['State', 'No', 'State or province'],
+      ['Zip', 'No', 'Postal / ZIP code'],
+      ['Country', 'No', 'Full name or 2/3-letter code (e.g. USA, UK, DE)'],
+      ['PropertyType', 'No', 'House, Apartment, Villa, Condo, Studio, Suite, etc.'],
+      ['MaxGuests', 'Yes', 'Total person capacity'],
+      ['Bedrooms', 'No', 'Integer'],
+      ['Bathrooms', 'No', 'Decimals OK (e.g. 1.5)'],
+      ['Beds', 'No', 'e.g. "1 King, 2 Queen, 1 Twin"'],
+      ['BaseRate', 'Yes', 'Default nightly rate in Currency'],
+      ['MinRate', 'No', 'Minimum dynamic price floor'],
+      ['MaxRate', 'No', 'Maximum dynamic price ceiling'],
+      ['Currency', 'No', 'ISO 4217 — defaults to USD'],
+      ['Amenities', 'No', 'Comma-separated: WiFi, Pool, Kitchen, Parking, etc.'],
+      ['Description', 'No', 'Property description for OTAs'],
+      ['CheckInTime', 'No', 'e.g. 3:00 PM or 15:00'],
+      ['CheckOutTime', 'No', 'e.g. 11:00 AM or 11:00'],
+      ['MinNights', 'No', 'Minimum booking length (default 1)'],
+      ['HouseRules', 'No', 'Free text — No smoking, No parties, etc.'],
+      ['CancellationPolicy', 'No', 'Strict / Moderate / Flexible / Non-refundable'],
+    ]);
+    legend['!cols'] = [{ wch: 22 }, { wch: 12 }, { wch: 55 }];
+    XLSX.utils.book_append_sheet(wb, legend, 'Field Guide');
 
-    res.setHeader(
-      'Content-Type',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    );
-    res.setHeader(
-      'Content-Disposition',
-      'attachment; filename="channels-connect-property-template.xlsx"',
-    );
-    res.send(buffer);
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="channels_connect_import_template.xlsx"');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.send(buf);
   }
 
-  // ── Bulk Upload ───────────────────────────────────────────────────────────
+  // ── Tier 2: Excel Upload + Geocode ────────────────────────────────────────
 
   @Post('bulk-import/upload')
   @HttpCode(HttpStatus.CREATED)
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: memoryStorage(),
-      limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB max
-      fileFilter: (_, file, cb) => {
-        const ok =
-          file.mimetype.includes('spreadsheet') ||
-          file.originalname.endsWith('.xlsx') ||
-          file.originalname.endsWith('.xls');
-        cb(ok ? null : new BadRequestException('Only .xlsx files are accepted'), ok);
-      },
-    }),
-  )
-  async bulkUpload(
-    // @ts-ignore — Multer types may not be globally declared
+  @ApiOperation({ summary: 'Upload Excel file — geocodes addresses, saves as pending_admin_review' })
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }))
+  async uploadExcel(
     @UploadedFile() file: any,
     @CurrentUser() user: CurrentUserData,
   ) {
     if (!file) throw new BadRequestException('No file uploaded');
 
-    // Parse workbook
-    let wb: XLSX.WorkBook;
-    try {
-      wb = XLSX.read(file.buffer, { type: 'buffer' });
-    } catch {
-      throw new BadRequestException('Could not parse the Excel file. Please use the provided template.');
+    const ext = file.originalname.toLowerCase();
+    if (!ext.endsWith('.xlsx') && !ext.endsWith('.xls')) {
+      throw new BadRequestException('File must be an Excel spreadsheet (.xlsx or .xls)');
     }
 
-    const sheetName = wb.SheetNames[0];
-    if (!sheetName) throw new BadRequestException('Excel file contains no sheets');
+    const wb   = XLSX.read(file.buffer, { type: 'buffer' });
+    const ws   = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
 
-    const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(
-      wb.Sheets[sheetName],
-      { defval: '' },
-    );
+    if (rows.length === 0) throw new BadRequestException('Spreadsheet is empty');
+    if (rows.length > 200) throw new UnprocessableEntityException('Maximum 200 rows per upload');
 
-    if (rows.length === 0) {
-      throw new BadRequestException('The spreadsheet contains no data rows (header row only).');
-    }
-
-    if (rows.length > 200) {
-      throw new BadRequestException('Maximum 200 properties per upload. Please split your file.');
-    }
-
-    // ── Validate all rows first (fail-fast: return all errors before any insert) ──
-    const validationErrors: { row: number; field: string; message: string }[] = [];
+    // ── Validate all rows up front (fail-fast) ──────────────────────────────
+    const errors: string[] = [];
     const validRows: ValidRow[] = [];
 
     for (let i = 0; i < rows.length; i++) {
-      const result = RowSchema.safeParse(rows[i]);
+      const result = ExcelRowSchema.safeParse(rows[i]);
       if (!result.success) {
-        for (const issue of result.error.issues) {
-          validationErrors.push({
-            row: i + 2, // +2: 1 for 0-index, 1 for header row
-            field: issue.path.join('.') || 'unknown',
-            message: issue.message,
-          });
-        }
+        result.error.issues.forEach((issue) => {
+          errors.push(`Row ${i + 2}: ${issue.path.join('.') || 'field'} — ${issue.message}`);
+        });
       } else {
         validRows.push(result.data);
       }
     }
-
-    if (validationErrors.length > 0) {
-      throw new UnprocessableEntityException({
-        message: `${validationErrors.length} validation error(s) found. Fix the highlighted cells and re-upload.`,
-        errors: validationErrors,
-      });
+    if (errors.length > 0) {
+      throw new UnprocessableEntityException({ errors, message: `${errors.length} validation error(s) found — no rows saved` });
     }
 
-    // ── Atomic bulk insert ─────────────────────────────────────────────────
-    const createData = validRows.map((row) => ({
-      userId:       user.id,
-      title:        row.Title,
-      address:      row.Address,
-      latitude:     row.Latitude,
-      longitude:    row.Longitude,
-      basePrice:    row.BasePrice,
-      maxGuests:    row.MaxGuests,
-      bedrooms:     row.Bedrooms,
-      bathrooms:    row.Bathrooms,
-      propertyType: row.PropertyType || null,
-      city:         row.City || null,
-      country:      row.Country || null,
-      amenities:    row.Amenities
-        ? row.Amenities.split(',').map((a) => a.trim()).filter(Boolean)
-        : [],
-      description:  row.Description || null,
-      source:       'excel_bulk',
-      isActive:     false, // pending admin review
-    }));
+    // ── Geocode + insert (sequential — respect Nominatim rate limit: 1 req/s) ──
+    const created: { rowIndex: number; listingId: number; title: string; geocoded: boolean }[] = [];
+    const geocodeFailed: number[] = [];
 
-    const result = await this.prisma.listing.createMany({
-      data: createData,
-      skipDuplicates: true,
-    });
+    for (let i = 0; i < validRows.length; i++) {
+      const row = validRows[i];
+
+      // Geocode
+      const geo = await geocodeAddress(row.Address, row.City, row.State, row.Zip, row.Country);
+      if (!geo) geocodeFailed.push(i + 2); // row number for user feedback
+
+      // Build amenities JSON
+      const amenitiesArr = row.Amenities
+        ? row.Amenities.split(',').map((s) => s.trim()).filter(Boolean)
+        : [];
+
+      const listing = await this.prisma.listing.create({
+        data: {
+          userId:            user.id,
+          title:             row.Title,
+          address:           row.Address,
+          city:              row.City,
+          state:             row.State || null,
+          postalCode:        row.Zip || null,
+          country:           row.Country || null,
+          latitude:          geo?.lat ?? null,
+          longitude:         geo?.lng ?? null,
+          propertyType:      row.PropertyType || null,
+          maxGuests:         row.MaxGuests,
+          bedrooms:          row.Bedrooms ?? null,
+          bathrooms:         row.Bathrooms != null ? row.Bathrooms : null,
+          basePrice:         row.BaseRate,
+          currency:          row.Currency || 'USD',
+          amenities:         amenitiesArr.length ? amenitiesArr : null,
+          description:       row.Description || null,
+          checkInTime:       row.CheckInTime || null,
+          checkOutTime:      row.CheckOutTime || null,
+          minNights:         row.MinNights ?? 1,
+          houseRules:        row.HouseRules || null,
+          cancellationPolicy: row.CancellationPolicy || null,
+          source:            'excel_import',
+          isActive:          false,
+          reviewStatus:      'pending_admin_review',
+        },
+      });
+
+      created.push({ rowIndex: i + 2, listingId: listing.id, title: row.Title, geocoded: !!geo });
+
+      // Nominatim rate limit — 1 req/s
+      if (i < validRows.length - 1) {
+        await new Promise((r) => setTimeout(r, 1100));
+      }
+    }
+
+    this.logger.log(`[BulkImport] user=${user.id} imported ${created.length} listings (${geocodeFailed.length} geocode failures)`);
 
     return {
-      created: result.count,
-      message: `${result.count} properties imported. They are pending review and will be activated shortly.`,
+      imported:       created.length,
+      geocodeFailed:  geocodeFailed.length,
+      geocodeFailRows: geocodeFailed,
+      listings:       created,
+      message:        `${created.length} propert${created.length === 1 ? 'y' : 'ies'} submitted for admin review. ${geocodeFailed.length > 0 ? `${geocodeFailed.length} row(s) could not be geocoded — coordinates will need to be set manually.` : ''}`,
     };
   }
 
-  // ── Website Import ────────────────────────────────────────────────────────
+  // ── Tier 3: Website URL Import ────────────────────────────────────────────
 
-  @Post('import/website')
+  @Post('ingest/website')
   @HttpCode(HttpStatus.CREATED)
-  async importFromWebsite(
-    @Body() body: unknown,
+  @ApiOperation({ summary: 'Submit website URL for admin extraction — creates pending_website_extract listing' })
+  async ingestWebsite(
     @CurrentUser() user: CurrentUserData,
+    @Body() body: unknown,
   ) {
-    // Validate input
     const parsed = WebsiteImportSchema.safeParse(body);
     if (!parsed.success) {
-      const firstError = parsed.error.issues[0];
-      throw new BadRequestException(firstError.message);
+      throw new BadRequestException(parsed.error.issues.map(i => i.message).join('; '));
     }
     const { url } = parsed.data;
 
-    // Fetch the page with a 10-second timeout
-    let htmlBody = '';
-    let extractedTitle = '';
-    let extractedDescription = '';
-
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10_000);
-
-      const response = await fetch(url, {
-        signal: controller.signal,
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (compatible; ChannelsConnect/1.0; +https://channelsconnect.com)',
-          Accept: 'text/html',
-        },
-      }).finally(() => clearTimeout(timeout));
-
-      if (response.ok) {
-        htmlBody = await response.text();
-      }
-    } catch (err) {
-      // Non-fatal — we still create the draft with empty extracted data
-      console.warn(`[WebsiteImport] Fetch failed for ${url}: ${err.message}`);
-    }
-
-    // Extract basic metadata from HTML
-    if (htmlBody) {
-      const titleMatch = htmlBody.match(/<title[^>]*>([^<]+)<\/title>/i);
-      if (titleMatch) {
-        extractedTitle = titleMatch[1].trim().slice(0, 200);
-      }
-
-      const descMatch = htmlBody.match(
-        /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i,
-      ) ?? htmlBody.match(
-        /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i,
-      );
-      if (descMatch) {
-        extractedDescription = descMatch[1].trim().slice(0, 1000);
-      }
-    }
-
-    // Create a draft listing (isActive=false = pending admin review)
     const listing = await this.prisma.listing.create({
       data: {
-        userId:      user.id,
-        title:       extractedTitle || 'Imported Property',
-        description: extractedDescription || null,
-        captureUrl:  url,
-        source:      'website_import',
-        isActive:    false,
+        userId:       user.id,
+        title:        `Importing from website…`,
+        source:       'website_import',
+        captureUrl:   url,
+        isActive:     false,
+        reviewStatus: 'pending_website_extract',
+        currency:     'USD',
+        minNights:    1,
       },
     });
 
+    this.logger.log(`[Ingest] Website URL submitted by ${user.id} → listingId=${listing.id}`);
+
     return {
       listingId: listing.id,
-      title:     listing.title,
-      message:
-        'Property imported successfully. Our team will review and enhance the details before activation.',
+      status:    'pending_website_extract',
+      message:   'Our team is working behind the scenes to extract and boost your listing. We will notify you when it is ready.',
     };
   }
 }

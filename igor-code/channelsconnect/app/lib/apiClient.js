@@ -236,6 +236,27 @@ export const api = {
    * Use these from dashboard sync buttons.
    */
   /**
+   * ingestion — 4-Tier Property Onboarding
+   */
+  ingestion: {
+    /** Tier 1: Airbnb/VRBO URL → pending_ota_scrape */
+    ingestOtaUrl: (data) => apiClient.post('/listings/ingest/ota-url', data),
+    /** Tier 2: Excel upload (FormData) → pending_admin_review */
+    uploadExcel: (formData) => apiClient.post('/listings/bulk-import/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+    /** Tier 3: Website URL + consent → pending_website_extract */
+    ingestWebsite: (data) => apiClient.post('/listings/ingest/website', data),
+    /** iCal export URL (public .ics feed) */
+    getIcalExportUrl: (listingId) => `${(apiClient.defaults.baseURL || '').replace(/\/+$/, '')}/ical/export/${listingId}.ics`,
+    /** iCal connections CRUD */
+    getIcalConnections: (listingId) => apiClient.get('/ical/connections', { params: { listingId } }),
+    createIcalConnection: (data) => apiClient.post('/ical/connections', data),
+    deleteIcalConnection: (id) => apiClient.delete(`/ical/connections/${id}`),
+    syncIcalConnection: (id) => apiClient.post(`/ical/sync/${id}`),
+  },
+
+  /**
    * admin — Super Admin Portal API
    * All routes require role='admin' in the users table.
    * Returns 403 for non-admin users.
@@ -278,6 +299,11 @@ export const api = {
 
     /** Update a user's role. Super-admin (oriel@erorentals.com) cannot be demoted. */
     updateUserRole: (userId, role) => apiClient.patch(`/admin/users/${userId}/role`, { role }),
+
+    /** Concierge queue: listings pending OTA/website extraction */
+    getConciergeQueue: () => apiClient.get('/admin/concierge'),
+    /** Patch extracted data + approve a concierge listing */
+    completeConciergeListing: (listingId, data) => apiClient.post(`/admin/concierge/${listingId}/complete`, data),
   },
 
   /** Record ToS consent — called immediately after signup */

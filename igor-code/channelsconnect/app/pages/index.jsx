@@ -38,6 +38,7 @@ import StateOfHotelTech2024 from "./StateOfHotelTech2024";
 import Dashboard from "./Dashboard";
 
 import ImportListings from "./ImportListings";
+import PropertyIngestionHub from "./PropertyIngestionHub";
 
 import PricingManagementSystem from "./PricingManagementSystem";
 
@@ -143,6 +144,7 @@ const PAGES = {
     Dashboard: Dashboard,
     
     ImportListings: ImportListings,
+    PropertyIngestionHub: PropertyIngestionHub,
     
     PricingManagementSystem: PricingManagementSystem,
     
@@ -267,6 +269,7 @@ function PagesContent() {
                 <Route path="/Dashboard" element={<Dashboard />} />
                 
                 <Route path="/ImportListings" element={<ImportListings />} />
+                <Route path="/PropertyIngestionHub" element={<PropertyIngestionHub />} />
                 
                 <Route path="/PricingManagementSystem" element={<PricingManagementSystem />} />
                 
