@@ -240,13 +240,14 @@ export const api = {
    */
   ingestion: {
     /** Tier 1: Airbnb/VRBO URL → pending_ota_scrape */
-    ingestOtaUrl: (data) => apiClient.post('/listings/ingest/ota-url', data),
+    ingestOtaUrl: (data) => apiClient.post('/listings/ingest/ota-url', data, { timeout: 20_000 }),
     /** Tier 2: Excel upload (FormData) → pending_admin_review */
     uploadExcel: (formData) => apiClient.post('/listings/bulk-import/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 60_000,
     }),
     /** Tier 3: Website URL + consent → pending_website_extract */
-    ingestWebsite: (data) => apiClient.post('/listings/ingest/website', data),
+    ingestWebsite: (data) => apiClient.post('/listings/ingest/website', data, { timeout: 20_000 }),
     /** iCal export URL (public .ics feed) */
     getIcalExportUrl: (listingId) => `${(apiClient.defaults.baseURL || '').replace(/\/+$/, '')}/ical/export/${listingId}.ics`,
     /** iCal connections CRUD */

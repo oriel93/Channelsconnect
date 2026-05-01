@@ -34,6 +34,21 @@ import { api } from '@/lib/apiClient';
 import { supabase } from '@/lib/supabase';
 import { createPageUrl } from '@/utils';
 
+// ─── Pre-flight: ensure DB user row exists ────────────────────────────────────
+// GET /users/me now auto-creates the row if missing (ensureUserExists on backend).
+// Call before any listing mutation so the FK constraint never fires.
+async function ensureProfileExists() {
+  try {
+    await api.users.me();
+  } catch (err) {
+    // 401 = session expired, let the call below fail naturally
+    // Any other error — log and continue (don't block the submission)
+    if (err?.response?.status !== 401) {
+      console.warn('[PropertyIngestionHub] ensureProfileExists soft error:', err?.message);
+    }
+  }
+}
+
 // ─── Tier cards config ────────────────────────────────────────────────────────
 
 const TIERS = [
@@ -126,14 +141,20 @@ function OtaImportForm({ onSuccess }) {
     if (!otaUrl.trim()) return;
     setLoading(true);
     try {
-      // api.ingestion.ingestOtaUrl → apiClient.post → interceptor injects Bearer token
+      await ensureProfileExists(); // guarantee FK row exists before listing insert
       const res = await api.ingestion.ingestOtaUrl({
         otaUrl:  otaUrl.trim(),
         icalUrl: icalUrl.trim() || undefined,
       });
       onSuccess(res.data);
     } catch (err) {
-      toast.error(err?.response?.data?.message || 'Submission failed — please try again');
+      const msg =
+        err?.response?.data?.message ||
+        (err?.code === 'ECONNABORTED' ? 'Request timed out — please try again' : null) ||
+        err?.message ||
+        'Submission failed — please try again';
+      toast.error(msg);
+      console.error('[OtaImport] submit error:', err?.response?.data ?? err?.message);
     } finally {
       setLoading(false);
     }
@@ -382,14 +403,23 @@ function WebsiteImportForm({ onSuccess }) {
     }
     setLoading(true);
     try {
-      // api.ingestion.ingestWebsite → axios interceptor → Authorization: Bearer <token>
+      await ensureProfileExists(); // guarantee FK row exists before listing insert
+      // 20 s timeout set in apiClient.js — will never hang indefinitely
       const res = await api.ingestion.ingestWebsite({
         url:          url.trim(),
         consentGiven: true,
       });
       onSuccess(res.data);
     } catch (err) {
-      toast.error(err?.response?.data?.message || 'Submission failed');
+      // Surface the exact server message so the user knows what happened
+      const msg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        (err?.code === 'ECONNABORTED' ? 'Request timed out — please try again' : null) ||
+        err?.message ||
+        'Submission failed — please try again';
+      toast.error(msg);
+      console.error('[WebsiteImport] submit error:', err?.response?.data ?? err?.message);
     } finally {
       setLoading(false);
     }
@@ -519,6 +549,7 @@ function ManualCreateForm({ onSuccess }) {
     e.preventDefault();
     setLoading(true);
     try {
+      await ensureProfileExists(); // guarantee FK row exists before listing insert
       const payload = {
         title:        form.title,
         address:      form.address,
