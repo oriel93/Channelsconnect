@@ -9,19 +9,16 @@ import { Reflector } from '@nestjs/core';
 import { SupabaseService } from '../supabase.service';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 
-const BASE44_APP_ID = process.env.BASE44_APP_ID || '6862f92c2e623c50a6ce3dec';
-const BASE44_API = 'https://base44.app/api';
-
 /**
- * Dual-auth guard: accepts both Supabase JWTs and Base44 tokens.
+ * Supabase JWT auth guard.
  *
- * Auth path 1 (primary):
- *   Supabase JWT → verifyToken() via JWKS → user.id = payload.sub
+ * Verifies Bearer tokens via Supabase JWKS (ES256).
+ * On success, attaches { id, email, name } to request.user.
  *
- * Auth path 2 (fallback — for Base44-authenticated frontend):
- *   Base44 token → GET /apps/:id/entities/User/me → user.id = response.id
- *   This allows the existing Base44-authenticated frontend to call our NestJS
- *   /connect/* endpoints without any frontend refactoring.
+ * NOTE: Base44 fallback path has been removed — this is a Supabase-only app.
+ * The old fallback added a 5 s network round-trip to every failed JWT verification,
+ * which caused the "Submitting…" spinner to hang for users whose token was valid
+ * but not yet in the local JWKS cache.
  */
 @Injectable()
 export class SupabaseAuthGuard implements CanActivate {
@@ -33,6 +30,7 @@ export class SupabaseAuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    // @Public() routes bypass auth entirely
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -42,57 +40,47 @@ export class SupabaseAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const authHeader = request.headers.authorization;
 
-    if (!authHeader) throw new UnauthorizedException('No authorization token provided');
+    if (!authHeader) {
+      throw new UnauthorizedException('No authorization token provided');
+    }
 
-    const token = authHeader.replace('Bearer ', '').trim();
-    if (!token) throw new UnauthorizedException('Invalid authorization token format');
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    if (!token) {
+      throw new UnauthorizedException('Invalid authorization token format');
+    }
 
-    // ── Path 1: Supabase JWT ─────────────────────────────────────────────
+    // ── Path 1: Supabase JWKS local verification (fast, no network round-trip) ──
     try {
       const payload = await this.supabaseService.verifyToken(token);
       if (payload?.sub) {
         request.user = {
-          id: payload.sub,
-          email: payload.email,
-          name: payload.user_metadata?.full_name,
+          id:    payload.sub,
+          email: payload.email  ?? '',
+          name:  (payload as any).user_metadata?.full_name ?? '',
         };
         return true;
       }
-    } catch {
-      // Not a Supabase JWT — fall through to Base44 path
+    } catch (err: any) {
+      this.logger.debug(`[Auth] JWKS verify failed: ${err?.message} — trying API fallback`);
     }
 
-    // ── Path 2: Base44 token ─────────────────────────────────────────────
+    // ── Path 2: Supabase API fallback (handles key rotation, cold-JWKS-cache edge cases) ──
+    // Uses the existing verifyTokenWithApi() method — purely Supabase, no Base44.
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 5000);
-
-      const res = await fetch(
-        `${BASE44_API}/apps/${BASE44_APP_ID}/entities/User/me`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          signal: controller.signal,
-        },
-      ).finally(() => clearTimeout(timer));
-
-      if (res.ok) {
-        const user = await res.json();
-        if (user?.id) {
-          request.user = {
-            id: user.id,
-            email: user.email || '',
-            name: user.full_name || user.name || '',
-          };
-          return true;
-        }
+      const apiUser = await this.supabaseService.verifyTokenWithApi(token);
+      if (apiUser?.id) {
+        request.user = {
+          id:    apiUser.id,
+          email: apiUser.email  ?? '',
+          name:  apiUser.user_metadata?.full_name ?? '',
+        };
+        this.logger.debug(`[Auth] Verified via Supabase API for user ${apiUser.id}`);
+        return true;
       }
     } catch (err: any) {
-      this.logger.warn(`[Auth] Base44 verification failed: ${err.message}`);
+      this.logger.warn(`[Auth] Supabase API fallback failed: ${err?.message}`);
     }
 
-    throw new UnauthorizedException('Invalid or expired token');
+    throw new UnauthorizedException('Invalid or expired token. Please sign in again.');
   }
 }
