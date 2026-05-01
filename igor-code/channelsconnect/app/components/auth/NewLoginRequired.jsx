@@ -1,40 +1,30 @@
-import React, { useState, useEffect } from 'react';
+/**
+ * NewLoginRequired — gates app pages behind authentication.
+ *
+ * IMPORTANT: Uses useAuth() from AuthProvider (shared context) instead of a
+ * direct authHelpers.getUser() call. This prevents the race condition where
+ * Supabase's session hasn't restored yet and the component incorrectly
+ * redirects an authenticated user to /Login.
+ */
+import React, { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
-import { authHelpers } from '@/lib/supabase';
+import { useAuth } from '@/lib/authContext';
 
 export default function NewLoginRequired({ children }) {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const { isLoadingAuth, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
-    const checkUserAuth = async () => {
-      setLoading(true);
-      try {
-        const { user, error } = await authHelpers.getUser();
-        if (user && !error) {
-          setUser(user);
-        } else {
-          setUser(null);
-          // Redirect to login with current path as redirect parameter
-          const currentPath = location.pathname;
-          navigate(`/Login?redirect=${encodeURIComponent(currentPath)}`);
-        }
-      } catch (e) {
-        console.error('Auth check failed:', e);
-        setUser(null);
-        navigate(`/Login?redirect=${encodeURIComponent(location.pathname)}`);
-      } finally {
-        setLoading(false);
-      }
-    };
+    // Only redirect once auth has fully resolved — never while still loading
+    if (!isLoadingAuth && !isAuthenticated) {
+      navigate(`/Login?redirect=${encodeURIComponent(location.pathname)}`, { replace: true });
+    }
+  }, [isLoadingAuth, isAuthenticated, navigate, location.pathname]);
 
-    checkUserAuth();
-  }, [navigate, location.pathname]);
-
-  if (loading) {
+  // Still resolving session — show spinner
+  if (isLoadingAuth) {
     return (
       <div className="flex justify-center items-center h-screen bg-slate-50">
         <div className="text-center">
@@ -45,8 +35,9 @@ export default function NewLoginRequired({ children }) {
     );
   }
 
-  if (!user) {
-    return null; // Will redirect in useEffect
+  // Not authenticated — render nothing (redirect fires in useEffect above)
+  if (!isAuthenticated) {
+    return null;
   }
 
   return <>{children}</>;
