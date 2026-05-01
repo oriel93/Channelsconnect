@@ -47,7 +47,7 @@ const ADMIN_NAV = [
 function NavLink({ item, active, onClick }) {
   const base = 'flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors';
   const activeStyle  = 'bg-gradient-to-r from-blue-50 to-purple-50 text-purple-700 border-l-2 border-purple-600';
-  const adminStyle   = 'text-yellow-700 hover:bg-yellow-50 hover:text-yellow-900';
+  const adminStyle   = 'text-purple-700 hover:bg-purple-50 hover:text-purple-900';
   const defaultStyle = 'text-slate-600 hover:bg-slate-50 hover:text-slate-900';
 
   const style = active ? activeStyle : item.adminOnly ? adminStyle : defaultStyle;
@@ -58,7 +58,7 @@ function NavLink({ item, active, onClick }) {
       {item.name}
       {item.adminOnly && (
         <span className="ml-auto text-[9px] font-bold uppercase tracking-wide
-          bg-yellow-200 text-yellow-800 rounded px-1 py-0.5">
+          bg-purple-100 text-purple-700 rounded px-1 py-0.5">
           Admin
         </span>
       )}

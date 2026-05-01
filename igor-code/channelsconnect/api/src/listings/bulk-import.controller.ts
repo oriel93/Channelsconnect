@@ -47,30 +47,54 @@ async function geocodeAddress(address: string, city: string, state: string, zip:
 
 // ─── Excel row schema (human-friendly, no lat/lng) ───────────────────────────
 
+// ─── optionalRate: accepts positive number | empty string | null | undefined ──
+// xlsx gives empty cells as '' (with defval:''), or sometimes null/undefined.
+// Blank MinRate/MaxRate cells must parse to undefined, not fail validation.
+const optionalRate = () =>
+  z.union([
+    z.coerce.number().positive(),
+    z.literal(''),
+    z.literal(0),
+    z.null(),
+    z.undefined(),
+  ])
+  .optional()
+  .transform(v => (v === '' || v === null || v === undefined || v === 0 ? undefined : Number(v)));
+
+// ─── Excel row schema ─────────────────────────────────────────────────────────
+// z.coerce.string() on all string fields: xlsx parses numeric-looking cells
+// (zip codes like 10001, time-of-day decimals) as JS numbers — coerce handles it.
+// raw: false on sheet_to_json ensures times come as "3:00 PM" not 0.625 decimal.
 const ExcelRowSchema = z.object({
-  // Required
-  Title:          z.string().min(2, 'Title must be at least 2 characters'),
-  Address:        z.string().min(5, 'Street address required'),
-  City:           z.string().min(1, 'City required'),
-  State:          z.string().optional().default(''),
-  Zip:            z.string().optional().default(''),
-  Country:        z.string().optional().default(''),
-  PropertyType:   z.string().optional().default(''),
+  // ─ Required ────────────────────────────────────────────────────────────────
+  Title:          z.coerce.string().min(2, 'Title must be at least 2 characters'),
+  Address:        z.coerce.string().min(5, 'Street address required'),
+  City:           z.coerce.string().min(1, 'City required'),
   MaxGuests:      z.coerce.number().int().positive('MaxGuests must be a positive integer'),
+  BaseRate:       z.coerce.number().positive('BaseRate must be positive'),
+
+  // ─ Optional strings (coerced — xlsx may give numbers for zip/time cells) ──
+  State:          z.coerce.string().optional().default(''),
+  Zip:            z.coerce.string().optional().default(''),    // 10001 → "10001"
+  Country:        z.coerce.string().optional().default(''),
+  PropertyType:   z.coerce.string().optional().default(''),
+  Beds:           z.coerce.string().optional().default(''),    // "1 King, 2 Queen"
+  Amenities:      z.coerce.string().optional().default(''),
+  Description:    z.coerce.string().optional().default(''),
+  CheckInTime:    z.coerce.string().optional().default(''),    // "3:00 PM" (raw:false)
+  CheckOutTime:   z.coerce.string().optional().default(''),
+  HouseRules:     z.coerce.string().optional().default(''),
+  CancellationPolicy: z.coerce.string().optional().default(''),
+  Currency:       z.coerce.string().min(2).max(4).optional().default('USD'),
+
+  // ─ Optional numbers ────────────────────────────────────────────────────────
   Bedrooms:       z.coerce.number().int().min(0).optional().default(0),
   Bathrooms:      z.coerce.number().min(0).optional().default(0),
-  Beds:           z.string().optional().default(''),       // e.g. "1 King, 2 Queen"
-  BaseRate:       z.coerce.number().positive('BaseRate must be positive'),
-  MinRate:        z.coerce.number().positive().optional(),
-  MaxRate:        z.coerce.number().positive().optional(),
-  Amenities:      z.string().optional().default(''),       // comma-separated
-  Description:    z.string().optional().default(''),
-  CheckInTime:    z.string().optional().default(''),
-  CheckOutTime:   z.string().optional().default(''),
   MinNights:      z.coerce.number().int().positive().optional().default(1),
-  Currency:       z.string().length(3).optional().default('USD'),
-  HouseRules:     z.string().optional().default(''),
-  CancellationPolicy: z.string().optional().default(''),
+
+  // ─ Rate limits: empty/null/undefined → undefined (not set) ────────────────
+  MinRate:        optionalRate(),
+  MaxRate:        optionalRate(),
 });
 type ValidRow = z.infer<typeof ExcelRowSchema>;
 
@@ -263,9 +287,18 @@ export class BulkImportController {
 
     const wb   = XLSX.read(file.buffer, { type: 'buffer' });
     const ws   = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
+    // raw: false — xlsx formats dates/times as strings ("3:00 PM") not Excel decimal serials.
+    // defval: '' — empty cells become empty string, not undefined (matches z.coerce.string default).
+    const allRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { raw: false, defval: '' });
 
-    if (rows.length === 0) throw new BadRequestException('Spreadsheet is empty');
+    // Skip the notes/example row from the template (row 3: contains "* Required" annotations).
+    // Also skip any row where Title is empty, blank, or literally "Title" (re-pasted header).
+    const rows = allRows.filter((r) => {
+      const title = String(r['Title'] ?? '').trim();
+      return title !== '' && title.toLowerCase() !== 'title' && !title.startsWith('*');
+    });
+
+    if (rows.length === 0) throw new BadRequestException('Spreadsheet is empty or contains only header/notes rows');
     if (rows.length > 200) throw new UnprocessableEntityException('Maximum 200 rows per upload');
 
     // ── Validate all rows up front (fail-fast) ──────────────────────────────

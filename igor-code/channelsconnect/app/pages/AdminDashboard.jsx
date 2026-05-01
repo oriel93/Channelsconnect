@@ -107,7 +107,7 @@ const SyncButton = ({ listingId, syncStates, syncingListingId, onSync, onLoadSta
   const isPublished  = state?.hasChannexRecord;
   const statusColor  = isPublished
     ? (state?.syncStatus === 'error' ? 'bg-red-600 hover:bg-red-700'
-       : state?.syncStatus === 'partial_sync' ? 'bg-amber-600 hover:bg-amber-700'
+       : state?.syncStatus === 'partial_sync' ? 'bg-blue-500 hover:bg-blue-600'
        : 'bg-violet-600 hover:bg-violet-700')
     : 'bg-blue-600 hover:bg-blue-700';
 
@@ -508,7 +508,7 @@ export default function AdminDashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-2">
-            <Crown className="w-7 h-7 text-yellow-500" />
+            <Crown className="w-7 h-7 text-purple-500" />
             Admin Portal
           </h1>
           <p className="text-slate-500 mt-1">
@@ -537,7 +537,7 @@ export default function AdminDashboard() {
         <StatCard title="Total Listings" value={stats?.listingCount} icon={Building2} color="green"
           subtitle={`${stats?.activeListings ?? '-'} active`} />
         <StatCard title="Total Bookings" value={stats?.bookingCount} icon={BookOpen} color="purple" />
-        <StatCard title="Active Listings" value={stats?.activeListings} icon={TrendingUp} color="orange"
+        <StatCard title="Active Listings" value={stats?.activeListings} icon={TrendingUp} color="purple"
           subtitle={stats ? `${Math.round((stats.activeListings / Math.max(stats.listingCount, 1)) * 100)}% of total` : null} />
       </div>
 
@@ -620,7 +620,7 @@ export default function AdminDashboard() {
                             <TableCell>
                               {/* Role selector — locked for super-admin */}
                               {u.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase() ? (
-                                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-100 border border-amber-300 rounded-full px-2.5 py-0.5">
+                                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-700 bg-purple-100 border border-purple-300 rounded-full px-2.5 py-0.5">
                                   🔒 super-admin
                                 </span>
                               ) : (
@@ -1198,7 +1198,7 @@ export default function AdminDashboard() {
                   <button
                     disabled={deactivatingId === reviewListing.id}
                     onClick={() => handleDeactivate(reviewListing.id, reviewListing.title)}
-                    className="px-6 py-2.5 bg-white border border-orange-300 text-orange-700 hover:bg-orange-50 text-sm font-medium rounded-lg transition-colors shadow-sm disabled:opacity-50 inline-flex items-center gap-2"
+                    className="px-6 py-2.5 bg-white border border-red-300 text-red-700 hover:bg-red-50 text-sm font-medium rounded-lg transition-colors shadow-sm disabled:opacity-50 inline-flex items-center gap-2"
                   >
                     {deactivatingId === reviewListing.id
                       ? <><Loader2 className="w-4 h-4 animate-spin" />Deactivating…</>
@@ -1222,7 +1222,7 @@ export default function AdminDashboard() {
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
                   <span className="flex items-center gap-2">
-                    <ClipboardList className="w-5 h-5 text-amber-500" />
+                    <ClipboardList className="w-5 h-5 text-purple-500" />
                     Pending Review
                     {pendingListings.length > 0 && (
                       <Badge className="bg-red-500 text-white">{pendingListings.length}</Badge>
