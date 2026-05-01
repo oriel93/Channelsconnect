@@ -734,8 +734,8 @@ export class Beds24Service {
           
           // IDs for linking
           airbnbListingId: airbnbListing.id,
-          beds24PropId: beds24Property?.id ? String(beds24Property.id) : (beds24Property?.propId || null),
-          beds24RoomId: matchedRoomId ? String(matchedRoomId) : null,
+          channexPropertyId: beds24Property?.id ? String(beds24Property.id) : (beds24Property?.propId || null),
+          channexRoomId: matchedRoomId ? String(matchedRoomId) : null,
         };
 
         // Combine raw data for storage
@@ -806,8 +806,8 @@ export class Beds24Service {
           id: listing.id,
           title: listing.title,
           airbnbListingId: airbnbListing.id,
-          beds24PropId: beds24Property?.id,
-          beds24RoomId: matchedRoomId ? String(matchedRoomId) : null,
+          channexPropertyId: beds24Property?.id,
+          channexRoomId: matchedRoomId ? String(matchedRoomId) : null,
           hasDetailedData: !!beds24Property,
         });
       }
@@ -824,8 +824,8 @@ export class Beds24Service {
 
       // Get property IDs that we just synced
       const syncedPropertyIds = savedListings
-        .filter(l => l.beds24PropId)
-        .map(l => parseInt(String(l.beds24PropId), 10))
+        .filter(l => l.channexPropertyId)
+        .map(l => parseInt(String(l.channexPropertyId), 10))
         .filter(id => !isNaN(id));
 
       if (syncedPropertyIds.length > 0) {
@@ -836,12 +836,12 @@ export class Beds24Service {
 
           // Create maps for matching
           const listingByPropId = new Map(
-            savedListings.map(l => [String(l.beds24PropId), l])
+            savedListings.map(l => [String(l.channexPropertyId), l])
           );
           const listingByRoomId = new Map(
             savedListings
-              .filter(l => l.beds24RoomId)
-              .map(l => [String(l.beds24RoomId), l])
+              .filter(l => l.channexRoomId)
+              .map(l => [String(l.channexRoomId), l])
           );
 
           // Process each booking
@@ -948,7 +948,7 @@ export class Beds24Service {
         // Get the actual listing from DB to ensure we have the latest beds24RoomId
         const listingRecord = await this.prisma.listing.findUnique({
           where: { id: savedListing.id },
-          select: { id: true, title: true, beds24RoomId: true },
+          select: { id: true, title: true, channexRoomId: true },
         });
 
         if (!listingRecord) {
@@ -956,7 +956,7 @@ export class Beds24Service {
           continue;
         }
 
-        const beds24RoomId = listingRecord.beds24RoomId || savedListing.beds24RoomId;
+        const beds24RoomId = listingRecord.channexRoomId || savedListing.channexRoomId;
         
         this.logger.log(`Checking listing ${listingRecord.id} (${listingRecord.title}) for calendar sync - beds24RoomId: ${beds24RoomId}`);
         
@@ -1274,13 +1274,13 @@ export class Beds24Service {
       const listings = await this.prisma.listing.findMany({
         where: {
           userId,
-          beds24PropId: { not: null },
+          channexPropertyId: { not: null },
         },
         select: {
           id: true,
           title: true,
-          beds24PropId: true,
-          beds24RoomId: true,
+          channexPropertyId: true,
+          channexRoomId: true,
         },
       });
 
@@ -1299,8 +1299,8 @@ export class Beds24Service {
 
       // Extract property IDs
       const propertyIds = listings
-        .filter(l => l.beds24PropId)
-        .map(l => parseInt(l.beds24PropId!, 10))
+        .filter(l => l.channexPropertyId)
+        .map(l => parseInt(l.channexPropertyId!, 10))
         .filter(id => !isNaN(id));
 
       this.logger.log(`Found ${propertyIds.length} properties to sync bookings for`);
@@ -1311,10 +1311,10 @@ export class Beds24Service {
 
       // Create maps for matching
       const listingByPropId = new Map(
-        listings.map(l => [l.beds24PropId, l])
+        listings.map(l => [l.channexPropertyId, l])
       );
       const listingByRoomId = new Map(
-        listings.filter(l => l.beds24RoomId).map(l => [l.beds24RoomId, l])
+        listings.filter(l => l.channexRoomId).map(l => [l.channexRoomId, l])
       );
 
       let bookingsCreated = 0;
@@ -1445,8 +1445,8 @@ export class Beds24Service {
       const listing = await this.prisma.listing.findFirst({
         where: {
           OR: [
-            { beds24RoomId: String(payload.roomId) },
-            { beds24PropId: String(payload.propertyId) },
+            { channexRoomId: String(payload.roomId) },
+            { channexPropertyId: String(payload.propertyId) },
           ],
         },
       });

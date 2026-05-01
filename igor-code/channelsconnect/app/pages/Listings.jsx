@@ -653,7 +653,7 @@ const ListingsContent = () => {
                                 <Card className="h-full flex flex-col overflow-hidden">
                                 <div className="aspect-video bg-slate-100 overflow-hidden relative group flex items-center justify-center">
                                     <Home className="w-12 h-12 text-slate-300" />
-                                    {listing.beds24RoomId && (
+                                    {listing.channexRoomId && (
                                         <div className="absolute top-3 right-3 bg-blue-600 text-white px-2 py-1 rounded text-xs font-medium shadow-lg">
                                             Channels Connect
                                         </div>

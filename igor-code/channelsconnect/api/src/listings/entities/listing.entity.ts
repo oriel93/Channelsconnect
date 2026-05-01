@@ -81,16 +81,16 @@ export class ListingEntity implements Listing {
   @ApiProperty()
   isActive: boolean;
 
-  @ApiProperty({ required: false, nullable: true, description: 'Beds24 property ID' })
-  beds24PropId: string | null;
+  @ApiProperty({ required: false, nullable: true, description: 'Channex property ID (legacy column beds24PropId)' })
+  channexPropertyId: string | null;
 
-  @ApiProperty({ required: false, nullable: true, description: 'Beds24 room/roomType ID' })
-  beds24RoomId: string | null;
+  @ApiProperty({ required: false, nullable: true, description: 'Channex room/roomType ID (legacy column beds24RoomId)' })
+  channexRoomId: string | null;
 
   @ApiProperty({ required: false, nullable: true, description: 'Airbnb listing ID' })
   airbnbListingId: string | null;
 
-  @ApiProperty({ description: 'Channel source — always channex (Beds24 decommissioned)' })
+  @ApiProperty({ description: 'Channel source (always channex)' })
   source: string;
 
   @ApiProperty({ required: false, nullable: true, description: 'Original Airbnb URL used for content capture' })

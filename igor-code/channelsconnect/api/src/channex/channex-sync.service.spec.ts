@@ -43,8 +43,8 @@ const makePrismaMock = () => ({
 const VALID_LISTING = {
   id: 1,
   title: 'Beach House',
-  beds24PropId: 'prop-channex-abc',
-  beds24RoomId: 'room-channex-xyz',
+  channexPropertyId: 'prop-channex-abc',
+  channexRoomId: 'room-channex-xyz',
 };
 
 const VALID_UPDATE = {
@@ -101,7 +101,7 @@ describe('Test 1: Successful price push', () => {
     expect(ariCall).toBeDefined();
 
     const body = JSON.parse(ariCall[1].body);
-    expect(body.values[0].attributes.property_id).toBe(VALID_LISTING.beds24PropId);
+    expect(body.values[0].attributes.property_id).toBe(VALID_LISTING.channexPropertyId);
     expect(body.values[1].attributes.rate).toBe(199.99);
   });
 });
@@ -174,8 +174,8 @@ describe('Test 3: Missing Channex mapping — verifies error handling', () => {
     prisma.listing.findUnique.mockResolvedValue({
       id: 999,
       title: 'Mystery Property',
-      beds24PropId: null,
-      beds24RoomId: null,
+      channexPropertyId: null,
+      channexRoomId: null,
     });
 
     mockFetch.mockResolvedValue({

@@ -243,9 +243,9 @@ export default function OptimizedCalendarLayout({ selectedListingId, listings = 
         const selectedListing = listings.find(l => l.id === selectedProperty);
         
         // Log selected listing info
-        console.log('Selected listing:', selectedListing?.id, 'channex mapping:', selectedListing?.beds24RoomId);
+        console.log('Selected listing:', selectedListing?.id, 'channex mapping:', selectedListing?.channexRoomId);
         
-        if (selectedListing?.beds24RoomId) {
+        if (selectedListing?.channexRoomId) {
           // Fetch from cached calendar data (Channex-backed)
           console.log('Fetching cached calendar for listing:', selectedListing.id);
           const response = await api.calendar.getRates({
@@ -509,7 +509,7 @@ export default function OptimizedCalendarLayout({ selectedListingId, listings = 
     
     try {
       // If listing has Channex mapping, update via Channex ARI
-      if (selectedListing?.beds24RoomId) {
+      if (selectedListing?.channexRoomId) {
         // Use calendar rate update endpoint which updates Channex and refreshes cache
         const response = await api.calendar.updateRate({
           listingId: selectedListing.id,

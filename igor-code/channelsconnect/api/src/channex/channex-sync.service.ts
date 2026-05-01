@@ -138,7 +138,7 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException(`Listing ${listingId} not found`);
     }
 
-    if (!listing.beds24PropId || !listing.beds24RoomId) {
+    if (!listing.channexPropertyId || !listing.channexRoomId) {
       // Third fallback: use the cert user's mapping (master Channex property).
       // This covers new listings created via /listings/manual or /listings/import/airbnb
       // that haven't gone through the full onboarding sync yet.
@@ -194,8 +194,8 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
     }
 
     return {
-      channexPropertyId: listing.beds24PropId,
-      channexRoomTypeId: listing.beds24RoomId,
+      channexPropertyId: listing.channexPropertyId,
+      channexRoomTypeId: listing.channexRoomId,
       channexRatePlanId: null,
     };
   }

@@ -223,7 +223,7 @@ const ListingDetailContent = () => {
         </Card>
 
         {/* ── Admin-only: Integration details ───────────────────────────────── */}
-        {isAdmin && (listing.beds24PropId || listing.beds24RoomId || listing.userId) && (
+        {isAdmin && (listing.channexPropertyId || listing.channexRoomId || listing.userId) && (
           <Card className="border-amber-200">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base text-amber-700">
@@ -235,19 +235,19 @@ const ListingDetailContent = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              {listing.beds24PropId && (
+              {listing.channexPropertyId && (
                 <div>
                   <p className="text-slate-500 text-xs mb-0.5">Property ID</p>
                   <p className="font-mono text-slate-800 text-xs bg-slate-50 px-2 py-1 rounded border border-slate-200 break-all">
-                    {listing.beds24PropId}
+                    {listing.channexPropertyId}
                   </p>
                 </div>
               )}
-              {listing.beds24RoomId && (
+              {listing.channexRoomId && (
                 <div>
                   <p className="text-slate-500 text-xs mb-0.5">Room ID</p>
                   <p className="font-mono text-slate-800 text-xs bg-slate-50 px-2 py-1 rounded border border-slate-200 break-all">
-                    {listing.beds24RoomId}
+                    {listing.channexRoomId}
                   </p>
                 </div>
               )}

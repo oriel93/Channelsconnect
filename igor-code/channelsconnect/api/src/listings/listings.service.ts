@@ -49,8 +49,8 @@ function withSafeDefaults(
     checkInTime:        dto.checkInTime        ?? null,
     checkOutTime:       dto.checkOutTime       ?? null,
     maxNights:          dto.maxNights          ?? null,
-    beds24PropId:       dto.beds24PropId       ?? null,
-    beds24RoomId:       dto.beds24RoomId       ?? null,
+    channexPropertyId:   dto.channexPropertyId   ?? (dto as any).beds24PropId  ?? null,
+    channexRoomId:       dto.channexRoomId       ?? (dto as any).beds24RoomId ?? null,
     airbnbListingId:    dto.airbnbListingId    ?? null,
     captureUrl:         dto.captureUrl         ?? null,
   };
@@ -119,8 +119,8 @@ export class ListingsService {
         checkInTime:        data.checkInTime,
         checkOutTime:       data.checkOutTime,
         maxNights:          data.maxNights,
-        beds24PropId:       data.beds24PropId,
-        beds24RoomId:       data.beds24RoomId,
+        channexPropertyId:   data.channexPropertyId   ?? (data as any).beds24PropId,
+        channexRoomId:       data.channexRoomId       ?? (data as any).beds24RoomId,
         airbnbListingId:    data.airbnbListingId,
         captureUrl:         data.captureUrl,
       },
@@ -193,7 +193,7 @@ export class ListingsService {
       'maxGuests', 'basePrice', 'currency', 'amenities',
       'houseRules', 'cancellationPolicy', 'checkInTime', 'checkOutTime',
       'minNights', 'maxNights', 'isActive',
-      'beds24PropId', 'beds24RoomId', 'airbnbListingId', 'captureUrl', 'source',
+      'channexPropertyId', 'channexRoomId', 'airbnbListingId', 'captureUrl', 'source',
     ]);
 
     const filteredData = Object.fromEntries(

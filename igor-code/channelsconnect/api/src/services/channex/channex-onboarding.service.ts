@@ -156,8 +156,8 @@ export class ChannexOnboardingService {
             country: data.country || null,
             currency: data.currency || 'USD',
             source: 'channex',
-            beds24PropId: channexPropertyId,
-            beds24RoomId: channexRoomTypeId || null,
+            channexPropertyId: channexPropertyId,
+            channexRoomId: channexRoomTypeId || null,
           },
         });
         listingId = listing.id;

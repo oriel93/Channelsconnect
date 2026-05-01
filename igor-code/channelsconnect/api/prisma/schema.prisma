@@ -175,8 +175,8 @@ model Listing {
   maxNights           Int?
   isActive            Boolean              @default(true)
   beds                Int?
-  beds24PropId        String?
-  beds24RoomId        String?
+  channexPropertyId   String?   @map("channexPropertyId")
+  channexRoomId       String?   @map("channexRoomId")
   airbnbListingId     String?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
@@ -200,7 +200,7 @@ model Listing {
 
   @@index([userId])
   @@index([city, country])
-  @@index([beds24PropId, beds24RoomId])
+  @@index([channexPropertyId, channexRoomId])
   @@index([airbnbListingId])
   @@map("listings")
 }

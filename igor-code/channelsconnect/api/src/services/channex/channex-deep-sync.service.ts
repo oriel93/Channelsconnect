@@ -163,7 +163,7 @@ export class ChannexDeepSyncService {
         latitude: attrs.latitude ? parseFloat(attrs.latitude) : null,
         longitude: attrs.longitude ? parseFloat(attrs.longitude) : null,
         currency: attrs.currency || 'USD',
-        beds24PropId: propId,
+        channexPropertyId: propId,
       },
       create: {
         userId,
@@ -175,7 +175,7 @@ export class ChannexDeepSyncService {
         latitude: attrs.latitude ? parseFloat(attrs.latitude) : null,
         longitude: attrs.longitude ? parseFloat(attrs.longitude) : null,
         currency: attrs.currency || 'USD',
-        beds24PropId: propId,
+        channexPropertyId: propId,
       },
     });
 
@@ -253,7 +253,7 @@ export class ChannexDeepSyncService {
         data: {
           maxGuests: rtAttrs.occ_adults || null,
           beds: rtAttrs.count_of_rooms || null,
-          beds24RoomId: rt.id,
+          channexRoomId: rt.id,
         },
       });
 
