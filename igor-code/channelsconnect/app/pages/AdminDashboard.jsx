@@ -927,6 +927,17 @@ export default function AdminDashboard() {
                             <a href={listing.captureUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-1 mt-1">
                               {listing.captureUrl} <ExternalLink className="w-3 h-3" />
                             </a>
+                            {/* Consent audit badge */}
+                            {listing.notes?.startsWith('[WEBSITE_CONSENT]') && (() => {
+                              const m = listing.notes.match(/authorized_at=([^|]+)/);
+                              const ipM = listing.notes.match(/ip=([^|]+)/);
+                              const ts = m ? new Date(m[1].trim()).toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'short', timeStyle: 'short' }) : null;
+                              return ts ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] text-purple-700 bg-purple-50 border border-purple-200 rounded-full px-2 py-0.5 mt-1">
+                                  ✓ Consent: {ts} ET {ipM ? `· ${ipM[1].trim()}` : ''}
+                                </span>
+                              ) : null;
+                            })()}
                           </div>
                           <span className="text-xs text-slate-400 whitespace-nowrap">{listing.createdAt ? new Date(listing.createdAt).toLocaleDateString() : ''}</span>
                         </div>
@@ -1134,18 +1145,38 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* Source URL */}
+              {/* Source URL + Consent Audit Trail */}
               {reviewListing.captureUrl && (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-5 flex items-center gap-3">
-                  <span className="block mb-1.5 text-xs font-semibold text-gray-600 uppercase tracking-wider shrink-0 mb-0">Source URL</span>
-                  <a
-                    href={reviewListing.captureUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs text-blue-600 hover:underline truncate flex-1"
-                  >
-                    {reviewListing.captureUrl}
-                  </a>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-5 space-y-2">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider shrink-0">Source URL</span>
+                    <a
+                      href={reviewListing.captureUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs text-blue-600 hover:underline truncate flex-1"
+                    >
+                      {reviewListing.captureUrl}
+                    </a>
+                  </div>
+                  {/* Consent audit record — parsed from notes field */}
+                  {reviewListing.notes?.startsWith('[WEBSITE_CONSENT]') && (() => {
+                    const parts = {};
+                    reviewListing.notes.replace('[WEBSITE_CONSENT] ', '').split(' | ').forEach(p => {
+                      const [k, ...v] = p.split('=');
+                      parts[k.trim()] = v.join('=').trim();
+                    });
+                    return (
+                      <div className="flex items-start gap-2 bg-purple-50 border border-purple-100 rounded-lg px-3 py-2">
+                        <span className="text-purple-500 mt-0.5 flex-shrink-0">✓</span>
+                        <div className="text-xs text-purple-800 space-y-0.5">
+                          <p className="font-semibold">User Consent Recorded</p>
+                          {parts.authorized_at && <p>Date/Time: <span className="font-mono">{new Date(parts.authorized_at).toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'medium', timeStyle: 'short' })} ET</span></p>}
+                          {parts.ip && <p>IP Address: <span className="font-mono">{parts.ip}</span></p>}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 

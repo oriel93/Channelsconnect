@@ -58,7 +58,7 @@ const TIERS = [
     color: 'blue',
     label: 'Import from OTA',
     sub:   'Airbnb · VRBO · Booking.com',
-    desc:  'Paste your live listing URL. We extract photos, descriptions and room details automatically.',
+    desc:  'Paste your Airbnb or VRBO URL. We extract photos, descriptions and rooms.',
     badge: 'Fastest',
   },
   {
@@ -67,7 +67,7 @@ const TIERS = [
     color: 'purple',
     label: 'Import via Excel',
     sub:   'Bulk upload — up to 200 properties',
-    desc:  'Download our template, fill in your property details, and upload. Addresses are geocoded automatically.',
+    desc:  'Download our template, fill in details, upload. Addresses geocoded auto.',
     badge: 'Best for bulk',
   },
   {
@@ -76,7 +76,7 @@ const TIERS = [
     color: 'violet',
     label: 'Import from Website',
     sub:   'Your own property website',
-    desc:  'Provide your website URL and our concierge team will extract and map your content for you.',
+    desc:  'Give us your site URL. Our team extracts and maps your content for you.',
     badge: 'White-glove',
   },
   {
@@ -85,7 +85,7 @@ const TIERS = [
     color: 'indigo',
     label: 'Create Manually',
     sub:   'Form + Google Maps + iCal',
-    desc:  'Fill in property details with Google Places autocomplete, then connect iCal feeds for availability.',
+    desc:  'Enter details with Google Maps autocomplete and connect iCal feeds.',
     badge: 'Full control',
   },
 ];
@@ -380,10 +380,14 @@ function WebsiteImportForm({ onSuccess }) {
     setLoading(true);
     try {
       await ensureProfileExists(); // guarantee FK row exists before listing insert
+      // Capture client-side timestamp at the moment the user checked the box + clicked Submit.
+      // Server overwrites with its own authoritative clock; this is advisory/belt-and-suspenders.
+      const consentTimestamp = new Date().toISOString();
       // 20 s timeout set in apiClient.js — will never hang indefinitely
       const res = await api.ingestion.ingestWebsite({
-        url:          url.trim(),
-        consentGiven: true,
+        url:              url.trim(),
+        consentGiven:     true,
+        consentTimestamp, // advisory; server uses server-side clock
       });
       onSuccess(res.data);
     } catch (err) {
@@ -436,8 +440,7 @@ function WebsiteImportForm({ onSuccess }) {
           required
         />
         <label htmlFor="consent" className="text-sm text-slate-700 cursor-pointer leading-relaxed">
-          I authorize Channels Connect to extract property data and media from the URL I have provided,
-          solely for the purpose of creating my listing and boosting it across multiple channels.
+          I authorize Channels Connect to extract property data and media from the URL I have provided, for the purpose of creating my listing and boosting it across multiple channels.
         </label>
       </div>
 
@@ -980,7 +983,7 @@ function PropertyIngestionHubContent() {
                 {/* Text */}
                 <p className="font-bold text-slate-900 text-[15px] leading-tight">{tier.label}</p>
                 <p className="text-[11px] text-slate-400 font-medium mt-0.5 truncate">{tier.sub}</p>
-                <p className="text-[13px] text-slate-500 mt-2 leading-relaxed line-clamp-2">{tier.desc}</p>
+                <p className="text-[13px] text-slate-500 mt-2 leading-relaxed">{tier.desc}</p>
                 {/* CTA arrow */}
                 <div className="flex items-center gap-1 mt-4 text-[11px] font-bold text-purple-600 opacity-0 group-hover:opacity-100 transition-all duration-200 translate-x-0 group-hover:translate-x-1">
                   Get started <ArrowRight className="w-3 h-3" />

@@ -391,6 +391,7 @@ export class BulkImportController {
   @ApiOperation({ summary: 'Submit website URL for admin extraction — creates pending_website_extract listing' })
   async ingestWebsite(
     @CurrentUser() user: CurrentUserData,
+    @Req() req: any,
     @Body() body: unknown,
   ) {
     const parsed = WebsiteImportSchema.safeParse(body);
@@ -398,6 +399,15 @@ export class BulkImportController {
       throw new BadRequestException(parsed.error.issues.map(i => i.message).join('; '));
     }
     const { url } = parsed.data;
+
+    // ── Consent audit record ──────────────────────────────────────────────────
+    // Server-authoritative timestamp + IP for legal consent trail.
+    // X-Forwarded-For is set by the ALB/Cloudflare proxy; fall back to req.ip.
+    const serverIp  = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
+                      ?? req.ip
+                      ?? 'unknown';
+    const serverTs  = new Date().toISOString();
+    const auditNote = `[WEBSITE_CONSENT] authorized_at=${serverTs} | ip=${serverIp} | url=${url}`;
 
     const listing = await this.prisma.listing.create({
       data: {
@@ -409,15 +419,18 @@ export class BulkImportController {
         reviewStatus: 'pending_website_extract',
         currency:     'USD',
         minNights:    1,
+        notes:        auditNote,   // stored for admin audit trail
       },
     });
 
-    this.logger.log(`[Ingest] Website URL submitted by ${user.id} → listingId=${listing.id}`);
+    this.logger.log(`[Ingest] Website consent by ${user.email ?? user.id} | ip=${serverIp} | url=${url} | listingId=${listing.id}`);
 
     return {
-      listingId: listing.id,
-      status:    'pending_website_extract',
-      message:   'Our team is working behind the scenes to extract and boost your listing. We will notify you when it is ready.',
+      listingId:        listing.id,
+      status:           'pending_website_extract',
+      consentRecordedAt: serverTs,
+      consentIp:        serverIp,
+      message:          'Our team is working behind the scenes to extract and boost your listing. We will notify you when it is ready.',
     };
   }
 }
