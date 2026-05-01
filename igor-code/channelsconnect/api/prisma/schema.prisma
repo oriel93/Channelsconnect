@@ -182,6 +182,7 @@ model Listing {
   updatedAt           DateTime             @updatedAt
   captureUrl          String?
   source              String               @default("channex")
+  reviewStatus        String               @default("approved")
   blockedDates        BlockedDate[]
   bookings            Booking[]
   calendar            Calendar[]

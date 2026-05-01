@@ -2,11 +2,15 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Body,
   Param,
   ParseIntPipe,
   Res,
   UseGuards,
   Logger,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { Response } from 'express';
 import {
@@ -109,6 +113,50 @@ export class AdminController {
   getListingImages(@Param('listingId', ParseIntPipe) listingId: number) {
     this.logger.log(`[Admin] GET /admin/listings/${listingId}/images`);
     return this.adminService.getListingImages(listingId);
+  }
+
+  // ── Review Queue endpoints ─────────────────────────────────────────────────────
+
+  @Get('review')
+  @ApiOperation({ summary: 'All listings pending admin review' })
+  getPendingReview() {
+    this.logger.log('[Admin] GET /admin/review');
+    return this.adminService.getPendingReviewListings();
+  }
+
+  @Get('review/:listingId')
+  @ApiOperation({ summary: 'Single pending listing for editing' })
+  getReviewListing(@Param('listingId', ParseIntPipe) listingId: number) {
+    return this.adminService.getReviewListing(listingId);
+  }
+
+  @Patch('review/:listingId')
+  @ApiOperation({ summary: 'Save admin edits to a pending listing' })
+  updateReviewListing(
+    @Param('listingId', ParseIntPipe) listingId: number,
+    @Body() body: Record<string, any>,
+  ) {
+    this.logger.log(`[Admin] PATCH /admin/review/${listingId}`);
+    return this.adminService.updateReviewListing(listingId, body);
+  }
+
+  @Post('review/:listingId/approve')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Approve a pending listing — makes it live' })
+  approveListing(@Param('listingId', ParseIntPipe) listingId: number) {
+    this.logger.log(`[Admin] POST /admin/review/${listingId}/approve`);
+    return this.adminService.approveListing(listingId);
+  }
+
+  @Post('review/:listingId/reject')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reject a pending listing with optional reason' })
+  rejectListing(
+    @Param('listingId', ParseIntPipe) listingId: number,
+    @Body() body: { reason?: string },
+  ) {
+    this.logger.log(`[Admin] POST /admin/review/${listingId}/reject`);
+    return this.adminService.rejectListing(listingId, body?.reason);
   }
 
   // ── POST /admin/listings/:listingId/images/:imageId/convert ──────────────

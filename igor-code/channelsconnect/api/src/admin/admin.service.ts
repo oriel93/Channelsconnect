@@ -324,4 +324,78 @@ export class AdminService {
       inactiveListings: listingCount - activeListings,
     };
   }
+
+  // ── Review Queue ──────────────────────────────────────────────────────────
+
+  async getPendingReviewListings() {
+    return this.prisma.listing.findMany({
+      where: { reviewStatus: 'pending_admin_review' },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: { select: { id: true, email: true, name: true } },
+        propertyImages: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }], take: 10 },
+        _count: { select: { bookings: true, propertyImages: true } },
+      },
+    });
+  }
+
+  async getReviewListing(listingId: number) {
+    const listing = await this.prisma.listing.findUnique({
+      where: { id: listingId },
+      include: {
+        user: { select: { id: true, email: true, name: true } },
+        propertyImages: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
+        _count: { select: { bookings: true } },
+      },
+    });
+    if (!listing) throw new NotFoundException(`Listing ${listingId} not found`);
+    return listing;
+  }
+
+  async updateReviewListing(
+    listingId: number,
+    data: {
+      title?: string;
+      description?: string;
+      address?: string;
+      city?: string;
+      state?: string;
+      country?: string;
+      postalCode?: string;
+      latitude?: number;
+      longitude?: number;
+      propertyType?: string;
+      bedrooms?: number;
+      bathrooms?: number;
+      maxGuests?: number;
+      basePrice?: number;
+      currency?: string;
+      amenities?: string[];
+      houseRules?: string;
+      beds?: number;
+      checkInTime?: string;
+      checkOutTime?: string;
+      minNights?: number;
+    },
+  ) {
+    return this.prisma.listing.update({ where: { id: listingId }, data });
+  }
+
+  async approveListing(listingId: number) {
+    const listing = await this.prisma.listing.update({
+      where: { id: listingId },
+      data: { reviewStatus: 'approved', isActive: true },
+    });
+    this.logger.log(`[Admin/Review] Approved listing id=${listingId} — now live`);
+    return { approved: true, listingId: listing.id, title: listing.title };
+  }
+
+  async rejectListing(listingId: number, reason?: string) {
+    const listing = await this.prisma.listing.update({
+      where: { id: listingId },
+      data: { reviewStatus: 'rejected', isActive: false },
+    });
+    this.logger.log(`[Admin/Review] Rejected listing id=${listingId}. Reason: ${reason || 'none'}`);
+    return { rejected: true, listingId: listing.id, title: listing.title, reason };
+  }
 }

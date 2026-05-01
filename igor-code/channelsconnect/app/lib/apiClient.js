@@ -253,6 +253,17 @@ export const api = {
     /** Trigger server-side sharp hi-res conversion for one image */
     convertImageToHighRes: (listingId, imageId) =>
       apiClient.post(`/admin/listings/${listingId}/images/${imageId}/convert`),
+    // ── Review Queue ───────────────────────────────────────────────────────
+    /** All listings with reviewStatus='pending_admin_review' */
+    getPendingReview: () => apiClient.get('/admin/review'),
+    /** Single listing detail for admin edit modal */
+    getReviewListing: (listingId) => apiClient.get(`/admin/review/${listingId}`),
+    /** Save admin edits before approving */
+    updateReviewListing: (listingId, data) => apiClient.patch(`/admin/review/${listingId}`, data),
+    /** Approve — sets isActive=true, reviewStatus='approved' */
+    approveListing: (listingId) => apiClient.post(`/admin/review/${listingId}/approve`),
+    /** Reject with optional reason */
+    rejectListing: (listingId, reason) => apiClient.post(`/admin/review/${listingId}/reject`, { reason }),
   },
 
   /** Record ToS consent — called immediately after signup */

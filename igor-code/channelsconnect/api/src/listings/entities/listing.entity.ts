@@ -96,6 +96,12 @@ export class ListingEntity implements Listing {
   @ApiProperty({ required: false, nullable: true, description: 'Original Airbnb URL used for content capture' })
   captureUrl: string | null;
 
+  @ApiProperty({
+    description: 'Admin review status: pending_admin_review | approved | rejected',
+    default: 'approved',
+  })
+  reviewStatus: string;
+
   @ApiProperty()
   createdAt: Date;
 

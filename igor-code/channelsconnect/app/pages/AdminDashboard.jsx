@@ -39,7 +39,19 @@ import {
   RefreshCw,
   Search,
   Crown,
+  CheckCircle2,
+  XCircle,
+  Eye,
+  ChevronLeft,
+  Save,
+  ClipboardList,
+  ImageIcon,
+  Sparkles,
+  ArrowLeft,
 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/authContext';
 import api from '@/lib/apiClient';
@@ -83,6 +95,18 @@ export default function AdminDashboard() {
   const [convertingId, setConvertingId] = useState(null);
   const [syncingListingId, setSyncingListingId] = useState(null);
 
+  // ── Review Queue state ───────────────────────────────────────────────────────────
+  const [pendingListings, setPendingListings] = useState([]);
+  const [reviewListing, setReviewListing]     = useState(null);  // currently open in edit modal
+  const [reviewForm, setReviewForm]           = useState({});    // live-edited fields
+  const [savingReview, setSavingReview]       = useState(false);
+  const [approvingId, setApprovingId]         = useState(null);
+  const [rejectingId, setRejectingId]         = useState(null);
+  const [rejectReason, setRejectReason]       = useState('');
+  const [showRejectDialog, setShowRejectDialog] = useState(false);
+  const [rejectTarget, setRejectTarget]       = useState(null);
+  const [isLoadingQueue, setIsLoadingQueue]   = useState(false);
+
   // ── Data fetch ─────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     if (!isAdmin) return;
@@ -106,9 +130,104 @@ export default function AdminDashboard() {
     }
   }, [isAdmin]);
 
+  const fetchPendingQueue = useCallback(async () => {
+    if (!isAdmin) return;
+    setIsLoadingQueue(true);
+    try {
+      const res = await api.admin.getPendingReview();
+      setPendingListings(res.data || []);
+    } catch (err) {
+      toast.error('Could not load review queue');
+    } finally {
+      setIsLoadingQueue(false);
+    }
+  }, [isAdmin]);
+
+  const handleOpenReview = (listing) => {
+    setReviewListing(listing);
+    setReviewForm({
+      title:        listing.title || '',
+      description:  listing.description || '',
+      address:      listing.address || '',
+      city:         listing.city || '',
+      state:        listing.state || '',
+      country:      listing.country || '',
+      postalCode:   listing.postalCode || '',
+      propertyType: listing.propertyType || '',
+      bedrooms:     listing.bedrooms ?? '',
+      bathrooms:    listing.bathrooms ?? '',
+      maxGuests:    listing.maxGuests ?? '',
+      basePrice:    listing.basePrice ?? '',
+      amenities:    Array.isArray(listing.amenities) ? listing.amenities.join(', ') : '',
+      houseRules:   listing.houseRules || '',
+    });
+  };
+
+  const handleSaveReview = async () => {
+    if (!reviewListing) return;
+    setSavingReview(true);
+    try {
+      const payload = {
+        ...reviewForm,
+        bedrooms:  reviewForm.bedrooms  !== '' ? Number(reviewForm.bedrooms)  : undefined,
+        bathrooms: reviewForm.bathrooms !== '' ? Number(reviewForm.bathrooms) : undefined,
+        maxGuests: reviewForm.maxGuests !== '' ? Number(reviewForm.maxGuests) : undefined,
+        basePrice: reviewForm.basePrice !== '' ? Number(reviewForm.basePrice) : undefined,
+        amenities: reviewForm.amenities
+          ? reviewForm.amenities.split(',').map(a => a.trim()).filter(Boolean)
+          : [],
+      };
+      await api.admin.updateReviewListing(reviewListing.id, payload);
+      toast.success('Changes saved');
+      // Update local state
+      setPendingListings(prev => prev.map(l => l.id === reviewListing.id ? { ...l, ...payload } : l));
+      setReviewListing(prev => ({ ...prev, ...payload }));
+    } catch (err) {
+      toast.error('Save failed: ' + (err?.response?.data?.message || err.message));
+    } finally {
+      setSavingReview(false);
+    }
+  };
+
+  const handleApprove = async (listingId) => {
+    setApprovingId(listingId);
+    try {
+      const res = await api.admin.approveListing(listingId);
+      toast.success(`" ${res.data.title} " approved and is now live ✓`);
+      setPendingListings(prev => prev.filter(l => l.id !== listingId));
+      if (reviewListing?.id === listingId) setReviewListing(null);
+      fetchData(); // refresh stats
+    } catch (err) {
+      toast.error('Approval failed: ' + (err?.response?.data?.message || err.message));
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
+  const handleRejectConfirm = async () => {
+    if (!rejectTarget) return;
+    setRejectingId(rejectTarget.id);
+    try {
+      await api.admin.rejectListing(rejectTarget.id, rejectReason || undefined);
+      toast.success(`" ${rejectTarget.title} " rejected`);
+      setPendingListings(prev => prev.filter(l => l.id !== rejectTarget.id));
+      if (reviewListing?.id === rejectTarget.id) setReviewListing(null);
+    } catch (err) {
+      toast.error('Rejection failed: ' + (err?.response?.data?.message || err.message));
+    } finally {
+      setRejectingId(null);
+      setShowRejectDialog(false);
+      setRejectTarget(null);
+      setRejectReason('');
+    }
+  };
+
   useEffect(() => {
-    if (isAdmin) fetchData();
-  }, [isAdmin, fetchData]);
+    if (isAdmin) {
+      fetchData();
+      fetchPendingQueue();
+    }
+  }, [isAdmin, fetchData, fetchPendingQueue]);
 
   // ── Sync listing to Channex (admin-only) ──────────────────────────────────────────
   const handleSyncToChannex = async (listingId, listingTitle) => {
@@ -247,10 +366,19 @@ export default function AdminDashboard() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2 max-w-xs">
+        <TabsList className="flex flex-wrap gap-1">
           <TabsTrigger value="users">Users ({users.length})</TabsTrigger>
           <TabsTrigger value="listings">Listings ({listings.length})</TabsTrigger>
           <TabsTrigger value="media">Media Manager</TabsTrigger>
+          <TabsTrigger value="review" onClick={fetchPendingQueue} className="relative">
+            <ClipboardList className="w-4 h-4 mr-1" />
+            Review Queue
+            {pendingListings.length > 0 && (
+              <span className="ml-1.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-500 text-white text-xs font-bold">
+                {pendingListings.length}
+              </span>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         {/* ── Users Tab ── */}
@@ -547,7 +675,249 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* ── Review Queue Tab ─────────────────────────────────────────────────────────── */}
+        <TabsContent value="review">
+          {reviewListing ? (
+            // ─ Edit Modal View ────────────────────────────────────────────────────────
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => setReviewListing(null)}>
+                    <ArrowLeft className="w-4 h-4" />
+                  </Button>
+                  Editing: <span className="font-normal text-slate-600 ml-1 truncate max-w-xs">{reviewListing.title}</span>
+                  <span className="ml-auto text-xs text-slate-400">ID #{reviewListing.id} • {reviewListing.user?.email}</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+
+                {/* Images preview */}
+                {reviewListing.propertyImages?.length > 0 && (
+                  <div>
+                    <p className="text-sm font-medium text-slate-600 mb-2">Media ({reviewListing.propertyImages.length} images)</p>
+                    <div className="flex gap-2 overflow-x-auto pb-2">
+                      {reviewListing.propertyImages.map(img => (
+                        <img
+                          key={img.id}
+                          src={img.highResUrl || img.url}
+                          alt=""
+                          className="w-28 h-20 object-cover rounded-lg border flex-shrink-0"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Editable fields — 2 column grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {[{label:'Title',key:'title'},{label:'Address',key:'address'},{label:'City',key:'city'},
+                    {label:'State',key:'state'},{label:'Country',key:'country'},{label:'Postal Code',key:'postalCode'},
+                    {label:'Property Type',key:'propertyType'},{label:'Bedrooms',key:'bedrooms',type:'number'},
+                    {label:'Bathrooms',key:'bathrooms',type:'number'},{label:'Max Guests',key:'maxGuests',type:'number'},
+                    {label:'Base Price (USD)',key:'basePrice',type:'number'},
+                  ].map(({label, key, type}) => (
+                    <div key={key} className="space-y-1">
+                      <Label className="text-xs text-slate-500">{label}</Label>
+                      <Input
+                        type={type || 'text'}
+                        value={reviewForm[key] ?? ''}
+                        onChange={e => setReviewForm(f => ({...f, [key]: e.target.value}))}
+                        className="text-sm"
+                      />
+                    </div>
+                  ))}
+
+                  {/* Amenities — full width */}
+                  <div className="sm:col-span-2 space-y-1">
+                    <Label className="text-xs text-slate-500">Amenities (comma-separated)</Label>
+                    <Input
+                      value={reviewForm.amenities ?? ''}
+                      onChange={e => setReviewForm(f => ({...f, amenities: e.target.value}))}
+                      placeholder="WiFi, Pool, AC, Parking…"
+                    />
+                  </div>
+
+                  {/* Description — full width */}
+                  <div className="sm:col-span-2 space-y-1">
+                    <Label className="text-xs text-slate-500">Description</Label>
+                    <Textarea
+                      rows={4}
+                      value={reviewForm.description ?? ''}
+                      onChange={e => setReviewForm(f => ({...f, description: e.target.value}))}
+                    />
+                  </div>
+
+                  {/* House Rules — full width */}
+                  <div className="sm:col-span-2 space-y-1">
+                    <Label className="text-xs text-slate-500">House Rules</Label>
+                    <Textarea
+                      rows={2}
+                      value={reviewForm.houseRules ?? ''}
+                      onChange={e => setReviewForm(f => ({...f, houseRules: e.target.value}))}
+                    />
+                  </div>
+                </div>
+
+                {/* Source / import URL */}
+                {reviewListing.captureUrl && (
+                  <div className="text-xs text-slate-400">
+                    Source URL: <a href={reviewListing.captureUrl} target="_blank" rel="noreferrer" className="underline text-blue-500 truncate">{reviewListing.captureUrl}</a>
+                  </div>
+                )}
+
+                {/* Action bar */}
+                <div className="flex flex-wrap gap-3 pt-2 border-t">
+                  <Button onClick={handleSaveReview} disabled={savingReview} variant="outline">
+                    {savingReview
+                      ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" />Saving…</>
+                      : <><Save className="w-4 h-4 mr-1" />Save Edits</>}
+                  </Button>
+                  <Button
+                    onClick={() => handleApprove(reviewListing.id)}
+                    disabled={approvingId === reviewListing.id || savingReview}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  >
+                    {approvingId === reviewListing.id
+                      ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" />Approving…</>
+                      : <><CheckCircle2 className="w-4 h-4 mr-1" />Approve & Go Live</>}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => { setRejectTarget(reviewListing); setShowRejectDialog(true); }}
+                    disabled={savingReview}
+                  >
+                    <XCircle className="w-4 h-4 mr-1" />Reject
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            // ─ Queue List ────────────────────────────────────────────────────────────────
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <ClipboardList className="w-5 h-5 text-amber-500" />
+                    Pending Review
+                    {pendingListings.length > 0 && (
+                      <Badge className="bg-red-500 text-white">{pendingListings.length}</Badge>
+                    )}
+                  </span>
+                  <Button variant="outline" size="sm" onClick={fetchPendingQueue} disabled={isLoadingQueue}>
+                    <RefreshCw className={`w-4 h-4 mr-1 ${isLoadingQueue ? 'animate-spin' : ''}`} />Refresh
+                  </Button>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {isLoadingQueue ? (
+                  <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div>
+                ) : pendingListings.length === 0 ? (
+                  <div className="text-center py-12 text-slate-400">
+                    <CheckCircle2 className="w-12 h-12 mx-auto mb-3 text-emerald-300" />
+                    <p className="text-sm font-medium">Queue is empty</p>
+                    <p className="text-xs mt-1">All imported properties have been reviewed.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>ID</TableHead>
+                          <TableHead>Title</TableHead>
+                          <TableHead>Source</TableHead>
+                          <TableHead>Owner</TableHead>
+                          <TableHead>Submitted</TableHead>
+                          <TableHead>Photos</TableHead>
+                          <TableHead>Review</TableHead>
+                          <TableHead>Approve</TableHead>
+                          <TableHead>Reject</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pendingListings.map(l => (
+                          <TableRow key={l.id}>
+                            <TableCell className="font-mono text-xs text-slate-400">{l.id}</TableCell>
+                            <TableCell className="font-medium max-w-[160px] truncate">{l.title}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="capitalize text-xs">{l.source || 'manual'}</Badge>
+                            </TableCell>
+                            <TableCell className="text-sm text-slate-500 max-w-[140px] truncate">{l.user?.email || '—'}</TableCell>
+                            <TableCell className="text-sm text-slate-500">{l.createdAt ? new Date(l.createdAt).toLocaleDateString() : '—'}</TableCell>
+                            <TableCell className="text-center">{l._count?.propertyImages ?? 0}</TableCell>
+                            <TableCell>
+                              <Button size="sm" variant="outline" onClick={() => handleOpenReview(l)}>
+                                <Eye className="w-3.5 h-3.5 mr-1" />Review
+                              </Button>
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                size="sm"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                                disabled={approvingId === l.id}
+                                onClick={() => handleApprove(l.id)}
+                              >
+                                {approvingId === l.id
+                                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  : <><CheckCircle2 className="w-3.5 h-3.5 mr-1" />Approve</>}
+                              </Button>
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                disabled={rejectingId === l.id}
+                                onClick={() => { setRejectTarget(l); setShowRejectDialog(true); }}
+                              >
+                                {rejectingId === l.id
+                                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  : <XCircle className="w-3.5 h-3.5" />}
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
       </Tabs>
+
+      {/* ─ Reject Reason Dialog ───────────────────────────────────────────────────── */}
+      <Dialog open={showRejectDialog} onOpenChange={open => { if (!open) { setShowRejectDialog(false); setRejectTarget(null); setRejectReason(''); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reject Property</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-slate-600">
+            Rejecting: <strong>{rejectTarget?.title}</strong>
+          </p>
+          <div className="space-y-2 mt-2">
+            <Label>Reason (optional — shown in internal logs)</Label>
+            <Textarea
+              rows={3}
+              placeholder="e.g. Missing address, duplicate listing, invalid images…"
+              value={rejectReason}
+              onChange={e => setRejectReason(e.target.value)}
+            />
+          </div>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => { setShowRejectDialog(false); setRejectTarget(null); }}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={handleRejectConfirm}
+              disabled={rejectingId === rejectTarget?.id}
+            >
+              {rejectingId === rejectTarget?.id
+                ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" />Rejecting…</>
+                : 'Confirm Reject'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
