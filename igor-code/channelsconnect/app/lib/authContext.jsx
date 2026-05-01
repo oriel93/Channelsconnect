@@ -21,7 +21,7 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { supabase, authHelpers } from './supabase';
-import { api } from './apiClient';
+import { api, setAuthToken } from './apiClient';
 import { Loader2, ShieldAlert, RefreshCw } from 'lucide-react';
 
 // ─── State Machine ────────────────────────────────────────────────────────────
@@ -134,9 +134,14 @@ export function AuthProvider({ children }) {
 
   const resolveSession = useCallback(async (session) => {
     if (!session) {
+      setAuthToken(null); // clear cached token
       dispatch({ type: 'RESOLVE_NO_SESSION' });
       return;
     }
+
+    // Immediately cache the token so the axios interceptor can use it
+    // even before the profile fetch completes.
+    setAuthToken(session.access_token);
 
     try {
       // fetchProfileWithRetry: 12 s timeout, up to 3 retries with exponential back-off.
@@ -180,6 +185,7 @@ export function AuthProvider({ children }) {
         } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           await resolveSession(newSession);
         } else if (event === 'SIGNED_OUT') {
+          setAuthToken(null);
           dispatch({ type: 'SIGNED_OUT' });
         }
       }
@@ -217,6 +223,7 @@ export function AuthProvider({ children }) {
     isSystemReady:   auth.state === AUTH_STATE.SYSTEM_READY,
 
     signOut: async () => {
+      setAuthToken(null); // clear cached token immediately
       await authHelpers.signOut();
       dispatch({ type: 'SIGNED_OUT' });
     },

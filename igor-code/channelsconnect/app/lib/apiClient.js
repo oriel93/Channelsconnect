@@ -16,13 +16,35 @@ const apiClient = axios.create({
   },
 });
 
+// ─── Token cache ─────────────────────────────────────────────────────────────
+// Holds the latest known access token so the interceptor never needs to call
+// getSession() (which can return null during auth state transitions).
+// Updated by setAuthToken() which is called from authContext after every
+// PROFILE_FETCHED / TOKEN_REFRESHED / SIGNED_OUT event.
+let _cachedToken = null;
+
+export function setAuthToken(token) {
+  _cachedToken = token || null;
+}
+
 // Request interceptor to add auth token
 apiClient.interceptors.request.use(
   async (config) => {
-    const { data: { session } } = await supabase.auth.getSession();
+    // Use cached token first (set by authContext on every session change).
+    // Fall back to live getSession() in case the interceptor fires before
+    // authContext has initialised (e.g. on first page load).
+    let token = _cachedToken;
+    if (!token) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        token = session?.access_token || null;
+      } catch {
+        // ignore — request will fail with 401 and the response interceptor handles refresh
+      }
+    }
 
-    if (session?.access_token) {
-      config.headers.Authorization = `Bearer ${session.access_token}`;
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
 
     return config;
