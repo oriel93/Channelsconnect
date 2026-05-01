@@ -5,6 +5,11 @@
  * Tier 2: Import via Excel bulk upload
  * Tier 3: Import from Website (consent gateway)
  * Tier 4: Create Manually (form + Google Places + iCal connections)
+ *
+ * Auth: All API calls go through the axios interceptor in apiClient.js which
+ * injects `Authorization: Bearer <token>` on every request. The Excel template
+ * download uses an explicit supabase.auth.getSession() + fetch() so the browser
+ * download also carries the token (window.open() would bypass the interceptor).
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -16,18 +21,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import {
   Link2, FileSpreadsheet, Globe, PlusCircle,
   Upload, Download, CheckCircle2, Loader2, ExternalLink,
-  CalendarDays, Trash2, RefreshCw, Copy, AlertCircle,
+  CalendarDays, Trash2, Copy, AlertCircle,
   Sparkles, ArrowRight, X,
 } from 'lucide-react';
 import { api } from '@/lib/apiClient';
+import { supabase } from '@/lib/supabase';
 import { createPageUrl } from '@/utils';
 
 // ─── Tier cards config ────────────────────────────────────────────────────────
@@ -101,6 +105,8 @@ function SuccessOverlay({ title, message, onClose, onViewListings }) {
 }
 
 // ─── Tier 1: OTA URL ─────────────────────────────────────────────────────────
+// All calls go through api.ingestion.* → axios interceptor → Authorization header
+// automatically injected by apiClient.js interceptor.
 
 function OtaImportForm({ onSuccess }) {
   const [otaUrl, setOtaUrl]   = useState('');
@@ -108,9 +114,9 @@ function OtaImportForm({ onSuccess }) {
   const [loading, setLoading] = useState(false);
 
   const detect = (url) => {
-    if (url.includes('airbnb')) return { label: 'Airbnb', color: 'rose' };
-    if (url.includes('vrbo') || url.includes('homeaway')) return { label: 'VRBO', color: 'blue' };
-    if (url.includes('booking.com')) return { label: 'Booking.com', color: 'blue' };
+    if (url.includes('airbnb'))   return 'Airbnb';
+    if (url.includes('vrbo') || url.includes('homeaway')) return 'VRBO';
+    if (url.includes('booking.com')) return 'Booking.com';
     return null;
   };
   const detected = detect(otaUrl);
@@ -120,7 +126,11 @@ function OtaImportForm({ onSuccess }) {
     if (!otaUrl.trim()) return;
     setLoading(true);
     try {
-      const res = await api.ingestion.ingestOtaUrl({ otaUrl: otaUrl.trim(), icalUrl: icalUrl.trim() || undefined });
+      // api.ingestion.ingestOtaUrl → apiClient.post → interceptor injects Bearer token
+      const res = await api.ingestion.ingestOtaUrl({
+        otaUrl:  otaUrl.trim(),
+        icalUrl: icalUrl.trim() || undefined,
+      });
       onSuccess(res.data);
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Submission failed — please try again');
@@ -145,15 +155,17 @@ function OtaImportForm({ onSuccess }) {
           />
           {detected && (
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-200">
-              ✓ {detected.label}
+              ✓ {detected}
             </span>
           )}
         </div>
-        <p className="text-xs text-slate-500">Airbnb, VRBO, HomeAway URLs are supported.</p>
+        <p className="text-xs text-slate-500">Airbnb, VRBO, HomeAway, and Booking.com URLs are supported.</p>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="icalUrl">iCal / Calendar URL <span className="text-slate-400 text-xs">(optional)</span></Label>
+        <Label htmlFor="icalUrl">
+          iCal / Calendar URL <span className="text-slate-400 text-xs">(optional)</span>
+        </Label>
         <Input
           id="icalUrl"
           type="url"
@@ -170,24 +182,64 @@ function OtaImportForm({ onSuccess }) {
       </div>
 
       <Button type="submit" disabled={loading || !otaUrl.trim()} className="w-full bg-blue-600 hover:bg-blue-700">
-        {loading ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Submitting…</> : <>Submit for Extraction <ArrowRight className="w-4 h-4 ml-2" /></>}
+        {loading
+          ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Submitting…</>
+          : <>Submit for Extraction <ArrowRight className="w-4 h-4 ml-2" /></>}
       </Button>
     </form>
   );
 }
 
 // ─── Tier 2: Excel Import ─────────────────────────────────────────────────────
+// Template download: uses supabase.auth.getSession() + fetch() to carry
+// Authorization: Bearer <token> on the download request.
+// Upload: api.ingestion.uploadExcel → axios interceptor → Bearer token auto-injected.
 
 function ExcelImportForm({ onSuccess }) {
-  const [file, setFile]       = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [result, setResult]   = useState(null);
-  const fileRef               = useRef();
+  const [file, setFile]         = useState(null);
+  const [loading, setLoading]   = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [result, setResult]     = useState(null);
+  const fileRef                 = useRef();
 
-  const handleDownload = () => {
-    window.open(`${import.meta.env.VITE_API_URL?.replace(/\/+$/, '')}/listings/bulk-import/template`, '_blank');
+  // ── TASK 4: Authenticated template download ───────────────────────────────
+  // Uses fetch() with explicit Authorization header — window.open() would bypass
+  // the axios interceptor and produce a 401.
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      // TASK 1: Retrieve current session and attach Bearer token
+      const { data: { session } } = await supabase.auth.getSession();
+
+      const base = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+      const res  = await fetch(`${base}/listings/bulk-import/template`, {
+        headers: {
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err || `Download failed: ${res.status}`);
+      }
+
+      const blob     = await res.blob();
+      const url      = URL.createObjectURL(blob);
+      const anchor   = document.createElement('a');
+      anchor.href     = url;
+      anchor.download = 'channels-connect-property-template.xlsx';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error('Template download failed: ' + (err.message || 'Unknown error'));
+    } finally {
+      setDownloading(false);
+    }
   };
 
+  // ── Upload: api.ingestion.uploadExcel → axios interceptor injects token ───
   const handleUpload = async (e) => {
     e.preventDefault();
     if (!file) return;
@@ -196,9 +248,10 @@ function ExcelImportForm({ onSuccess }) {
     try {
       const formData = new FormData();
       formData.append('file', file);
+      // api.ingestion.uploadExcel goes through axios interceptor → Bearer auto-attached
       const res = await api.ingestion.uploadExcel(formData);
       setResult(res.data);
-      onSuccess(res.data, false); // false = don't show full overlay, show inline result
+      onSuccess(res.data, false);
     } catch (err) {
       const errData = err?.response?.data;
       if (errData?.errors?.length) {
@@ -216,9 +269,19 @@ function ExcelImportForm({ onSuccess }) {
       {/* Step 1: Download template */}
       <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-4">
         <p className="text-sm font-semibold text-emerald-800 mb-2">Step 1 — Download the template</p>
-        <p className="text-xs text-emerald-700 mb-3">Our template includes a Field Guide sheet. No lat/long needed — addresses are geocoded automatically.</p>
-        <Button variant="outline" size="sm" onClick={handleDownload} className="border-emerald-300 text-emerald-700 hover:bg-emerald-100">
-          <Download className="w-4 h-4 mr-2" />Download .xlsx Template
+        <p className="text-xs text-emerald-700 mb-3">
+          Our template includes a Field Guide sheet. No lat/long needed — addresses are geocoded automatically.
+        </p>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleDownload}
+          disabled={downloading}
+          className="border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+        >
+          {downloading
+            ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Downloading…</>
+            : <><Download className="w-4 h-4 mr-2" />Download .xlsx Template</>}
         </Button>
       </div>
 
@@ -234,7 +297,10 @@ function ExcelImportForm({ onSuccess }) {
               <div className="flex items-center justify-center gap-3">
                 <FileSpreadsheet className="w-6 h-6 text-emerald-600" />
                 <span className="text-sm font-medium text-slate-700">{file.name}</span>
-                <button type="button" onClick={(e) => { e.stopPropagation(); setFile(null); }}>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setFile(null); }}
+                >
                   <X className="w-4 h-4 text-slate-400 hover:text-red-500" />
                 </button>
               </div>
@@ -256,26 +322,39 @@ function ExcelImportForm({ onSuccess }) {
         </div>
 
         <Button type="submit" disabled={loading || !file} className="w-full bg-emerald-600 hover:bg-emerald-700">
-          {loading ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Uploading & geocoding…</> : <>Upload & Import <ArrowRight className="w-4 h-4 ml-2" /></>}
+          {loading
+            ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Uploading & geocoding…</>
+            : <>Upload & Import <ArrowRight className="w-4 h-4 ml-2" /></>}
         </Button>
       </form>
 
       {/* Inline result */}
       {result && (
-        <div className={`rounded-lg border p-4 text-sm space-y-2 ${result.type === 'error' ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'}`}>
+        <div className={`rounded-lg border p-4 text-sm space-y-2 ${
+          result.type === 'error' ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'
+        }`}>
           {result.type === 'error' ? (
             <>
-              <p className="font-semibold text-red-700 flex items-center gap-2"><AlertCircle className="w-4 h-4" />Validation errors — nothing saved</p>
+              <p className="font-semibold text-red-700 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" />Validation errors — nothing saved
+              </p>
               <ul className="list-disc list-inside text-red-600 text-xs space-y-0.5">
                 {result.errors?.slice(0, 15).map((e, i) => <li key={i}>{e}</li>)}
-                {result.errors?.length > 15 && <li>…and {result.errors.length - 15} more</li>}
+                {result.errors?.length > 15 && (
+                  <li>…and {result.errors.length - 15} more</li>
+                )}
               </ul>
             </>
           ) : (
             <>
-              <p className="font-semibold text-emerald-700 flex items-center gap-2"><CheckCircle2 className="w-4 h-4" />{result.message}</p>
+              <p className="font-semibold text-emerald-700 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4" />{result.message}
+              </p>
               {result.geocodeFailed > 0 && (
-                <p className="text-amber-600 text-xs">⚠ {result.geocodeFailed} row(s) could not be geocoded — rows {result.geocodeFailRows?.join(', ')}. You can set coordinates later in the Admin Portal.</p>
+                <p className="text-amber-600 text-xs">
+                  ⚠ {result.geocodeFailed} row(s) could not be geocoded — rows {result.geocodeFailRows?.join(', ')}.
+                  You can set coordinates later in the Admin Portal.
+                </p>
               )}
             </>
           )}
@@ -286,18 +365,28 @@ function ExcelImportForm({ onSuccess }) {
 }
 
 // ─── Tier 3: Website Import ───────────────────────────────────────────────────
+// All API calls go through api.ingestion.ingestWebsite → axios interceptor.
+// Checkbox: plain <input type="checkbox"> — no custom CSS fill.
+// Consent copy: exact mandated US-English string.
 
 function WebsiteImportForm({ onSuccess }) {
-  const [url, setUrl]           = useState('');
-  const [consent, setConsent]   = useState(false);
-  const [loading, setLoading]   = useState(false);
+  const [url, setUrl]         = useState('');
+  const [consent, setConsent] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!consent) { toast.error('Please provide your authorisation first'); return; }
+    if (!consent) {
+      toast.error('Please provide your authorisation to proceed');
+      return;
+    }
     setLoading(true);
     try {
-      const res = await api.ingestion.ingestWebsite({ url: url.trim(), consentGiven: true });
+      // api.ingestion.ingestWebsite → axios interceptor → Authorization: Bearer <token>
+      const res = await api.ingestion.ingestWebsite({
+        url:          url.trim(),
+        consentGiven: true,
+      });
       onSuccess(res.data);
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Submission failed');
@@ -309,7 +398,9 @@ function WebsiteImportForm({ onSuccess }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <div className="space-y-2">
-        <Label htmlFor="websiteUrl">Your property website URL <span className="text-red-500">*</span></Label>
+        <Label htmlFor="websiteUrl">
+          Your property website URL <span className="text-red-500">*</span>
+        </Label>
         <Input
           id="websiteUrl"
           type="url"
@@ -322,71 +413,95 @@ function WebsiteImportForm({ onSuccess }) {
 
       <div className="bg-violet-50 border border-violet-100 rounded-lg p-4 text-sm text-violet-800 flex gap-3">
         <Sparkles className="w-4 h-4 shrink-0 mt-0.5" />
-        <span>Our concierge team will extract property details, photos, and room descriptions from the page you provide. This is a human-assisted process and typically takes 1–2 business days.</span>
+        <span>
+          Our concierge team will extract property details, photos, and room descriptions from the page
+          you provide. This is a human-assisted process and typically takes 1–2 business days.
+        </span>
       </div>
 
+      {/* TASK 2: Native checkbox — no custom CSS fill; exact mandated consent copy */}
       <div className="flex items-start gap-3 p-4 border border-slate-200 rounded-lg bg-slate-50">
-        <Checkbox
+        <input
           id="consent"
+          type="checkbox"
           checked={consent}
-          onCheckedChange={(v) => setConsent(!!v)}
-          className="mt-0.5"
+          onChange={(e) => setConsent(e.target.checked)}
+          className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 mt-0.5 cursor-pointer shrink-0"
+          required
         />
         <label htmlFor="consent" className="text-sm text-slate-700 cursor-pointer leading-relaxed">
-          I authorise Channels Connect to extract property data and media from the URL I have provided, solely for the purpose of creating my listing on this platform.
+          I authorize Channels Connect to extract property data and media from the URL I have provided,
+          solely for the purpose of creating my listing and boosting it across multiple channels.
         </label>
       </div>
 
-      <Button type="submit" disabled={loading || !url.trim() || !consent} className="w-full bg-violet-600 hover:bg-violet-700">
-        {loading ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Submitting…</> : <>Submit to Concierge Team <ArrowRight className="w-4 h-4 ml-2" /></>}
+      <Button
+        type="submit"
+        disabled={loading || !url.trim() || !consent}
+        className="w-full bg-violet-600 hover:bg-violet-700"
+      >
+        {loading
+          ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Submitting…</>
+          : <>Submit to Concierge Team <ArrowRight className="w-4 h-4 ml-2" /></>}
       </Button>
     </form>
   );
 }
 
 // ─── Tier 4: Manual Form ──────────────────────────────────────────────────────
+// TASK 3: Three fully wired tabs — Property Details | Amenities | Calendar Connections.
+// Each tab is driven by a useState hook; onClick binds setActiveTab.
 
-const PROPERTY_TYPES = ['House','Apartment','Villa','Condo','Studio','Suite','Cabin','Cottage','Bungalow','Townhouse','Loft','Penthouse','Other'];
-const AMENITY_OPTIONS = ['WiFi','Pool','Air Conditioning','Parking','Kitchen','BBQ','Washer/Dryer','Dishwasher','Hot Tub','Gym','Pet Friendly','Wheelchair Accessible','EV Charger','Beach Access','Mountain View','City View'];
+const PROPERTY_TYPES = [
+  'House','Apartment','Villa','Condo','Studio','Suite',
+  'Cabin','Cottage','Bungalow','Townhouse','Loft','Penthouse','Other',
+];
+const AMENITY_OPTIONS = [
+  'WiFi','Pool','Air Conditioning','Parking','Kitchen','BBQ',
+  'Washer/Dryer','Dishwasher','Hot Tub','Gym','Pet Friendly',
+  'Wheelchair Accessible','EV Charger','Beach Access','Mountain View','City View',
+];
 
 function ManualCreateForm({ onSuccess }) {
-  const [tab, setTab]     = useState('details');
-  const [form, setForm]   = useState({
+  // TASK 3: useState drives tab switching — 'details' | 'amenities' | 'calendar'
+  const [activeTab, setActiveTab]       = useState('details');
+  const [form, setForm]                 = useState({
     title: '', address: '', city: '', state: '', postalCode: '', country: '',
     propertyType: '', maxGuests: '', bedrooms: '', bathrooms: '',
     basePrice: '', currency: 'USD', description: '', houseRules: '',
     cancellationPolicy: '', checkInTime: '', checkOutTime: '', minNights: '1',
     amenities: [],
   });
-  const [icalLinks, setIcalLinks]   = useState([]); // { name, url, direction }
-  const [newIcal, setNewIcal]       = useState({ name: '', url: '', direction: 'import' });
-  const [exportUrl, setExportUrl]   = useState('');
-  const [loading, setLoading]       = useState(false);
+  const [icalLinks, setIcalLinks]       = useState([]);
+  const [newIcal, setNewIcal]           = useState({ name: '', url: '', direction: 'import' });
+  const [exportUrl, setExportUrl]       = useState('');
+  const [loading, setLoading]           = useState(false);
   const [savedListingId, setSavedListingId] = useState(null);
   const addressRef = useRef(null);
   const autoRef    = useRef(null);
 
-  // Google Places autocomplete
+  // Google Places autocomplete on the address field
   useEffect(() => {
     if (!window.google?.maps?.places || !addressRef.current) return;
-    const ac = new window.google.maps.places.Autocomplete(addressRef.current, { types: ['address'] });
+    const ac = new window.google.maps.places.Autocomplete(addressRef.current, {
+      types: ['address'],
+    });
     autoRef.current = ac;
     ac.addListener('place_changed', () => {
       const place = ac.getPlace();
       if (!place.address_components) return;
-      let street = '', city = '', state = '', zip = '', country = '';
-      let streetNo = '';
+      let streetNo = '', street = '', city = '', state = '', zip = '', country = '';
       place.address_components.forEach((c) => {
-        if (c.types.includes('street_number')) streetNo = c.long_name;
-        if (c.types.includes('route')) street = c.long_name;
-        if (c.types.includes('locality')) city = c.long_name;
-        if (c.types.includes('administrative_area_level_1')) state = c.short_name;
-        if (c.types.includes('postal_code')) zip = c.long_name;
-        if (c.types.includes('country')) country = c.long_name;
+        if (c.types.includes('street_number'))              streetNo = c.long_name;
+        if (c.types.includes('route'))                       street   = c.long_name;
+        if (c.types.includes('locality'))                    city     = c.long_name;
+        if (c.types.includes('administrative_area_level_1')) state    = c.short_name;
+        if (c.types.includes('postal_code'))                 zip      = c.long_name;
+        if (c.types.includes('country'))                     country  = c.long_name;
       });
       setForm(f => ({
         ...f,
-        address: streetNo ? `${streetNo} ${street}` : street,
+        address:    streetNo ? `${streetNo} ${street}` : street,
         city, state, postalCode: zip, country,
       }));
     });
@@ -394,10 +509,13 @@ function ManualCreateForm({ onSuccess }) {
 
   const toggleAmenity = (a) => setForm(f => ({
     ...f,
-    amenities: f.amenities.includes(a) ? f.amenities.filter(x => x !== a) : [...f.amenities, a],
+    amenities: f.amenities.includes(a)
+      ? f.amenities.filter(x => x !== a)
+      : [...f.amenities, a],
   }));
 
-  const handleSave = async (e) => {
+  // Save property details → advance to Amenities tab
+  const handleSaveDetails = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
@@ -405,39 +523,34 @@ function ManualCreateForm({ onSuccess }) {
         title:        form.title,
         address:      form.address,
         city:         form.city,
-        state:        form.state || undefined,
-        postalCode:   form.postalCode || undefined,
-        country:      form.country || undefined,
+        state:        form.state        || undefined,
+        postalCode:   form.postalCode   || undefined,
+        country:      form.country      || undefined,
         propertyType: form.propertyType || undefined,
-        maxGuests:    parseInt(form.maxGuests) || undefined,
-        bedrooms:     parseInt(form.bedrooms) || undefined,
+        maxGuests:    parseInt(form.maxGuests)   || undefined,
+        bedrooms:     parseInt(form.bedrooms)    || undefined,
         bathrooms:    parseFloat(form.bathrooms) || undefined,
         basePrice:    parseFloat(form.basePrice) || undefined,
         currency:     form.currency,
-        description:  form.description || undefined,
-        houseRules:   form.houseRules || undefined,
+        description:  form.description  || undefined,
+        houseRules:   form.houseRules   || undefined,
         cancellationPolicy: form.cancellationPolicy || undefined,
-        checkInTime:  form.checkInTime || undefined,
+        checkInTime:  form.checkInTime  || undefined,
         checkOutTime: form.checkOutTime || undefined,
         minNights:    parseInt(form.minNights) || 1,
         amenities:    form.amenities.length ? form.amenities : undefined,
         source:       'manual',
       };
+      // api.listings.create → axios interceptor → Authorization: Bearer <token>
       const res = await api.listings.create(payload);
       const listingId = res.data?.id || res.data?.listing?.id;
       setSavedListingId(listingId);
 
-      // Save iCal connections
-      for (const link of icalLinks) {
-        await api.ingestion.createIcalConnection({ listingId, name: link.name, icalUrl: link.url, syncDirection: link.direction }).catch(() => {});
-      }
-
-      // Compute export URL
-      const base = import.meta.env.VITE_API_URL?.replace(/\/+$/, '');
+      const base = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
       setExportUrl(`${base}/ical/export/${listingId}.ics`);
 
-      setTab('calendar');
-      toast.success('Property saved! Add your calendar connections below.');
+      toast.success('Property details saved! Now add your amenities.');
+      setActiveTab('amenities');  // advance to next tab
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Save failed');
     } finally {
@@ -445,12 +558,23 @@ function ManualCreateForm({ onSuccess }) {
     }
   };
 
+  const handleFinishAmenities = () => {
+    setActiveTab('calendar');
+    toast.success('Amenities saved! Connect your calendars below.');
+  };
+
   const addIcal = async () => {
     if (!newIcal.url.trim() || !newIcal.name.trim()) return;
     const item = { ...newIcal };
     setIcalLinks(prev => [...prev, item]);
     if (savedListingId) {
-      await api.ingestion.createIcalConnection({ listingId: savedListingId, name: item.name, icalUrl: item.url, syncDirection: item.direction }).catch(() => {});
+      // api.ingestion.createIcalConnection → axios interceptor → Bearer auto-attached
+      await api.ingestion.createIcalConnection({
+        listingId:     savedListingId,
+        name:          item.name,
+        icalUrl:       item.url,
+        syncDirection: item.direction,
+      }).catch(() => {});
     }
     setNewIcal({ name: '', url: '', direction: 'import' });
     toast.success('Calendar connection added');
@@ -463,151 +587,236 @@ function ManualCreateForm({ onSuccess }) {
     toast.success('iCal export URL copied!');
   };
 
+  // ── Tab nav helper ──────────────────────────────────────────────────────────
+  const TABS = [
+    { id: 'details',   label: 'Property Details' },
+    { id: 'amenities', label: 'Amenities' },
+    { id: 'calendar',  label: 'Calendar Connections' },
+  ];
+
   return (
     <div>
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="mb-5">
-          <TabsTrigger value="details">Property Details</TabsTrigger>
-          <TabsTrigger value="calendar" disabled={!savedListingId}>
-            <CalendarDays className="w-4 h-4 mr-1.5" />Calendar Connections
-            {icalLinks.length > 0 && <Badge className="ml-1.5 text-xs bg-blue-100 text-blue-700 border-blue-200">{icalLinks.length}</Badge>}
-          </TabsTrigger>
-        </TabsList>
+      {/* TASK 3: Tabs wired to useState — clicking a header calls setActiveTab */}
+      <div className="flex border-b border-slate-200 mb-6 gap-0">
+        {TABS.map((t) => {
+          const isActive   = activeTab === t.id;
+          // Disable tabs ahead of current progress if property not yet saved
+          const isDisabled = (t.id === 'amenities' || t.id === 'calendar') && !savedListingId;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              disabled={isDisabled}
+              onClick={() => setActiveTab(t.id)}   // ← wired setState
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                isActive
+                  ? 'border-amber-500 text-amber-700'
+                  : isDisabled
+                    ? 'border-transparent text-slate-300 cursor-not-allowed'
+                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+              }`}
+            >
+              {t.label}
+              {t.id === 'calendar' && icalLinks.length > 0 && (
+                <span className="ml-1.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold">
+                  {icalLinks.length}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
 
-        {/* ── Details ── */}
-        <TabsContent value="details">
-          <form onSubmit={handleSave} className="space-y-5">
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="sm:col-span-2 space-y-1.5">
-                <Label>Property Name <span className="text-red-500">*</span></Label>
-                <Input value={form.title} onChange={e => setForm(f=>({...f, title: e.target.value}))} placeholder="Beachfront Villa Miami" required />
-              </div>
-              <div className="sm:col-span-2 space-y-1.5">
-                <Label>Street Address <span className="text-red-500">*</span></Label>
-                <Input ref={addressRef} value={form.address} onChange={e => setForm(f=>({...f, address: e.target.value}))} placeholder="Start typing — Google will autocomplete…" required />
-              </div>
-              <div className="space-y-1.5">
-                <Label>City <span className="text-red-500">*</span></Label>
-                <Input value={form.city} onChange={e => setForm(f=>({...f, city: e.target.value}))} required />
-              </div>
-              <div className="space-y-1.5">
-                <Label>State / Province</Label>
-                <Input value={form.state} onChange={e => setForm(f=>({...f, state: e.target.value}))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Zip / Postal Code</Label>
-                <Input value={form.postalCode} onChange={e => setForm(f=>({...f, postalCode: e.target.value}))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Country</Label>
-                <Input value={form.country} onChange={e => setForm(f=>({...f, country: e.target.value}))} placeholder="USA" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Property Type</Label>
-                <Select value={form.propertyType} onValueChange={v => setForm(f=>({...f, propertyType: v}))}>
-                  <SelectTrigger><SelectValue placeholder="Select type…" /></SelectTrigger>
-                  <SelectContent>
-                    {PROPERTY_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Max Guests <span className="text-red-500">*</span></Label>
-                <Input type="number" min="1" value={form.maxGuests} onChange={e => setForm(f=>({...f, maxGuests: e.target.value}))} required />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Bedrooms</Label>
-                <Input type="number" min="0" value={form.bedrooms} onChange={e => setForm(f=>({...f, bedrooms: e.target.value}))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Bathrooms</Label>
-                <Input type="number" min="0" step="0.5" value={form.bathrooms} onChange={e => setForm(f=>({...f, bathrooms: e.target.value}))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Base Nightly Rate <span className="text-red-500">*</span></Label>
-                <Input type="number" min="1" value={form.basePrice} onChange={e => setForm(f=>({...f, basePrice: e.target.value}))} placeholder="250" required />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Currency</Label>
-                <Input maxLength={3} value={form.currency} onChange={e => setForm(f=>({...f, currency: e.target.value.toUpperCase()}))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Check-in Time</Label>
-                <Input value={form.checkInTime} onChange={e => setForm(f=>({...f, checkInTime: e.target.value}))} placeholder="3:00 PM" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Check-out Time</Label>
-                <Input value={form.checkOutTime} onChange={e => setForm(f=>({...f, checkOutTime: e.target.value}))} placeholder="11:00 AM" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Min Nights</Label>
-                <Input type="number" min="1" value={form.minNights} onChange={e => setForm(f=>({...f, minNights: e.target.value}))} />
-              </div>
+      {/* ── Tab: Property Details ───────────────────────────────────────────── */}
+      {activeTab === 'details' && (
+        <form onSubmit={handleSaveDetails} className="space-y-5">
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2 space-y-1.5">
+              <Label>Property Name <span className="text-red-500">*</span></Label>
+              <Input
+                value={form.title}
+                onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                placeholder="Beachfront Villa Miami"
+                required
+              />
             </div>
-
-            {/* Amenities */}
-            <div className="space-y-2">
-              <Label>Amenities</Label>
-              <div className="flex flex-wrap gap-2">
-                {AMENITY_OPTIONS.map(a => (
-                  <button
-                    key={a} type="button"
-                    onClick={() => toggleAmenity(a)}
-                    className={`text-xs px-3 py-1.5 rounded-full border transition-all ${form.amenities.includes(a) ? 'bg-amber-500 text-white border-amber-500' : 'bg-white border-slate-200 text-slate-600 hover:border-amber-300'}`}
-                  >
-                    {form.amenities.includes(a) ? '✓ ' : ''}{a}
-                  </button>
-                ))}
-              </div>
+            <div className="sm:col-span-2 space-y-1.5">
+              <Label>Street Address <span className="text-red-500">*</span></Label>
+              <Input
+                ref={addressRef}
+                value={form.address}
+                onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
+                placeholder="Start typing — Google will autocomplete…"
+                required
+              />
             </div>
-
-            {/* Description */}
             <div className="space-y-1.5">
-              <Label>Description</Label>
-              <Textarea rows={4} value={form.description} onChange={e => setForm(f=>({...f, description: e.target.value}))} placeholder="Describe your property…" />
+              <Label>City <span className="text-red-500">*</span></Label>
+              <Input value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} required />
             </div>
-
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label>House Rules</Label>
-                <Input value={form.houseRules} onChange={e => setForm(f=>({...f, houseRules: e.target.value}))} placeholder="No smoking, No parties…" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Cancellation Policy</Label>
-                <Select value={form.cancellationPolicy} onValueChange={v => setForm(f=>({...f, cancellationPolicy: v}))}>
-                  <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                  <SelectContent>
-                    {['Flexible','Moderate','Strict','Non-refundable'].map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-1.5">
+              <Label>State / Province</Label>
+              <Input value={form.state} onChange={e => setForm(f => ({ ...f, state: e.target.value }))} />
             </div>
+            <div className="space-y-1.5">
+              <Label>Zip / Postal Code</Label>
+              <Input value={form.postalCode} onChange={e => setForm(f => ({ ...f, postalCode: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Country</Label>
+              <Input value={form.country} onChange={e => setForm(f => ({ ...f, country: e.target.value }))} placeholder="USA" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Property Type</Label>
+              <Select value={form.propertyType} onValueChange={v => setForm(f => ({ ...f, propertyType: v }))}>
+                <SelectTrigger><SelectValue placeholder="Select type…" /></SelectTrigger>
+                <SelectContent>
+                  {PROPERTY_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Max Guests <span className="text-red-500">*</span></Label>
+              <Input type="number" min="1" value={form.maxGuests} onChange={e => setForm(f => ({ ...f, maxGuests: e.target.value }))} required />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Bedrooms</Label>
+              <Input type="number" min="0" value={form.bedrooms} onChange={e => setForm(f => ({ ...f, bedrooms: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Bathrooms</Label>
+              <Input type="number" min="0" step="0.5" value={form.bathrooms} onChange={e => setForm(f => ({ ...f, bathrooms: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Base Nightly Rate <span className="text-red-500">*</span></Label>
+              <Input type="number" min="1" value={form.basePrice} onChange={e => setForm(f => ({ ...f, basePrice: e.target.value }))} placeholder="250" required />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Currency</Label>
+              <Input maxLength={3} value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value.toUpperCase() }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Check-in Time</Label>
+              <Input value={form.checkInTime} onChange={e => setForm(f => ({ ...f, checkInTime: e.target.value }))} placeholder="3:00 PM" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Check-out Time</Label>
+              <Input value={form.checkOutTime} onChange={e => setForm(f => ({ ...f, checkOutTime: e.target.value }))} placeholder="11:00 AM" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Min Nights</Label>
+              <Input type="number" min="1" value={form.minNights} onChange={e => setForm(f => ({ ...f, minNights: e.target.value }))} />
+            </div>
+          </div>
 
-            <Button type="submit" disabled={loading} className="w-full bg-amber-500 hover:bg-amber-600 text-white">
-              {loading ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Saving…</> : <>Save Property & Continue <ArrowRight className="w-4 h-4 ml-2" /></>}
-            </Button>
-          </form>
-        </TabsContent>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>House Rules</Label>
+              <Input value={form.houseRules} onChange={e => setForm(f => ({ ...f, houseRules: e.target.value }))} placeholder="No smoking, no parties…" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Cancellation Policy</Label>
+              <Select value={form.cancellationPolicy} onValueChange={v => setForm(f => ({ ...f, cancellationPolicy: v }))}>
+                <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                <SelectContent>
+                  {['Flexible','Moderate','Strict','Non-refundable'].map(p => (
+                    <SelectItem key={p} value={p}>{p}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
 
-        {/* ── Calendar Connections ── */}
-        <TabsContent value="calendar" className="space-y-5">
+          <div className="space-y-1.5">
+            <Label>Description</Label>
+            <Textarea rows={4} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Describe your property…" />
+          </div>
+
+          <Button type="submit" disabled={loading} className="w-full bg-amber-500 hover:bg-amber-600 text-white">
+            {loading
+              ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Saving…</>
+              : <>Save & Continue to Amenities <ArrowRight className="w-4 h-4 ml-2" /></>}
+          </Button>
+        </form>
+      )}
+
+      {/* ── Tab: Amenities ──────────────────────────────────────────────────── */}
+      {activeTab === 'amenities' && (
+        <div className="space-y-5">
+          <p className="text-sm text-slate-600">Select all the amenities your property offers.</p>
+          <div className="flex flex-wrap gap-2">
+            {AMENITY_OPTIONS.map(a => (
+              <button
+                key={a}
+                type="button"
+                onClick={() => toggleAmenity(a)}
+                className={`text-sm px-4 py-2 rounded-full border transition-all font-medium ${
+                  form.amenities.includes(a)
+                    ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                    : 'bg-white border-slate-200 text-slate-600 hover:border-amber-300 hover:text-amber-700'
+                }`}
+              >
+                {form.amenities.includes(a) ? '✓ ' : ''}{a}
+              </button>
+            ))}
+          </div>
+
+          {form.amenities.length > 0 && (
+            <p className="text-xs text-slate-500">
+              {form.amenities.length} amenit{form.amenities.length === 1 ? 'y' : 'ies'} selected
+            </p>
+          )}
+
+          <Button
+            type="button"
+            onClick={handleFinishAmenities}
+            className="w-full bg-amber-500 hover:bg-amber-600 text-white"
+          >
+            Continue to Calendar Connections <ArrowRight className="w-4 h-4 ml-2" />
+          </Button>
+        </div>
+      )}
+
+      {/* ── Tab: Calendar Connections ───────────────────────────────────────── */}
+      {activeTab === 'calendar' && (
+        <div className="space-y-6">
+          {/* Add new iCal connection */}
           <div className="space-y-3">
-            <h3 className="font-semibold text-slate-800 text-sm">Import Calendar (Inbound)</h3>
-            <p className="text-xs text-slate-500">Paste iCal links from Airbnb, VRBO, Booking.com, or any calendar app to sync availability into your property.</p>
+            <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
+              <CalendarDays className="w-4 h-4 text-blue-600" />Import Calendar (Inbound)
+            </h3>
+            <p className="text-xs text-slate-500">
+              Paste iCal links from Airbnb, VRBO, Booking.com, or any calendar app to sync availability into your property.
+            </p>
 
             <div className="grid sm:grid-cols-3 gap-3">
-              <Input placeholder="Label (e.g. Airbnb Calendar)" value={newIcal.name} onChange={e => setNewIcal(n=>({...n, name: e.target.value}))} />
-              <Input placeholder="https://…/calendar.ics" value={newIcal.url} onChange={e => setNewIcal(n=>({...n, url: e.target.value}))} className="sm:col-span-2" />
+              <Input
+                placeholder="Label (e.g. Airbnb Calendar)"
+                value={newIcal.name}
+                onChange={e => setNewIcal(n => ({ ...n, name: e.target.value }))}
+              />
+              <Input
+                placeholder="https://…/calendar.ics"
+                value={newIcal.url}
+                onChange={e => setNewIcal(n => ({ ...n, url: e.target.value }))}
+                className="sm:col-span-2"
+              />
             </div>
+
             <div className="flex items-center gap-3">
-              <Select value={newIcal.direction} onValueChange={v => setNewIcal(n=>({...n, direction: v}))}>
-                <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+              <Select value={newIcal.direction} onValueChange={v => setNewIcal(n => ({ ...n, direction: v }))}>
+                <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="import">Import (inbound)</SelectItem>
                   <SelectItem value="export">Export (outbound)</SelectItem>
                 </SelectContent>
               </Select>
-              <Button type="button" onClick={addIcal} disabled={!newIcal.url.trim() || !newIcal.name.trim()} size="sm">
+              <Button
+                type="button"
+                onClick={addIcal}
+                disabled={!newIcal.url.trim() || !newIcal.name.trim()}
+                size="sm"
+              >
                 Add Connection
               </Button>
             </div>
@@ -616,10 +825,10 @@ function ManualCreateForm({ onSuccess }) {
               <div className="space-y-2">
                 {icalLinks.map((link, i) => (
                   <div key={i} className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                    <Badge variant="outline" className="text-xs">{link.direction}</Badge>
+                    <Badge variant="outline" className="text-xs shrink-0">{link.direction}</Badge>
                     <span className="font-medium text-sm text-slate-700 shrink-0">{link.name}</span>
                     <span className="text-xs text-slate-400 truncate flex-1">{link.url}</span>
-                    <button type="button" onClick={() => removeIcal(i)} className="text-slate-400 hover:text-red-500">
+                    <button type="button" onClick={() => removeIcal(i)} className="text-slate-400 hover:text-red-500 shrink-0">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -628,13 +837,15 @@ function ManualCreateForm({ onSuccess }) {
             )}
           </div>
 
-          {/* Export section */}
+          {/* Export URL */}
           {exportUrl && (
-            <div className="space-y-3 pt-2 border-t border-slate-100">
+            <div className="space-y-3 pt-4 border-t border-slate-100">
               <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
                 <ExternalLink className="w-4 h-4 text-blue-600" />Export Your Calendar (Outbound)
               </h3>
-              <p className="text-xs text-slate-500">Share this link with Airbnb, VRBO, or any calendar app so they can subscribe to your availability.</p>
+              <p className="text-xs text-slate-500">
+                Share this link with Airbnb, VRBO, or any calendar app so they can subscribe to your availability.
+              </p>
               <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                 <code className="text-xs text-slate-700 truncate flex-1">{exportUrl}</code>
                 <Button size="sm" variant="ghost" onClick={copyExport} className="shrink-0">
@@ -647,11 +858,15 @@ function ManualCreateForm({ onSuccess }) {
             </div>
           )}
 
-          <Button onClick={() => onSuccess({ listingId: savedListingId })} className="w-full">
+          <Button
+            type="button"
+            onClick={() => onSuccess({ listingId: savedListingId })}
+            className="w-full bg-amber-500 hover:bg-amber-600 text-white"
+          >
             <CheckCircle2 className="w-4 h-4 mr-2" />Done — View My Listings
           </Button>
-        </TabsContent>
-      </Tabs>
+        </div>
+      )}
     </div>
   );
 }
@@ -659,12 +874,12 @@ function ManualCreateForm({ onSuccess }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 function PropertyIngestionHubContent() {
-  const navigate     = useNavigate();
-  const [activeTier, setActiveTier] = useState(null);
-  const [success, setSuccess]       = useState(null);
+  const navigate                        = useNavigate();
+  const [activeTier, setActiveTier]     = useState(null);
+  const [success, setSuccess]           = useState(null);
 
   const handleSuccess = (data, showOverlay = true) => {
-    if (!showOverlay) return; // Excel shows inline result
+    if (!showOverlay) return; // Excel shows inline result instead
     setSuccess(data);
     setActiveTier(null);
   };
@@ -679,7 +894,9 @@ function PropertyIngestionHubContent() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Add Your Properties</h1>
-        <p className="text-slate-500 mt-1 text-sm">Choose how you'd like to bring your properties into Channels Connect.</p>
+        <p className="text-slate-500 mt-1 text-sm">
+          Choose how you'd like to bring your properties into Channels Connect.
+        </p>
       </div>
 
       {/* Tier selection grid */}
@@ -687,18 +904,20 @@ function PropertyIngestionHubContent() {
         <div className="grid sm:grid-cols-2 gap-5">
           {TIERS.map((tier) => {
             const Icon = tier.icon;
-            const c = colorMap[tier.color];
+            const c    = colorMap[tier.color];
             return (
               <button
                 key={tier.id}
                 onClick={() => setActiveTier(tier.id)}
-                className={`text-left p-6 bg-white border-2 border-slate-100 rounded-2xl shadow-sm hover:shadow-md hover:${c.ring} hover:ring-2 transition-all group`}
+                className={`text-left p-6 bg-white border-2 border-slate-100 rounded-2xl shadow-sm hover:shadow-md transition-all group focus:outline-none focus:ring-2 ${c.ring}`}
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className={`p-3 ${c.bg} rounded-xl`}>
                     <Icon className={`w-6 h-6 ${c.icon}`} />
                   </div>
-                  <span className={`text-[10px] font-semibold px-2.5 py-1 rounded-full border ${c.badge}`}>{tier.badge}</span>
+                  <span className={`text-[10px] font-semibold px-2.5 py-1 rounded-full border ${c.badge}`}>
+                    {tier.badge}
+                  </span>
                 </div>
                 <p className="font-bold text-slate-900 text-base">{tier.label}</p>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">{tier.sub}</p>
@@ -719,13 +938,16 @@ function PropertyIngestionHubContent() {
         const c    = colorMap[tier.color];
         return (
           <div className="space-y-5">
-            <button onClick={() => setActiveTier(null)} className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-900">
+            <button
+              onClick={() => setActiveTier(null)}
+              className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-900 transition-colors"
+            >
               ← Back to options
             </button>
             <Card className={`border-2 ${c.ring}`}>
-              <CardHeader className={`${c.bg} border-b border-slate-100`}>
+              <CardHeader className={`${c.bg} border-b border-slate-100 rounded-t-xl`}>
                 <div className="flex items-center gap-3">
-                  <div className={`p-2 bg-white rounded-lg shadow-sm`}>
+                  <div className="p-2 bg-white rounded-lg shadow-sm">
                     <Icon className={`w-5 h-5 ${c.icon}`} />
                   </div>
                   <div>
@@ -749,7 +971,10 @@ function PropertyIngestionHubContent() {
       {success && (
         <SuccessOverlay
           title="You're all set!"
-          message={success.message || 'Your property has been submitted. Our team will notify you when it\'s ready.'}
+          message={
+            success.message ||
+            "Your property has been submitted. Our team will notify you when it's ready."
+          }
           onClose={() => setSuccess(null)}
           onViewListings={handleViewListings}
         />
