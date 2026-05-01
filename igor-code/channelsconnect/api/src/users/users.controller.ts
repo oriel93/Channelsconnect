@@ -57,11 +57,15 @@ export class UsersController {
       throw new UnauthorizedException('User not authenticated');
     }
 
-    const dbUser = await this.usersService.findOne(user.id);
-
-    if (!dbUser) {
-      throw new UnauthorizedException(`User not found in database: ${user.id}`);
-    }
+    // Auto-create the DB row on first login (DB trigger may not have fired,
+    // or user signed up via Supabase dashboard / OAuth before the trigger existed).
+    // ensureUserExists() upserts: returns existing row or creates a new one.
+    // This prevents the AUTHENTICATED_NO_PROFILE error screen on first visit.
+    const dbUser = await this.usersService.ensureUserExists(
+      user.id,
+      user.email,
+      user.name,
+    );
 
     return dbUser;
   }

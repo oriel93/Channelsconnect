@@ -73,9 +73,14 @@ function authReducer(prev, action) {
 
 const AuthContext = createContext(null);
 
-// ─── Profile fetch with timeout ───────────────────────────────────────────────
+// ─── Profile fetch with timeout + auto-retry ─────────────────────────────────
+// Timeout raised to 12 s to survive Lambda cold starts (can take 8–10 s).
+// Retries up to MAX_PROFILE_RETRIES times with exponential back-off before
+// giving up and showing the AUTHENTICATED_NO_PROFILE error screen.
 
-const PROFILE_TIMEOUT_MS = 5000;
+const PROFILE_TIMEOUT_MS  = 12_000; // 12 s — covers Lambda cold start
+const MAX_PROFILE_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 1_500;  // 1.5 s → 3 s → 6 s
 
 async function fetchProfileWithTimeout() {
   return new Promise((resolve, reject) => {
@@ -96,6 +101,32 @@ async function fetchProfileWithTimeout() {
   });
 }
 
+/** Retry wrapper — retries on 5xx / network errors; propagates 401/403/404 immediately. */
+async function fetchProfileWithRetry() {
+  let lastErr;
+  for (let attempt = 0; attempt <= MAX_PROFILE_RETRIES; attempt++) {
+    try {
+      return await fetchProfileWithTimeout();
+    } catch (err) {
+      lastErr = err;
+      const status = err?.response?.status;
+
+      // Don't retry auth errors or "not found" — those are definitive
+      if (status === 401 || status === 403 || status === 404) throw err;
+
+      if (attempt < MAX_PROFILE_RETRIES) {
+        const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt); // 1.5 s, 3 s, 6 s
+        console.warn(
+          `[AuthContext] Profile fetch attempt ${attempt + 1} failed (${err?.message}). ` +
+          `Retrying in ${delay}ms…`
+        );
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function AuthProvider({ children }) {
@@ -108,29 +139,32 @@ export function AuthProvider({ children }) {
     }
 
     try {
-      const dbUser = await fetchProfileWithTimeout();
+      // fetchProfileWithRetry: 12 s timeout, up to 3 retries with exponential back-off.
+      // The backend GET /users/me now auto-creates the row via ensureUserExists() so
+      // a missing DB record no longer returns 401 — it upserts and returns the user.
+      const dbUser = await fetchProfileWithRetry();
 
-      if (!dbUser) {
-        // User exists in Supabase auth but not yet in public.users (new signup edge case)
-        // Treat as SYSTEM_READY with null profile — pages handle missing dbUser gracefully
-        dispatch({ type: 'PROFILE_FETCHED', session, dbUser: null });
-        return;
-      }
-
-      dispatch({ type: 'PROFILE_FETCHED', session, dbUser });
+      dispatch({ type: 'PROFILE_FETCHED', session, dbUser: dbUser ?? null });
     } catch (err) {
       const status = err?.response?.status;
 
-      // 401 = token expired (shouldn't happen here), 404 = user not in DB yet
-      // Both are non-critical — treat same as null profile
-      if (status === 401 || status === 404) {
+      // 401 = truly unauthenticated (bad token) — treat as signed out
+      if (status === 401) {
+        dispatch({ type: 'RESOLVE_NO_SESSION' });
+        return;
+      }
+
+      // 404 = user somehow missing after all retries (very unlikely now that /me auto-creates)
+      // Treat as null profile — pages degrade gracefully
+      if (status === 404) {
         dispatch({ type: 'PROFILE_FETCHED', session, dbUser: null });
         return;
       }
 
-      // Anything else (network failure, 500, timeout) → AUTHENTICATED_NO_PROFILE
+      // 5xx / timeout after all retries — show error screen with Retry button
+      console.error('[AuthContext] Profile fetch failed after retries:', err?.message);
       dispatch({
-        type:    'PROFILE_FAILED',
+        type:  'PROFILE_FAILED',
         session,
         error: err?.response?.data?.message || err?.message || 'Unknown error fetching profile.',
       });
