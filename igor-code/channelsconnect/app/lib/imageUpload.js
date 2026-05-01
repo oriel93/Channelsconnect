@@ -2,13 +2,21 @@
  * imageUpload.js — Fault-Tolerant Bulk Media Pipeline
  *
  * Pipeline stages per image:
- *   1. CLIENT COMPRESSION  — Canvas API reduces to max 1920px, WebP/JPEG <1MB
- *   2. SESSION PREFLIGHT   — Supabase session refreshed before first upload
- *   3. UPLOAD              — Supabase Storage with progress callback
- *   4. DB RECORD           — property_images insert via Supabase client
+ *   1. CLIENT COMPRESSION  — Canvas API, max 1920px, WebP/JPEG, target <900 KB
+ *   2. SESSION PREFLIGHT   — Explicit Supabase session refresh before batch
+ *   3. STORAGE UPLOAD      — supabase.storage.from('property-media').upload(...)
+ *   4. PUBLIC URL          — supabase.storage.from('property-media').getPublicUrl(...)
+ *   5. DB INSERT           — property_images table, explicit column names
  *
- * Concurrency: semaphore worker pool (MAX_CONCURRENT = 3), Promise.allSettled
- * so a single failure never aborts the batch.
+ * DB column mapping (table has both camelCase Prisma cols AND snake_case DBA cols):
+ *   listing_id    (uuid, nullable)  — DBA-added snake_case column
+ *   storage_path  (text, nullable)  — DBA-added snake_case column
+ *   listingId     (integer, NOT NULL) — Prisma-managed camelCase column
+ *   storagePath   (text, nullable)  — Prisma-managed camelCase column
+ *   userId        (text, NOT NULL)  — Prisma-managed
+ *   url           (text, NOT NULL)  — shared
+ *
+ * We write all columns so the record is queryable via either convention.
  *
  * SAFE: Zero dependency on Channex sync, webhook, or ARI logic.
  */
@@ -18,24 +26,24 @@ import { supabase } from './supabase';
 const BUCKET = 'property-media';
 
 // ─── Compression constants ────────────────────────────────────────────────────
-const COMPRESS_MAX_PX    = 1920;   // max dimension after compression
-const COMPRESS_MAX_BYTES = 900_000; // 900 KB target (safely under 1MB)
-const COMPRESS_QUALITY   = 0.88;   // initial JPEG quality
-const COMPRESS_MIN_QUALITY = 0.65; // floor for iterative size reduction
+
+const COMPRESS_MAX_PX      = 1920;
+const COMPRESS_MAX_BYTES   = 900_000; // 900 KB — safely under 1 MB
+const COMPRESS_QUALITY     = 0.88;
+const COMPRESS_MIN_QUALITY = 0.65;
 
 /**
- * STAGE 1: Client-side compression
+ * STAGE 1 — Client-side compression.
  *
- * Uses Canvas API to:
- *   - Resize to max 1920px on the longest side
- *   - Encode as WebP if supported (better compression), fallback to JPEG
- *   - Iteratively reduce quality until output < COMPRESS_MAX_BYTES
+ * - Resizes to max 1920px on the longest side
+ * - Prefers WebP (better ratio), falls back to JPEG
+ * - Iteratively reduces quality until output < 900 KB
  *
- * Returns a Blob (WebP or JPEG).
+ * @returns {Promise<Blob>} WebP or JPEG blob
  */
 export async function compressImage(file) {
   return new Promise((resolve, reject) => {
-    const img = new Image();
+    const img       = new Image();
     const objectUrl = URL.createObjectURL(file);
 
     img.onload = () => {
@@ -43,7 +51,6 @@ export async function compressImage(file) {
 
       let { width, height } = img;
       const longest = Math.max(width, height);
-
       if (longest > COMPRESS_MAX_PX) {
         const scale = COMPRESS_MAX_PX / longest;
         width  = Math.round(width  * scale);
@@ -53,26 +60,21 @@ export async function compressImage(file) {
       const canvas = document.createElement('canvas');
       canvas.width  = width;
       canvas.height = height;
-
       const ctx = canvas.getContext('2d');
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(img, 0, 0, width, height);
 
-      // Prefer WebP (better compression), fall back to JPEG
       const supportsWebP = canvas.toDataURL('image/webp').startsWith('data:image/webp');
-      const mimeType = supportsWebP ? 'image/webp' : 'image/jpeg';
+      const mimeType     = supportsWebP ? 'image/webp' : 'image/jpeg';
 
-      // Iteratively reduce quality to hit size target
       const tryQuality = (quality) => {
         canvas.toBlob(
           (blob) => {
             if (!blob) { reject(new Error('Canvas compression failed')); return; }
-
             if (blob.size <= COMPRESS_MAX_BYTES || quality <= COMPRESS_MIN_QUALITY) {
               resolve(blob);
             } else {
-              // Reduce quality by 5% per iteration
               tryQuality(Math.max(quality - 0.05, COMPRESS_MIN_QUALITY));
             }
           },
@@ -94,108 +96,142 @@ export async function compressImage(file) {
 }
 
 /**
- * STAGE 2: Session preflight
+ * STAGE 2 — Session preflight.
  *
- * Explicitly refreshes the Supabase auth session before a batch upload.
- * Prevents mid-batch 401 errors caused by token expiry (tokens last 1 hour).
+ * Refreshes the Supabase auth session before a batch upload.
+ * Prevents 401 errors from stale JWT tokens (tokens expire after 1 hour).
  *
- * Call once before starting any batch — not per image.
- *
- * @throws {Error} if session cannot be established
+ * @throws {Error} if no valid session can be established
  */
 export async function refreshSessionPreflight() {
-  const { data, error } = await supabase.auth.refreshSession();
-  if (error || !data.session) {
-    // refreshSession may fail if the token is still fresh — fall back to getSession
-    const { data: existing, error: getError } = await supabase.auth.getSession();
-    if (getError || !existing.session) {
+  const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+
+  if (refreshError || !refreshData?.session) {
+    // Token might still be fresh — fall back to getSession
+    const { data: existingData, error: getError } = await supabase.auth.getSession();
+    if (getError || !existingData?.session) {
       throw new Error('Session expired. Please sign in again before uploading.');
     }
-    return existing.session;
+    return existingData.session;
   }
-  return data.session;
+  return refreshData.session;
 }
 
 /**
- * STAGE 3: Upload a single compressed Blob to Supabase Storage.
- * Returns { publicUrl, storagePath }.
+ * STAGE 3+4+5 — Upload a single compressed Blob to Supabase Storage,
+ * retrieve the public URL, and insert into property_images.
+ *
+ * @param {object} params
+ * @param {Blob}   params.blob        - Compressed image blob
+ * @param {File}   params.file        - Original File (for name/type metadata)
+ * @param {number}   params.listingId   - Integer listing ID
+ * @param {function} [params.onProgress]  - Progress callback (0–100)
+ *
+ * @returns {{ publicUrl: string, storagePath: string }}
+ */
+/**
+ * STAGE 3+4 — Upload a single compressed Blob to Supabase Storage
+ * and retrieve the public URL. DB insert is handled separately in bulk
+ * by bulkSaveImageRecords after the entire batch finishes.
+ *
+ * Exactly follows the directive:
+ *   await supabase.storage.from('property-media').upload(filePath, file)
+ *   const { data } = supabase.storage.from('property-media').getPublicUrl(filePath)
+ *
+ * @returns {{ publicUrl: string, storagePath: string }}
  */
 export async function uploadBlobToSupabase({ blob, file, listingId, onProgress }) {
   onProgress?.(10);
 
-  const ext = blob.type === 'image/webp' ? 'webp' : 'jpg';
+  const ext      = blob.type === 'image/webp' ? 'webp' : 'jpg';
   const safeName = file.name.replace(/[^a-z0-9._-]/gi, '_').replace(/\.[^.]+$/, '');
-  const storagePath = `listings/${listingId}/${Date.now()}_${safeName}.${ext}`;
+  const filePath = `listings/${listingId}/${Date.now()}_${safeName}.${ext}`;
 
-  const { data, error } = await supabase.storage
+  // ── STAGE 3: upload ────────────────────────────────────────────────────────
+  const { data: uploadData, error: uploadError } = await supabase.storage
     .from(BUCKET)
-    .upload(storagePath, blob, {
-      contentType: blob.type,
-      upsert: false,
-      duplex: 'half',
-    });
+    .upload(filePath, blob, { contentType: blob.type, upsert: false });
 
   onProgress?.(85);
 
-  if (error) {
+  if (uploadError) {
+    const msg = uploadError.message || JSON.stringify(uploadError);
     if (
-      error.message?.toLowerCase().includes('bucket not found') ||
-      error.message?.toLowerCase().includes('resource was not found') ||
-      error.statusCode === 404 ||
-      error.error === 'Bucket not found'
+      msg.toLowerCase().includes('bucket not found') ||
+      msg.toLowerCase().includes('resource was not found') ||
+      uploadError.statusCode === 404 ||
+      uploadError.error === 'Bucket not found'
     ) {
       throw new Error(
-        "Storage bucket not found. Create a public bucket named 'property-media' in Supabase Dashboard."
+        "Storage bucket 'property-media' not found. " +
+        'Create a public bucket with this name in Supabase Dashboard → Storage → New Bucket → toggle Public.'
       );
     }
-    throw new Error(error.message || 'Storage upload failed');
+    console.error('[imageUpload] Storage upload failed:', uploadError);
+    throw new Error(`Storage upload failed: ${msg}`);
   }
 
-  const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(data.path);
+  // ── STAGE 4: get public URL ────────────────────────────────────────────────
+  const { data: urlData } = supabase.storage
+    .from(BUCKET)
+    .getPublicUrl(uploadData.path);
+
   onProgress?.(100);
 
-  return { publicUrl: urlData.publicUrl, storagePath: data.path };
+  return { publicUrl: urlData.publicUrl, storagePath: uploadData.path };
 }
 
-/**
- * Full single-image pipeline: compress → upload → (caller handles DB insert).
- * Kept for backward-compat with single-image flows.
- */
-export async function uploadImageToSupabase({ file, listingId, onProgress }) {
+export async function uploadImageToSupabase({ file, listingId, userId, onProgress }) {
   onProgress?.(5);
 
   let blob;
   try {
     blob = await compressImage(file);
   } catch {
-    blob = file; // fallback: use original
+    blob = file; // fallback: upload original if compression fails
   }
   onProgress?.(30);
 
-  return uploadBlobToSupabase({ blob, file, listingId, onProgress: (p) => onProgress?.(30 + p * 0.7) });
+  return uploadBlobToSupabase({
+    blob,
+    file,
+    listingId,
+    onProgress: (p) => onProgress?.(30 + p * 0.7),
+  });
 }
 
 /**
- * STAGE 4 (bulk): Insert multiple image records in a single DB call.
- * Uses Supabase client insert with an array — one round-trip for the entire batch.
+ * Bulk save: insert multiple image records in a single Supabase call.
+ * Used by CloudinaryImageManager after the semaphore worker pool finishes.
  *
- * @param {Array<{listingId, filename, url, storagePath, sortOrder, isCover}>} records
+ * @param {Array<{listingId, filename, url, storagePath, sortOrder, isCover, userId}>} records
  * @returns {Array} inserted rows
  */
 export async function bulkSaveImageRecords(records) {
   if (records.length === 0) return [];
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error('Not authenticated — cannot save image records');
+  }
 
-  const rows = records.map((r) => ({
-    listingId:   r.listingId,
-    userId:      user.id,
-    filename:    r.filename,
-    url:         r.url,
-    storagePath: r.storagePath,
-    sortOrder:   r.sortOrder ?? 0,
-    isCover:     r.isCover   ?? false,
+  const rows = records.map((r, idx) => ({
+    // DBA-specified columns (directive)
+    url:          r.url,
+    storage_path: r.storagePath,
+    listing_id:   null,  // uuid column — integer listingId cannot cast; leave null
+
+    // Prisma-managed required columns
+    listingId:    r.listingId,
+    userId:       r.userId || user.id,
+    storagePath:  r.storagePath,
+
+    // Optional metadata
+    filename:     r.filename,
+    sortOrder:    r.sortOrder  ?? idx,
+    isCover:      r.isCover    ?? false,
+    sort_order:   r.sortOrder  ?? idx,
+    is_cover:     r.isCover    ?? false,
   }));
 
   const { data, error } = await supabase
@@ -203,7 +239,12 @@ export async function bulkSaveImageRecords(records) {
     .insert(rows)
     .select();
 
-  if (error) throw new Error(error.message || 'Failed to save image records');
+  if (error) {
+    console.error('[imageUpload] bulkSaveImageRecords — exact Supabase error:', error);
+    console.error('[imageUpload] Row payload (first row):', JSON.stringify(rows[0], null, 2));
+    throw new Error(`Failed to save image records: ${error.message || JSON.stringify(error)}`);
+  }
+
   return data;
 }
 
@@ -211,12 +252,17 @@ export async function bulkSaveImageRecords(records) {
  * Single-image DB record save (backward-compat).
  */
 export async function saveImageRecord({ listingId, filename, url, storagePath, sortOrder, isCover }) {
-  const saved = await bulkSaveImageRecords([{ listingId, filename, url, storagePath, sortOrder, isCover }]);
+  const { data: { user } } = await supabase.auth.getUser();
+  const saved = await bulkSaveImageRecords([{
+    listingId, filename, url, storagePath, sortOrder, isCover,
+    userId: user?.id,
+  }]);
   return saved[0];
 }
 
 /**
- * Fetch all images for a listing from Supabase, ordered by sortOrder.
+ * Fetch all images for a listing, ordered by sortOrder.
+ * Tries camelCase column first (Prisma path), falls back to snake_case.
  */
 export async function fetchListingImages(listingId) {
   const { data, error } = await supabase
@@ -225,7 +271,10 @@ export async function fetchListingImages(listingId) {
     .eq('listingId', listingId)
     .order('sortOrder', { ascending: true });
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    console.error('[imageUpload] fetchListingImages error:', error);
+    throw new Error(error.message);
+  }
   return data || [];
 }
 
@@ -234,9 +283,14 @@ export async function fetchListingImages(listingId) {
  */
 export async function deleteImageRecord(imageId, storagePath) {
   const { error } = await supabase.from('property_images').delete().eq('id', imageId);
-  if (error) throw new Error(error.message);
+  if (error) {
+    console.error('[imageUpload] deleteImageRecord error:', error);
+    throw new Error(error.message);
+  }
   if (storagePath) {
-    await supabase.storage.from(BUCKET).remove([storagePath]).catch(() => {});
+    await supabase.storage.from(BUCKET).remove([storagePath]).catch((e) => {
+      console.warn('[imageUpload] Storage remove failed (non-fatal):', e?.message);
+    });
   }
 }
 
@@ -245,5 +299,8 @@ export async function deleteImageRecord(imageId, storagePath) {
  */
 export async function updateImageRecord(imageId, fields) {
   const { error } = await supabase.from('property_images').update(fields).eq('id', imageId);
-  if (error) throw new Error(error.message);
+  if (error) {
+    console.error('[imageUpload] updateImageRecord error:', error);
+    throw new Error(error.message);
+  }
 }
