@@ -8,6 +8,7 @@ import {
   Query,
   Param,
   ParseIntPipe,
+  Request,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -169,6 +170,30 @@ export class CalendarController {
   ) {
     return this.calendarService.getCachedCalendar(
       listingId,
+      new Date(startDate),
+      new Date(endDate),
+    );
+  }
+
+  // ── Tape Chart (multi-listing) ────────────────────────────────────────────
+
+  /**
+   * GET /calendar/tape?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+   *
+   * Returns all active listings + their rates, blocked dates, and bookings
+   * for the requested window in a single response.
+   * The frontend normalises into Hash Maps for O(1) cell rendering.
+   */
+  @Get('tape')
+  @ApiOkResponse({ description: 'Multi-listing tape chart data' })
+  getTapeData(
+    @Request() req: any,
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+  ) {
+    const userId: string = req.user?.id ?? req.user?.sub;
+    return this.calendarService.getTapeData(
+      userId,
       new Date(startDate),
       new Date(endDate),
     );

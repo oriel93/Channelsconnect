@@ -100,6 +100,7 @@ import Settings from "./Settings";
 import FinancialReports from "./FinancialReports";
 
 import AdminDashboard from "./AdminDashboard";
+import TapeChart from "./TapeChart";
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
 import { ProtectedRoute } from '../lib/authContext';
 
@@ -203,6 +204,7 @@ const PAGES = {
     
     FinancialReports: FinancialReports,
     AdminDashboard: AdminDashboard,
+    TapeChart: TapeChart,
 }
 
 function _getCurrentPage(url) {
@@ -328,6 +330,8 @@ function PagesContent() {
 
                 <Route path="/AdminDashboard" element={<ProtectedRoute requireAdmin={true}><AdminDashboard /></ProtectedRoute>} />
                 <Route path="/admin" element={<ProtectedRoute requireAdmin={true}><AdminDashboard /></ProtectedRoute>} />
+                <Route path="/TapeChart" element={<ProtectedRoute><TapeChart /></ProtectedRoute>} />
+                <Route path="/tape-chart" element={<ProtectedRoute><TapeChart /></ProtectedRoute>} />
 
                 {/* Channex PMS Certification — hidden route, no auth required */}
                 <Route path="/cert-test" element={<CertDashboard />} />

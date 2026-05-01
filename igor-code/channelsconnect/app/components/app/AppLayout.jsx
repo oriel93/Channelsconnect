@@ -5,11 +5,12 @@ import { createPageUrl } from '@/utils';
 import { useAuth } from '@/lib/authContext';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { LogOut, Calendar, Upload, Settings, Image as ImageIcon, Briefcase, Network, Menu, X, Bot, BarChart3, Crown } from 'lucide-react';
+import { LogOut, Calendar, Upload, Settings, Image as ImageIcon, Briefcase, Network, Menu, X, Bot, BarChart3, Crown, LayoutGrid } from 'lucide-react';
 
 const BASE_NAV_ITEMS = [
   { name: 'Import Listings', href: createPageUrl('ImportListings'), icon: Upload },
   { name: 'Dashboard', href: createPageUrl('Dashboard'), icon: Calendar },
+  { name: 'Tape Chart', href: createPageUrl('TapeChart'), icon: LayoutGrid },
   { name: 'Financial Reports', href: createPageUrl('FinancialReports'), icon: BarChart3 },
   { name: 'My Listings', href: createPageUrl('Listings'), icon: Briefcase },
   // { name: 'Channels', href: createPageUrl('ChannelsDashboard'), icon: Network },

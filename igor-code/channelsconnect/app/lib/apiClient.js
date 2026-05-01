@@ -133,6 +133,9 @@ export const api = {
     getEvents: (params) => apiClient.get('/calendar/events', { params }),
     getRates: (params) => apiClient.get('/calendar/rates', { params }),
     getBlockedDates: (params) => apiClient.get('/calendar/blocked-dates', { params }),
+    /** Tape chart — all active listings in one shot */
+    getTapeData: (startDate, endDate) =>
+      apiClient.get('/calendar/tape', { params: { startDate, endDate } }),
     updateRate: (data) => apiClient.post('/calendar/rates', data),
     bulkUpdateRates: (data) => apiClient.post('/calendar/rates/bulk', data),
     blockDate: (data) => apiClient.post('/calendar/block', data),

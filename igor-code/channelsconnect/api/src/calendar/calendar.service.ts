@@ -292,4 +292,76 @@ export class CalendarService {
       orderBy: { date: 'asc' },
     });
   }
+
+  // ── Tape Chart ───────────────────────────────────────────────────
+
+  /**
+   * Fetch all data needed for the Tape Chart across all of a user's active listings.
+   * Returns { listings[], rates[], blockedDates[], bookings[] } in separate arrays.
+   * The frontend normalises into hash maps for O(1) cell lookups.
+   *
+   * Single DB round-trip per data type (4 queries, all parallel via Promise.all).
+   */
+  async getTapeData(userId: string, startDate: Date, endDate: Date) {
+    // 1. Fetch only the user's active listings
+    const listings = await this.prisma.listing.findMany({
+      where: { userId, isActive: true },
+      select: {
+        id: true,
+        title: true,
+        propertyType: true,
+        bedrooms: true,
+        city: true,
+        basePrice: true,
+      },
+      orderBy: { title: 'asc' },
+    });
+
+    if (listings.length === 0) {
+      return { listings: [], rates: [], blockedDates: [], bookings: [] };
+    }
+
+    const listingIds = listings.map(l => l.id);
+
+    // 2. Parallel fetch — all listings, all dates in one shot per type
+    const [rates, blockedDates, bookings] = await Promise.all([
+      this.prisma.rate.findMany({
+        where: {
+          listingId: { in: listingIds },
+          date: { gte: startDate, lte: endDate },
+        },
+        select: { listingId: true, date: true, price: true, minStay: true, available: true },
+      }),
+      this.prisma.blockedDate.findMany({
+        where: {
+          listingId: { in: listingIds },
+          date: { gte: startDate, lte: endDate },
+        },
+        select: { listingId: true, date: true, reason: true },
+      }),
+      this.prisma.booking.findMany({
+        where: {
+          listingId: { in: listingIds },
+          checkIn: { lte: endDate },
+          checkOut: { gte: startDate },
+          status: { not: 'cancelled' },
+        },
+        select: {
+          id: true,
+          listingId: true,
+          guestName: true,
+          guestEmail: true,
+          checkIn: true,
+          checkOut: true,
+          totalPrice: true,
+          status: true,
+          bookingSource: true,
+          numGuests: true,
+          notes: true,
+        },
+      }),
+    ]);
+
+    return { listings, rates, blockedDates, bookings };
+  }
 }
