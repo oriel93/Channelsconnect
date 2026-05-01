@@ -63,7 +63,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/authContext';
-import api from '@/lib/apiClient';
+import { api } from '@/lib/apiClient';
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 const StatCard = ({ title, value, icon: Icon, color = 'blue', subtitle }) => (

@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Loader2, RefreshCw, CheckCircle, XCircle, Clock } from 'lucide-react';
 import { importBeds24Properties } from '@/api/functions';
 import { toast } from 'sonner';
-import api from '@/lib/apiClient';
+import { api } from '@/lib/apiClient';
 
 // Sync status enum values (matching backend)
 const SyncStatus = {

@@ -20,7 +20,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { format, addDays, differenceInDays, parseISO, isToday, isWeekend, startOfDay } from 'date-fns';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/authContext';
-import api from '@/lib/apiClient';
+import { api } from '@/lib/apiClient';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

@@ -10,7 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Loader2, Mail, Lock, AlertCircle, CheckCircle } from 'lucide-react';
 import { createPageUrl } from '@/utils';
-import api from '@/lib/apiClient';
+import { api } from '@/lib/apiClient';
 
 export default function Login() {
   const navigate = useNavigate();
