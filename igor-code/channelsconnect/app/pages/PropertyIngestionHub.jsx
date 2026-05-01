@@ -219,45 +219,22 @@ function OtaImportForm({ onSuccess }) {
 function ExcelImportForm({ onSuccess }) {
   const [file, setFile]         = useState(null);
   const [loading, setLoading]   = useState(false);
-  const [downloading, setDownloading] = useState(false);
+  // downloading state removed — template endpoint is @Public(), direct link download
   const [result, setResult]     = useState(null);
   const fileRef                 = useRef();
 
   // ── TASK 4: Authenticated template download ───────────────────────────────
   // Uses fetch() with explicit Authorization header — window.open() would bypass
   // the axios interceptor and produce a 401.
-  const handleDownload = async () => {
-    setDownloading(true);
-    try {
-      // TASK 1: Retrieve current session and attach Bearer token
-      const { data: { session } } = await supabase.auth.getSession();
-
-      const base = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
-      const res  = await fetch(`${base}/listings/bulk-import/template`, {
-        headers: {
-          Authorization: `Bearer ${session?.access_token}`,
-        },
-      });
-
-      if (!res.ok) {
-        const err = await res.text();
-        throw new Error(err || `Download failed: ${res.status}`);
-      }
-
-      const blob     = await res.blob();
-      const url      = URL.createObjectURL(blob);
-      const anchor   = document.createElement('a');
-      anchor.href     = url;
-      anchor.download = 'channels-connect-property-template.xlsx';
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      toast.error('Template download failed: ' + (err.message || 'Unknown error'));
-    } finally {
-      setDownloading(false);
-    }
+  // GET /listings/bulk-import/template is @Public() — no auth needed, direct browser download
+  const handleDownload = () => {
+    const base   = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+    const anchor = document.createElement('a');
+    anchor.href     = `${base}/listings/bulk-import/template`;
+    anchor.download = 'channels-connect-property-template.xlsx';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
   };
 
   // ── Upload: api.ingestion.uploadExcel → axios interceptor injects token ───
@@ -297,12 +274,9 @@ function ExcelImportForm({ onSuccess }) {
           variant="outline"
           size="sm"
           onClick={handleDownload}
-          disabled={downloading}
           className="border-emerald-300 text-emerald-700 hover:bg-emerald-100"
         >
-          {downloading
-            ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Downloading…</>
-            : <><Download className="w-4 h-4 mr-2" />Download .xlsx Template</>}
+          <Download className="w-4 h-4 mr-2" />Download .xlsx Template
         </Button>
       </div>
 

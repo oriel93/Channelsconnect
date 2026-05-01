@@ -24,6 +24,7 @@ import { z } from 'zod';
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 
 // ─── Nominatim geocoder (OpenStreetMap — no API key required) ────────────────
 
@@ -160,6 +161,7 @@ export class BulkImportController {
   // ── Tier 2: Excel Template Download ──────────────────────────────────────
 
   @Get('bulk-import/template')
+  @Public()  // No auth needed — static template file, no user data
   @ApiOperation({ summary: 'Download the Excel import template (.xlsx)' })
   downloadTemplate(@Res() res: Response) {
     const headers = [
