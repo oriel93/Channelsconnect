@@ -29,11 +29,13 @@ import {
 } from '@nestjs/common';
 import { ChannexOnboardingService, OnboardPropertyDto } from './channex-onboarding.service';
 import { ChannexDeepSyncService, SyncProgress } from './channex-deep-sync.service';
+import { ChannexContentService } from './channex-content.service';
 import { ChannexHttpClient } from './channex-http.client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SupabaseAuthGuard } from '../../auth/guards/supabase-auth.guard';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Public } from '../../auth/decorators/public.decorator';
+import { ParseIntPipe } from '@nestjs/common';
 
 @Controller('connect')
 @UseGuards(SupabaseAuthGuard)
@@ -46,6 +48,7 @@ export class ChannexWhitelabelController {
     private readonly deepSync: ChannexDeepSyncService,
     private readonly http: ChannexHttpClient,
     private readonly prisma: PrismaService,
+    private readonly contentService: ChannexContentService,
   ) {}
 
   // ── Onboarding ────────────────────────────────────────────────────────
@@ -355,5 +358,33 @@ export class ChannexWhitelabelController {
       body.entries,
     );
     return { success: true, message: 'Batch ARI update sent in 1 API call.', taskId: taskId || null };
+  }
+
+  // ── Phase 4: Content Push (STRICTLY SEPARATED FROM ARI) ───────────────────
+
+  /**
+   * POST /connect/content/push-property
+   * Pushes a listing's content (title, address, room type) to Channex.
+   * Auth required. SAFE: no ARI batching, no channex-sync contact.
+   */
+  @Post('content/push-property')
+  async pushPropertyContent(
+    @CurrentUser() user: any,
+    @Body() body: { listingId: number },
+  ) {
+    const listingId = Number(body?.listingId);
+    if (!listingId || isNaN(listingId)) {
+      return { success: false, message: 'listingId (number) is required' };
+    }
+    this.logger.log(`[Content] Push request from user ${user?.id} for listing ${listingId}`);
+    const result = await this.contentService.pushPropertyToChannex(listingId, user?.id);
+    return {
+      success: true,
+      message: 'Property content pushed to Channels Connect.',
+      data: {
+        propertyId: result.propertyId,
+        roomTypeIds: result.roomTypeIds,
+      },
+    };
   }
 }

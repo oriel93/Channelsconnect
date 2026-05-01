@@ -101,6 +101,7 @@ import FinancialReports from "./FinancialReports";
 
 import AdminDashboard from "./AdminDashboard";
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
+import { ProtectedRoute } from '../lib/authContext';
 
 const PAGES = {
     
@@ -325,8 +326,8 @@ function PagesContent() {
                 
                 <Route path="/FinancialReports" element={<FinancialReports />} />
 
-                <Route path="/AdminDashboard" element={<AdminDashboard />} />
-                <Route path="/admin" element={<AdminDashboard />} />
+                <Route path="/AdminDashboard" element={<ProtectedRoute requireAdmin={true}><AdminDashboard /></ProtectedRoute>} />
+                <Route path="/admin" element={<ProtectedRoute requireAdmin={true}><AdminDashboard /></ProtectedRoute>} />
 
                 {/* Channex PMS Certification — hidden route, no auth required */}
                 <Route path="/cert-test" element={<CertDashboard />} />

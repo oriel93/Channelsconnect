@@ -203,6 +203,13 @@ export const api = {
 
     /** PMS Cert: single/multi date range update */
     updateARI: (payload) => apiClient.post('/connect/ari/update', payload),
+
+    /**
+     * Phase 4: Push listing content (title, address, room type) to Channex.
+     * SAFE: no ARI batching, no channex-sync contact.
+     */
+    pushPropertyContent: (listingId) =>
+      apiClient.post('/connect/content/push-property', { listingId }),
   },
 
   /**

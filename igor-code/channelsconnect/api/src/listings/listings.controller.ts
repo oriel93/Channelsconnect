@@ -10,14 +10,20 @@ import {
   Logger,
   BadRequestException,
   ForbiddenException,
+  Res,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
+import { Response } from 'express';
 import {
   ApiTags,
   ApiOkResponse,
   ApiCreatedResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
+import * as XLSX from 'xlsx';
 import { ListingsService } from './listings.service';
+import { ICalService } from './ical.service';
 import { CreateListingDto } from './dto/create-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
 import { ListingEntity } from './entities/listing.entity';
@@ -34,6 +40,7 @@ export class ListingsController {
   constructor(
     private readonly listingsService: ListingsService,
     private readonly channexSyncService: ChannexSyncService,
+    private readonly icalService: ICalService,
   ) {}
 
   @Post()
@@ -104,6 +111,112 @@ export class ListingsController {
       this.logger.error(`[Cert] createManual failed: ${err?.message}\n${err?.stack}`);
       throw err;
     }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Phase 2: iCal Import / Export  (SAFE — no ARI/channex-sync contact)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * POST /listings/import/ical
+   * Parse a remote iCal URL and return the list of events (no DB write).
+   */
+  @Post('import/ical')
+  async importIcal(@Body() body: { url: string }) {
+    const { url } = body;
+    if (!url) throw new BadRequestException('url is required');
+    const events = await this.icalService.parseICalUrl(url);
+    return { success: true, count: events.length, events };
+  }
+
+  /**
+   * GET /listings/:id/calendar.ics
+   * Public endpoint — streams an iCal feed of bookings for a listing.
+   */
+  @Public()
+  @Get(':id/calendar.ics')
+  async exportIcal(
+    @Param('id', ParseIntPipe) id: number,
+    @Res() res: Response,
+  ) {
+    const icsData = await this.icalService.exportICalForListing(id);
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="listing-${id}.ics"`);
+    res.send(icsData);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Phase 2: Excel Bulk Import / Template
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * GET /listings/bulk-template
+   * Returns an xlsx file with the correct column headers for bulk import.
+   */
+  @Get('bulk-template')
+  getBulkTemplate(@Res() res: Response) {
+    const headers = [
+      'Title', 'Property Type', 'Address', 'City', 'Country', 'Zip',
+      'Latitude', 'Longitude', 'Max Occupancy', 'Bedrooms', 'Bathrooms',
+      'Bed Breakdown', 'Base Price', 'Amenities (comma-separated)', 'Description',
+    ];
+    const ws = XLSX.utils.aoa_to_sheet([headers]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Listings');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="listings-template.xlsx"');
+    res.send(buf);
+  }
+
+  /**
+   * POST /listings/bulk-import
+   * Accepts an array of listing objects, creates each via ListingsService.
+   * Returns { created: N, failed: [...] }
+   */
+  @Post('bulk-import')
+  @HttpCode(HttpStatus.OK)
+  async bulkImport(
+    @CurrentUser() user: CurrentUserData,
+    @Body() rows: Array<{
+      title?: string;
+      propertyType?: string;
+      address?: string;
+      city?: string;
+      country?: string;
+      postalCode?: string;
+      latitude?: number;
+      longitude?: number;
+      maxGuests?: number;
+      bedrooms?: number;
+      bathrooms?: number;
+      beds?: string;
+      basePrice?: number;
+      amenities?: string;
+      description?: string;
+    }>,
+  ) {
+    if (!Array.isArray(rows) || rows.length === 0) {
+      throw new BadRequestException('Body must be a non-empty array of listing objects');
+    }
+    const results: Array<{ index: number; id?: number; error?: string }> = [];
+    let created = 0;
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row.title?.trim()) {
+        results.push({ index: i, error: 'Missing title' });
+        continue;
+      }
+      try {
+        const listing = await this.listingsService.create(user.id, row as any);
+        results.push({ index: i, id: listing.id });
+        created++;
+      } catch (err: any) {
+        results.push({ index: i, error: err?.message ?? 'Unknown error' });
+      }
+    }
+    const failed = results.filter((r) => r.error);
+    return { success: true, created, failed };
   }
 
   /**

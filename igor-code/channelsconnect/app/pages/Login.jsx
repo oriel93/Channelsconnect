@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { authHelpers } from '@/lib/supabase';
+import { useAuth } from '@/lib/authContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,10 +15,12 @@ import api from '@/lib/apiClient';
 export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { isLoadingAuth, isAuthenticated } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [pendingRedirect, setPendingRedirect] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -27,18 +30,15 @@ export default function Login() {
   // Legal consent checkbox — must be checked before signup submission
   const [tosAccepted, setTosAccepted] = useState(false);
 
-  // Removed auto-redirect on mount to allow users to always access login page
-  // useEffect(() => {
-  //   // Check if user is already logged in
-  //   const checkAuth = async () => {
-  //     const { user } = await authHelpers.getUser();
-  //     if (user) {
-  //       const redirect = searchParams.get('redirect') || '/dashboard';
-  //       navigate(redirect);
-  //     }
-  //   };
-  //   checkAuth();
-  // }, [navigate, searchParams]);
+  // After signIn() succeeds we set pendingRedirect=true, then this effect
+  // watches for isLoadingAuth to finish (dbUser + session both resolved)
+  // before navigating — eliminates the race condition that kicked admins to /Login.
+  useEffect(() => {
+    if (pendingRedirect && !isLoadingAuth && isAuthenticated) {
+      const redirect = searchParams.get('redirect') || '/Dashboard';
+      navigate(redirect, { replace: true });
+    }
+  }, [pendingRedirect, isLoadingAuth, isAuthenticated, navigate, searchParams]);
 
   const handleChange = (e) => {
     setFormData({
@@ -107,8 +107,10 @@ export default function Login() {
 
         if (data.user) {
           setSuccess('Login successful! Redirecting...');
-          const redirect = searchParams.get('redirect') || '/dashboard';
-          setTimeout(() => navigate(redirect), 1000);
+          // Signal the effect above to navigate once AuthProvider finishes
+          // fetching the DB profile (isLoadingAuth → false). This prevents the
+          // race where isAdmin is checked before the DB profile is loaded.
+          setPendingRedirect(true);
         }
       } else {
         // Sign up with email and password

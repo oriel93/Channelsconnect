@@ -6,9 +6,12 @@
  *  - Direct Supabase Storage upload
  *  - property_images table persistence
  *  - Cover photo + reordering
+ *  - Parallel upload (max 3 concurrent) with per-image progress bars
  *
  * SAFE: Zero changes to channex-http.client.ts, webhook controllers, or ARI sync.
  */
+
+const MAX_CONCURRENT_UPLOADS = 3;
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -174,7 +177,7 @@ export default function CloudinaryImageManager({ listingId }) {
     setUploadStatus('idle');
   };
 
-  // ── Upload handler ─────────────────────────────────────────────────────────
+  // ── Upload handler (parallel, max 3 concurrent) ───────────────────────────
   const handleUpload = async () => {
     const pending = filesToUpload.filter((f) => f.status === 'pending');
     if (pending.length === 0) return;
@@ -182,23 +185,28 @@ export default function CloudinaryImageManager({ listingId }) {
     setUploadStatus('uploading');
     setUploadStats({ total: pending.length, completed: 0, failed: 0 });
 
-    for (const fileItem of pending) {
+    // Upload one file item, updating its per-image progress bar as we go
+    const uploadOne = async (fileItem, slotIndex) => {
       // Mark as uploading
-      setFilesToUpload((prev) => prev.map((f) => f.id === fileItem.id ? { ...f, status: 'uploading', progress: 5 } : f));
+      setFilesToUpload((prev) =>
+        prev.map((f) => f.id === fileItem.id ? { ...f, status: 'uploading', progress: 5 } : f)
+      );
 
       try {
-        // 1. Upload to Supabase Storage (with hi-res conversion inside)
         const { publicUrl, storagePath } = await uploadImageToSupabase({
           file: fileItem.file,
           listingId,
           onProgress: (pct) => {
-            setFilesToUpload((prev) => prev.map((f) => f.id === fileItem.id ? { ...f, progress: pct } : f));
+            setFilesToUpload((prev) =>
+              prev.map((f) => f.id === fileItem.id ? { ...f, progress: pct } : f)
+            );
           },
         });
 
-        // 2. Save metadata to DB
-        const sortOrder = existingImages.length + filesToUpload.filter((f) => f.status === 'success').length;
-        const isCover = existingImages.length === 0 && sortOrder === 0;
+        // Compute sort order using current existingImages length + how many we've
+        // already queued successfully (approximate — reorder UI handles fine-grained)
+        const sortOrder = existingImages.length + slotIndex;
+        const isCover = existingImages.length === 0 && slotIndex === 0;
 
         await saveImageRecord({
           listingId,
@@ -209,21 +217,36 @@ export default function CloudinaryImageManager({ listingId }) {
           isCover,
         });
 
-        // Mark success
-        setFilesToUpload((prev) => prev.map((f) => f.id === fileItem.id ? { ...f, status: 'success', progress: 100 } : f));
+        setFilesToUpload((prev) =>
+          prev.map((f) => f.id === fileItem.id ? { ...f, status: 'success', progress: 100 } : f)
+        );
         setUploadStats((prev) => ({ ...prev, completed: prev.completed + 1 }));
 
       } catch (err) {
         console.error(`Upload error for ${fileItem.file.name}:`, err);
-        setFilesToUpload((prev) => prev.map((f) => f.id === fileItem.id ? { ...f, status: 'error', error: err.message || 'Upload failed' } : f));
+        setFilesToUpload((prev) =>
+          prev.map((f) =>
+            f.id === fileItem.id ? { ...f, status: 'error', error: err.message || 'Upload failed' } : f
+          )
+        );
         setUploadStats((prev) => ({ ...prev, failed: prev.failed + 1 }));
       }
-    }
+    };
+
+    // Run MAX_CONCURRENT_UPLOADS uploads in parallel using a semaphore-style approach
+    const queue = pending.map((item, i) => ({ item, i }));
+    const workers = Array.from({ length: Math.min(MAX_CONCURRENT_UPLOADS, queue.length) }, async () => {
+      while (queue.length > 0) {
+        const next = queue.shift();
+        if (next) await uploadOne(next.item, next.i);
+      }
+    });
+    await Promise.all(workers);
 
     await fetchImages();
     setUploadStatus('completed');
 
-    // Auto-clear successful uploads
+    // Auto-clear successful uploads after 3.5 s
     setTimeout(() => {
       setFilesToUpload((prev) => prev.filter((f) => f.status !== 'success'));
       setUploadStatus('idle');
@@ -287,13 +310,13 @@ export default function CloudinaryImageManager({ listingId }) {
             </span>
             {uploadStatus === 'uploading' && (
               <Badge variant="secondary">
-                {uploadStats.completed}/{uploadStats.total} uploading…
+                {uploadStats.completed}/{uploadStats.total} · {MAX_CONCURRENT_UPLOADS} parallel
               </Badge>
             )}
           </CardTitle>
           <CardDescription className="flex items-center gap-1">
             <Sparkles className="w-3.5 h-3.5 text-yellow-500" />
-            Auto-converted to OTA hi-res spec (min 2048px, JPEG 92%) for Expedia &amp; Booking.com
+            Auto-converted to OTA hi-res spec (min 2048px, JPEG 92%) · up to {MAX_CONCURRENT_UPLOADS} parallel uploads
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -317,7 +340,7 @@ export default function CloudinaryImageManager({ listingId }) {
           >
             <UploadCloud className="w-12 h-12 text-slate-400 mb-3" />
             <span className="font-semibold text-blue-600">Click to browse or drag &amp; drop</span>
-            <span className="text-slate-500 mt-1 text-sm">PNG, JPG, WebP · up to 50MB · multiple files OK</span>
+            <span className="text-slate-500 mt-1 text-sm">PNG, JPG, WebP · up to 50MB each · select as many as you need</span>
             <Input
               id={`img-upload-${listingId}`}
               type="file"
