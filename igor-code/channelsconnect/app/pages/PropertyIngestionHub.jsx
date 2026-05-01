@@ -64,7 +64,7 @@ const TIERS = [
   {
     id:    'excel',
     icon:  FileSpreadsheet,
-    color: 'emerald',
+    color: 'purple',
     label: 'Import via Excel',
     sub:   'Bulk upload — up to 200 properties',
     desc:  'Download our template, fill in your property details, and upload. Addresses are geocoded automatically.',
@@ -82,7 +82,7 @@ const TIERS = [
   {
     id:    'manual',
     icon:  PlusCircle,
-    color: 'amber',
+    color: 'indigo',
     label: 'Create Manually',
     sub:   'Form + Google Maps + iCal',
     desc:  'Fill in property details with Google Places autocomplete, then connect iCal feeds for availability.',
@@ -91,10 +91,10 @@ const TIERS = [
 ];
 
 const colorMap = {
-  blue:   { ring: 'ring-blue-200',   icon: 'text-blue-600',   bg: 'bg-blue-50',   badge: 'bg-blue-100 text-blue-700 border-blue-200' },
-  emerald:{ ring: 'ring-emerald-200',icon: 'text-emerald-600',bg: 'bg-emerald-50',badge: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-  violet: { ring: 'ring-violet-200', icon: 'text-violet-600', bg: 'bg-violet-50', badge: 'bg-violet-100 text-violet-700 border-violet-200' },
-  amber:  { ring: 'ring-amber-200',  icon: 'text-amber-600',  bg: 'bg-amber-50',  badge: 'bg-amber-100 text-amber-700 border-amber-200' },
+  blue:   { ring: 'focus:ring-blue-500',   icon: 'text-blue-600',   bg: 'bg-blue-50',   badge: 'bg-blue-100 text-blue-700 border-blue-200',   border: 'border-blue-400',   hoverBorder: 'hover:border-blue-400' },
+  purple: { ring: 'focus:ring-purple-500', icon: 'text-purple-600', bg: 'bg-purple-50', badge: 'bg-purple-100 text-purple-700 border-purple-200', border: 'border-purple-400', hoverBorder: 'hover:border-purple-400' },
+  violet: { ring: 'focus:ring-violet-500', icon: 'text-violet-600', bg: 'bg-violet-50', badge: 'bg-violet-100 text-violet-700 border-violet-200', border: 'border-violet-400', hoverBorder: 'hover:border-violet-400' },
+  indigo: { ring: 'focus:ring-indigo-500', icon: 'text-indigo-600', bg: 'bg-indigo-50', badge: 'bg-indigo-100 text-indigo-700 border-indigo-200', border: 'border-indigo-400', hoverBorder: 'hover:border-indigo-400' },
 };
 
 // ─── Shared success overlay ───────────────────────────────────────────────────
@@ -199,7 +199,7 @@ function OtaImportForm({ onSuccess }) {
         <p className="text-xs text-slate-500">Paste your OTA calendar link to sync availability automatically.</p>
       </div>
 
-      <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-sm text-blue-800 flex gap-3">
+      <div className="bg-purple-50 border border-purple-100 rounded-lg p-4 text-sm text-purple-800 flex gap-3">
         <Sparkles className="w-4 h-4 shrink-0 mt-0.5" />
         <span>Our team will extract your photos, descriptions, room configuration, and amenities. You'll be notified once it's ready.</span>
       </div>
@@ -267,8 +267,8 @@ function ExcelImportForm({ onSuccess }) {
   return (
     <div className="space-y-5">
       {/* Step 1: Download template */}
-      <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-4">
-        <p className="text-sm font-semibold text-emerald-800 mb-2">Step 1 — Download the template</p>
+      <div className="bg-purple-50 border border-purple-100 rounded-lg p-4">
+        <p className="text-sm font-semibold text-purple-800 mb-2">Step 1 — Download the template</p>
         <p className="text-xs text-emerald-700 mb-3">
           Our template includes a Field Guide sheet. No lat/long needed — addresses are geocoded automatically.
         </p>
@@ -287,7 +287,7 @@ function ExcelImportForm({ onSuccess }) {
         <div className="space-y-2">
           <Label>Step 2 — Upload your completed spreadsheet</Label>
           <div
-            className="border-2 border-dashed border-slate-200 rounded-lg p-6 text-center cursor-pointer hover:border-emerald-400 hover:bg-emerald-50 transition-colors"
+            className="border-2 border-dashed border-slate-200 rounded-lg p-6 text-center cursor-pointer hover:border-purple-400 hover:bg-purple-50 transition-colors"
             onClick={() => fileRef.current?.click()}
           >
             {file ? (
@@ -623,29 +623,37 @@ function ManualCreateForm({ onSuccess }) {
 
   return (
     <div>
-      {/* TASK 3: Tabs wired to useState — clicking a header calls setActiveTab */}
-      <div className="flex border-b border-slate-200 mb-6 gap-0">
-        {TABS.map((t) => {
+      {/* Step indicator tabs — custom circles driven by activeTab state */}
+      <div className="flex items-center border-b border-slate-100 mb-6 gap-1">
+        {TABS.map((t, idx) => {
           const isActive   = activeTab === t.id;
-          // Disable tabs ahead of current progress if property not yet saved
           const isDisabled = (t.id === 'amenities' || t.id === 'calendar') && !savedListingId;
+          const stepNum    = idx + 1;
           return (
             <button
               key={t.id}
               type="button"
               disabled={isDisabled}
-              onClick={() => setActiveTab(t.id)}   // ← wired setState
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              onClick={() => setActiveTab(t.id)}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-all duration-150 whitespace-nowrap ${
                 isActive
-                  ? 'border-amber-500 text-amber-700'
+                  ? 'border-purple-600 text-purple-700'
                   : isDisabled
                     ? 'border-transparent text-slate-300 cursor-not-allowed'
                     : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
               }`}
             >
+              {/* Step number circle — purple when active, gray when not */}
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold transition-all flex-shrink-0 ${
+                isActive   ? 'bg-purple-600 text-white' :
+                isDisabled ? 'bg-slate-100 text-slate-300' :
+                             'bg-slate-100 text-slate-500'
+              }`}>
+                {stepNum}
+              </span>
               {t.label}
               {t.id === 'calendar' && icalLinks.length > 0 && (
-                <span className="ml-1.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold">
+                <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-purple-100 text-purple-700 text-[10px] font-bold">
                   {icalLinks.length}
                 </span>
               )}
@@ -695,12 +703,31 @@ function ManualCreateForm({ onSuccess }) {
             </div>
             <div className="space-y-1.5">
               <Label>Property Type</Label>
-              <Select value={form.propertyType} onValueChange={v => setForm(f => ({ ...f, propertyType: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select type…" /></SelectTrigger>
-                <SelectContent>
-                  {PROPERTY_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              {/* Custom selection circles — strict equality against form.propertyType state */}
+              <div className="flex flex-wrap gap-2">
+                {PROPERTY_TYPES.map(type => {
+                  const isSelected = form.propertyType === type;
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, propertyType: type }))}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm font-medium transition-all duration-150
+                        ${isSelected
+                          ? 'bg-purple-600 border-purple-600 text-white shadow-md shadow-purple-200'
+                          : 'bg-white border-gray-200 text-gray-600 hover:border-purple-300 hover:text-purple-700 hover:bg-purple-50'
+                        }`}
+                    >
+                      {/* Selection circle indicator */}
+                      <span className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all
+                        ${isSelected ? 'border-white' : 'border-gray-300'}`}>
+                        {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white block" />}
+                      </span>
+                      {type}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label>Max Guests <span className="text-red-500">*</span></Label>
@@ -928,7 +955,7 @@ function PropertyIngestionHubContent() {
 
       {/* Tier selection grid */}
       {!activeTier && (
-        <div className="grid sm:grid-cols-2 gap-5">
+        <div className="grid sm:grid-cols-2 gap-4">
           {TIERS.map((tier) => {
             const Icon = tier.icon;
             const c    = colorMap[tier.color];
@@ -936,22 +963,30 @@ function PropertyIngestionHubContent() {
               <button
                 key={tier.id}
                 onClick={() => setActiveTier(tier.id)}
-                className={`text-left p-6 bg-white border-2 border-slate-100 rounded-2xl shadow-sm hover:shadow-md transition-all group focus:outline-none focus:ring-2 ${c.ring}`}
+                className={`relative text-left p-5 bg-white border border-slate-200 rounded-2xl shadow-sm
+                  hover:shadow-lg hover:border-purple-300 hover:-translate-y-0.5
+                  active:translate-y-0 active:shadow-sm
+                  transition-all duration-200 group focus:outline-none focus:ring-2 focus:ring-purple-400`}
               >
-                <div className="flex items-start justify-between mb-3">
-                  <div className={`p-3 ${c.bg} rounded-xl`}>
-                    <Icon className={`w-6 h-6 ${c.icon}`} />
+                {/* Top row: icon + badge */}
+                <div className="flex items-center justify-between mb-4">
+                  <div className={`w-11 h-11 flex items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 shadow-md group-hover:shadow-lg transition-shadow`}>
+                    <Icon className="w-5 h-5 text-white" />
                   </div>
-                  <span className={`text-[10px] font-semibold px-2.5 py-1 rounded-full border ${c.badge}`}>
+                  <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${c.badge} border tracking-wide uppercase`}>
                     {tier.badge}
                   </span>
                 </div>
-                <p className="font-bold text-slate-900 text-base">{tier.label}</p>
-                <p className="text-xs text-slate-500 font-medium mt-0.5">{tier.sub}</p>
-                <p className="text-sm text-slate-600 mt-2 leading-relaxed">{tier.desc}</p>
-                <div className={`flex items-center gap-1 mt-4 text-xs font-semibold ${c.icon} opacity-0 group-hover:opacity-100 transition-opacity`}>
-                  Get started <ArrowRight className="w-3.5 h-3.5" />
+                {/* Text */}
+                <p className="font-bold text-slate-900 text-[15px] leading-tight">{tier.label}</p>
+                <p className="text-[11px] text-slate-400 font-medium mt-0.5 truncate">{tier.sub}</p>
+                <p className="text-[13px] text-slate-500 mt-2 leading-relaxed line-clamp-2">{tier.desc}</p>
+                {/* CTA arrow */}
+                <div className="flex items-center gap-1 mt-4 text-[11px] font-bold text-purple-600 opacity-0 group-hover:opacity-100 transition-all duration-200 translate-x-0 group-hover:translate-x-1">
+                  Get started <ArrowRight className="w-3 h-3" />
                 </div>
+                {/* Bottom gradient bar */}
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 to-purple-600 rounded-b-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
               </button>
             );
           })}
@@ -971,15 +1006,15 @@ function PropertyIngestionHubContent() {
             >
               ← Back to options
             </button>
-            <Card className={`border-2 ${c.ring}`}>
-              <CardHeader className={`${c.bg} border-b border-slate-100 rounded-t-xl`}>
+            <Card className="border border-slate-200 shadow-md">
+              <CardHeader className="border-b border-slate-100 rounded-t-xl bg-gradient-to-r from-blue-50 to-purple-50">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-white rounded-lg shadow-sm">
-                    <Icon className={`w-5 h-5 ${c.icon}`} />
+                  <div className="w-9 h-9 flex items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 shadow-md flex-shrink-0">
+                    <Icon className="w-4 h-4 text-white" />
                   </div>
                   <div>
-                    <CardTitle className="text-base">{tier.label}</CardTitle>
-                    <CardDescription className="text-xs mt-0.5">{tier.sub}</CardDescription>
+                    <CardTitle className="text-base text-slate-900">{tier.label}</CardTitle>
+                    <CardDescription className="text-xs mt-0.5 text-slate-500">{tier.sub}</CardDescription>
                   </div>
                 </div>
               </CardHeader>

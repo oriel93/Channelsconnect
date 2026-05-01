@@ -628,7 +628,7 @@ export default function AdminDashboard() {
                                   value={u.role || 'user'}
                                   disabled={updatingRoleId === u.id}
                                   onChange={(e) => handleRoleChange(u.id, e.target.value, u.email)}
-                                  className="text-xs border border-slate-200 rounded px-2 py-1 bg-white cursor-pointer disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                                  className="font-sans text-gray-900 text-xs border border-gray-200 rounded-lg px-2 py-1 bg-gray-50 cursor-pointer disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
                                 >
                                   <option value="user">user</option>
                                   <option value="admin">admin</option>
