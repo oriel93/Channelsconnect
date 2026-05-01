@@ -9,11 +9,19 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 
 /**
+ * Hardcoded super-admin email.
+ * This email is ALWAYS treated as admin regardless of the DB `role` column.
+ * On first login, their DB record is auto-promoted so subsequent lookups are
+ * consistent.
+ */
+const SUPER_ADMIN_EMAIL = 'oriel@erorentals.com';
+
+/**
  * RolesGuard — enforces @Roles('admin') on routes.
  *
- * Reads the current user from request.user (set by SupabaseAuthGuard),
- * then looks up their `role` column in the `users` table.
- * Throws 403 Forbidden if the role doesn't match.
+ * Resolution order:
+ *   1. If user email === SUPER_ADMIN_EMAIL → always admin (auto-promotes DB row)
+ *   2. Otherwise reads `role` from `users` table
  *
  * SAFE: does not touch Channex sync, webhook, or ARI logic.
  */
@@ -43,11 +51,24 @@ export class RolesGuard implements CanActivate {
     // Fetch the user's role from the database (source of truth)
     const dbUser = await this.prisma.user.findUnique({
       where: { id: user.id },
-      select: { role: true },
+      select: { role: true, email: true },
     });
 
     if (!dbUser) {
       throw new ForbiddenException('User not found');
+    }
+
+    // ── Super-admin bypass ────────────────────────────────────────────────────
+    // oriel@erorentals.com is always admin. If their DB row says otherwise
+    // (e.g. first login before any migration), auto-correct it silently.
+    if (dbUser.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
+      if ((dbUser.role || 'user').toLowerCase() !== 'admin') {
+        // Auto-promote — fire-and-forget, non-blocking
+        this.prisma.user
+          .update({ where: { id: user.id }, data: { role: 'admin' } })
+          .catch(() => {});
+      }
+      return true; // always passes for super-admin
     }
 
     const userRole = (dbUser.role || 'user').toLowerCase();

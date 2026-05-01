@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import * as path from 'path';
 import { createClient } from '@supabase/supabase-js';
 import sharp from 'sharp';
@@ -53,6 +53,35 @@ export class AdminService {
         },
       },
     });
+  }
+
+  // ── User role management ───────────────────────────────────────────────────
+
+  /** The one address that can never be demoted */
+  private readonly SUPER_ADMIN_EMAIL = 'oriel@erorentals.com';
+
+  async updateUserRole(targetUserId: string, newRole: string) {
+    const allowed = ['user', 'admin'];
+    if (!allowed.includes(newRole.toLowerCase())) {
+      throw new BadRequestException(`Invalid role. Must be one of: ${allowed.join(', ')}`);
+    }
+
+    const target = await this.prisma.user.findUnique({ where: { id: targetUserId } });
+    if (!target) throw new NotFoundException('User not found');
+
+    // Super-admin can never be demoted via this endpoint
+    if (target.email?.toLowerCase() === this.SUPER_ADMIN_EMAIL.toLowerCase() && newRole !== 'admin') {
+      throw new ForbiddenException('The super-admin account cannot be demoted');
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: targetUserId },
+      data: { role: newRole.toLowerCase() },
+      select: { id: true, email: true, role: true },
+    });
+
+    this.logger.log(`[Admin] Role updated: ${updated.email} → ${updated.role}`);
+    return updated;
   }
 
   // ── Listings ───────────────────────────────────────────────────────────────

@@ -275,6 +275,9 @@ export const api = {
     syncListingToChannex: (listingId) => apiClient.post(`/admin/listings/${listingId}/sync`),
     /** Set Channex property inactive and archive locally */
     deactivateListing: (listingId) => apiClient.post(`/admin/listings/${listingId}/deactivate`),
+
+    /** Update a user's role. Super-admin (oriel@erorentals.com) cannot be demoted. */
+    updateUserRole: (userId, role) => apiClient.patch(`/admin/users/${userId}/role`, { role }),
   },
 
   /** Record ToS consent — called immediately after signup */

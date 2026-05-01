@@ -60,6 +60,20 @@ export class AdminController {
     return this.adminService.getAllUsers();
   }
 
+  // ── PATCH /admin/users/:id/role ─────────────────────────────────────────
+
+  @Patch('users/:id/role')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Update a user\'s role (admin/user). Super-admin cannot be demoted.' })
+  @ApiOkResponse({ description: 'Updated user id, email, role' })
+  updateUserRole(
+    @Param('id') userId: string,
+    @Body() body: { role: string },
+  ) {
+    this.logger.log(`[Admin] PATCH /admin/users/${userId}/role → ${body.role}`);
+    return this.adminService.updateUserRole(userId, body.role);
+  }
+
   // ── GET /admin/listings ────────────────────────────────────────────────────
 
   @Get('listings')

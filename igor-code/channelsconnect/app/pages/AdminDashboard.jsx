@@ -150,6 +150,7 @@ export default function AdminDashboard() {
   const [isLoadingImages, setIsLoadingImages] = useState(false);
   const [convertingId, setConvertingId] = useState(null);
   const [syncingListingId, setSyncingListingId] = useState(null);
+  const [updatingRoleId, setUpdatingRoleId]     = useState(null); // userId whose role is being updated
 
   // ── Review Queue state ───────────────────────────────────────────────────────────
   const [pendingListings, setPendingListings] = useState([]);
@@ -371,6 +372,22 @@ export default function AdminDashboard() {
     return state.hasChannexRecord ? 'Sync Updates' : 'Publish to Channex';
   };
 
+  // ── Role management ─────────────────────────────────────────────────────────
+  const SUPER_ADMIN_EMAIL = 'oriel@erorentals.com';
+
+  const handleRoleChange = async (userId, newRole, userEmail) => {
+    if (userEmail?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) return;
+    setUpdatingRoleId(userId);
+    try {
+      await api.admin.updateUserRole(userId, newRole);
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
+    } catch (err) {
+      alert('Failed to update role: ' + (err?.response?.data?.message || err?.message || 'Unknown error'));
+    } finally {
+      setUpdatingRoleId(null);
+    }
+  };
+
   // ── CSV export ─────────────────────────────────────────────────────────────
   const handleExportCSV = async () => {
     setIsExporting(true);
@@ -553,10 +570,22 @@ export default function AdminDashboard() {
                             <TableCell className="font-medium">{u.name || '-'}</TableCell>
                             <TableCell className="text-slate-600">{u.email}</TableCell>
                             <TableCell>
-                              <Badge variant={u.role?.toLowerCase() === 'admin' ? 'default' : 'outline'}
-                                className={u.role?.toLowerCase() === 'admin' ? 'bg-yellow-500 text-white' : ''}>
-                                {u.role || 'user'}
-                              </Badge>
+                              {/* Role selector — locked for super-admin */}
+                              {u.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase() ? (
+                                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-100 border border-amber-300 rounded-full px-2.5 py-0.5">
+                                  🔒 super-admin
+                                </span>
+                              ) : (
+                                <select
+                                  value={u.role || 'user'}
+                                  disabled={updatingRoleId === u.id}
+                                  onChange={(e) => handleRoleChange(u.id, e.target.value, u.email)}
+                                  className="text-xs border border-slate-200 rounded px-2 py-1 bg-white cursor-pointer disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                                >
+                                  <option value="user">user</option>
+                                  <option value="admin">admin</option>
+                                </select>
+                              )}
                             </TableCell>
                             <TableCell className="text-right">{u._count?.listings ?? 0}</TableCell>
                             <TableCell className="text-right">{u._count?.bookings ?? 0}</TableCell>
