@@ -156,3 +156,46 @@ button:focus-visible {
     @apply bg-background text-foreground;
   }
 }
+
+/* ── Global autofill override ─────────────────────────────────────────────────
+   Kills Chrome/Safari blue & yellow autofill paint on ALL inputs site-wide.
+   The box-shadow trick forces the background color we want (white).
+   -webkit-text-fill-color forces the text color (gray-900 = #111827).
+   transition delay of 9999s prevents the initial flash.
+─────────────────────────────────────────────────────────────────────────── */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0px 1000px #ffffff inset !important;
+  box-shadow: 0 0 0px 1000px #ffffff inset !important;
+  -webkit-text-fill-color: #111827 !important;
+  caret-color: #111827;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+/* ── Force font inheritance on ALL input types including number ───────────────
+   Browsers (especially Chrome) reset font-family on type=number inputs.
+   This makes every input use the same font stack as the rest of the app.
+─────────────────────────────────────────────────────────────────────────── */
+input,
+textarea,
+select {
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+}
+
+/* ── Remove numeric spinners everywhere ──────────────────────────────────────
+   Spinner arrows look dated and inconsistent across OS/browser.
+─────────────────────────────────────────────────────────────────────────── */
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}

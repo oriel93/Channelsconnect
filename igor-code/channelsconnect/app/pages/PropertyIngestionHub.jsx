@@ -348,7 +348,7 @@ function ExcelImportForm({ onSuccess }) {
                 <CheckCircle2 className="w-4 h-4" />{result.message}
               </p>
               {result.geocodeFailed > 0 && (
-                <p className="text-amber-600 text-xs">
+                <p className="text-orange-600 text-xs">
                   ⚠ {result.geocodeFailed} row(s) could not be geocoded — rows {result.geocodeFailRows?.join(', ')}.
                   You can set coordinates later in the Admin Portal.
                 </p>
@@ -774,7 +774,7 @@ function ManualCreateForm({ onSuccess }) {
             <div className="space-y-1.5">
               <Label>Cancellation Policy</Label>
               <Select value={form.cancellationPolicy} onValueChange={v => setForm(f => ({ ...f, cancellationPolicy: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                <SelectTrigger className="h-10 rounded-xl border-slate-200 bg-white font-sans text-sm text-gray-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"><SelectValue placeholder="Select…" /></SelectTrigger>
                 <SelectContent>
                   {['Flexible','Moderate','Strict','Non-refundable'].map(p => (
                     <SelectItem key={p} value={p}>{p}</SelectItem>
@@ -809,8 +809,8 @@ function ManualCreateForm({ onSuccess }) {
                 onClick={() => toggleAmenity(a)}
                 className={`text-sm px-4 py-2 rounded-full border transition-all font-medium ${
                   form.amenities.includes(a)
-                    ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
-                    : 'bg-white border-slate-200 text-slate-600 hover:border-amber-300 hover:text-amber-700'
+                    ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white border-purple-600 shadow-sm'
+                    : 'bg-white border-slate-200 text-gray-600 hover:border-purple-300 hover:text-purple-700'
                 }`}
               >
                 {form.amenities.includes(a) ? '✓ ' : ''}{a}
@@ -827,7 +827,7 @@ function ManualCreateForm({ onSuccess }) {
           <Button
             type="button"
             onClick={handleFinishAmenities}
-            className="w-full bg-amber-500 hover:bg-amber-600 text-white"
+            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white transition-all shadow-md hover:shadow-lg"
           >
             Continue to Calendar Connections <ArrowRight className="w-4 h-4 ml-2" />
           </Button>
@@ -918,7 +918,7 @@ function ManualCreateForm({ onSuccess }) {
           <Button
             type="button"
             onClick={() => onSuccess({ listingId: savedListingId })}
-            className="w-full bg-amber-500 hover:bg-amber-600 text-white"
+            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white transition-all shadow-md hover:shadow-lg"
           >
             <CheckCircle2 className="w-4 h-4 mr-2" />Done — View My Listings
           </Button>
