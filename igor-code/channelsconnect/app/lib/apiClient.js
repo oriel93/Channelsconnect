@@ -155,6 +155,8 @@ export const api = {
     syncAll: () => apiClient.post('/ical/sync-all'),
     export: (listingId) => apiClient.get(`/ical/export/${listingId}`),
     import: (data) => apiClient.post('/ical/import', data),
+    /** Alias for api.ical.import — used by ICalTab in Listings.jsx */
+    importIcal: (data) => apiClient.post('/ical/import', data),
   },
 
   // Dashboard
