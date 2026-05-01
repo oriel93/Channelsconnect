@@ -81,6 +81,7 @@ export default function AdminDashboard() {
   const [listingImages, setListingImages] = useState([]);
   const [isLoadingImages, setIsLoadingImages] = useState(false);
   const [convertingId, setConvertingId] = useState(null);
+  const [syncingListingId, setSyncingListingId] = useState(null);
 
   // ── Data fetch ─────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
@@ -108,6 +109,27 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (isAdmin) fetchData();
   }, [isAdmin, fetchData]);
+
+  // ── Sync listing to Channex (admin-only) ──────────────────────────────────────────
+  const handleSyncToChannex = async (listingId, listingTitle) => {
+    if (syncingListingId === listingId) return;
+    setSyncingListingId(listingId);
+    try {
+      const res = await api.connect.pushPropertyContent(listingId);
+      const propertyId = res.data?.data?.propertyId;
+      toast.success(
+        propertyId
+          ? `“${listingTitle}” synced ✓ — ID: ${propertyId}`
+          : `“${listingTitle}” synced to distribution network.`
+      );
+      fetchData();
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.message || 'Sync failed';
+      toast.error(`Sync failed: ${msg}`);
+    } finally {
+      setSyncingListingId(null);
+    }
+  };
 
   // ── CSV export ─────────────────────────────────────────────────────────────
   const handleExportCSV = async () => {
@@ -458,6 +480,7 @@ export default function AdminDashboard() {
                         <TableHead className="text-right">Photos</TableHead>
                         <TableHead>Created</TableHead>
                         <TableHead>Actions</TableHead>
+                        <TableHead>Distribution</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -498,6 +521,20 @@ export default function AdminDashboard() {
                               >
                                 <ImageIcon className="w-3.5 h-3.5 mr-1" />
                                 Media
+                              </Button>
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                size="sm"
+                                className="bg-violet-600 hover:bg-violet-700 text-white text-xs"
+                                disabled={syncingListingId === l.id}
+                                onClick={() => handleSyncToChannex(l.id, l.title)}
+                              >
+                                {syncingListingId === l.id ? (
+                                  <><Loader2 className="w-3 h-3 mr-1 animate-spin" />Syncing…</>
+                                ) : (
+                                  <>🚀 Sync</>  
+                                )}
                               </Button>
                             </TableCell>
                           </TableRow>

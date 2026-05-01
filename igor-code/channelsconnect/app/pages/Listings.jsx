@@ -7,7 +7,7 @@ import AppLayout from '../components/app/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Listing } from '@/api/entities';
-import { Loader2, Home, MapPin, Users, Plus, Download, X, Upload, FileSpreadsheet, Map as MapIcon, Calendar, Sparkles, ChevronRight, Send } from 'lucide-react';
+import { Loader2, Home, MapPin, Users, Plus, Download, X, Upload, FileSpreadsheet, Map as MapIcon, Calendar, Sparkles, ChevronRight } from 'lucide-react';
 import { downloadListingsCSV } from '../lib/exportListings';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -452,29 +452,6 @@ const ListingsContent = () => {
     const [listings, setListings] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
-    const [pushingId, setPushingId] = useState(null); // listing id currently being pushed
-
-    const handlePushToChannex = async (e, listing) => {
-        e.preventDefault(); // prevent card navigation
-        e.stopPropagation();
-        if (pushingId === listing.id) return;
-        setPushingId(listing.id);
-        try {
-            const res = await api.connect.pushPropertyContent(listing.id);
-            const channexId = res.data?.data?.propertyId;
-            toast.success(
-                channexId
-                    ? `Pushed to Channels Connect! Property ID: ${channexId}`
-                    : 'Property pushed to Channels Connect.'
-            );
-        } catch (err) {
-            const msg = err?.response?.data?.message || err?.message || 'Push failed';
-            toast.error(`Push failed: ${msg}`);
-        } finally {
-            setPushingId(null);
-        }
-    };
-
     const fetchData = async () => {
         setIsLoading(true);
         try {
@@ -568,21 +545,13 @@ const ListingsContent = () => {
                                             {listing.isActive ? 'Active' : 'Inactive'}
                                         </Badge>
                                     </div>
-                                    {/* Phase 4: Push to Channex */}
-                                    <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className="w-full text-xs"
-                                        disabled={pushingId === listing.id}
-                                        onClick={(e) => handlePushToChannex(e, listing)}
-                                        title="Push this property's content to Channels Connect"
-                                    >
-                                        {pushingId === listing.id ? (
-                                            <><Loader2 className="w-3 h-3 mr-1 animate-spin" />Pushing…</>
-                                        ) : (
-                                            <><Send className="w-3 h-3 mr-1" />Push to Channex</>
-                                        )}
-                                    </Button>
+                                    {/* Listing status indicator — Channex sync is handled by Admin Portal */}
+                                    {listing.isActive && (
+                                        <div className="flex items-center gap-1 text-xs text-emerald-600 font-medium mt-1">
+                                            <span>🚀</span>
+                                            <span>Your listing is being boosted!</span>
+                                        </div>
+                                    )}
                                 </CardContent>
                                 </Card>
                             </Link>
