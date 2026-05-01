@@ -264,6 +264,14 @@ export const api = {
     approveListing: (listingId) => apiClient.post(`/admin/review/${listingId}/approve`),
     /** Reject with optional reason */
     rejectListing: (listingId, reason) => apiClient.post(`/admin/review/${listingId}/reject`, { reason }),
+
+    // ── Channex Sync Engine ───────────────────────────────────────────────────
+    /** Get Channex sync state — determines smart button label (Publish vs Sync Updates) */
+    getListingSyncState: (listingId) => apiClient.get(`/admin/listings/${listingId}/sync-state`),
+    /** POST creates new Channex property if none exists; PUT updates if it does */
+    syncListingToChannex: (listingId) => apiClient.post(`/admin/listings/${listingId}/sync`),
+    /** Set Channex property inactive and archive locally */
+    deactivateListing: (listingId) => apiClient.post(`/admin/listings/${listingId}/deactivate`),
   },
 
   /** Record ToS consent — called immediately after signup */

@@ -377,13 +377,16 @@ export class ChannexWhitelabelController {
       return { success: false, message: 'listingId (number) is required' };
     }
     this.logger.log(`[Content] Push request from user ${user?.id} for listing ${listingId}`);
-    const result = await this.contentService.pushPropertyToChannex(listingId, user?.id);
+    const result = await this.contentService.syncListing(listingId);
+    const success = result.outcome === 'synced' || result.outcome === 'partial_sync';
     return {
-      success: true,
-      message: 'Property content pushed to Channels Connect.',
+      success,
+      outcome: result.outcome,
+      message: result.errorMessage ?? 'Property content synced.',
       data: {
-        propertyId: result.propertyId,
-        roomTypeIds: result.roomTypeIds,
+        propertyId:   result.channexPropertyId,
+        roomTypeId:   result.channexRoomTypeId,
+        operation:    result.operation,
       },
     };
   }

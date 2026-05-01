@@ -3,6 +3,7 @@ import * as path from 'path';
 import { createClient } from '@supabase/supabase-js';
 import sharp from 'sharp';
 import { PrismaService } from '../prisma/prisma.service';
+import { ChannexContentService } from '../services/channex/channex-content.service';
 
 // Supabase admin client for Storage operations
 const supabaseAdmin = createClient(
@@ -29,7 +30,10 @@ const HR_QUALITY = 92;
 export class AdminService {
   private readonly logger = new Logger(AdminService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly channexContent: ChannexContentService,
+  ) {}
 
   // ── Users ──────────────────────────────────────────────────────────────────
 
@@ -397,5 +401,37 @@ export class AdminService {
     });
     this.logger.log(`[Admin/Review] Rejected listing id=${listingId}. Reason: ${reason || 'none'}`);
     return { rejected: true, listingId: listing.id, title: listing.title, reason };
+  }
+
+  // ── Channex Sync Engine ────────────────────────────────────────────────────
+
+  /**
+   * Return the current Channex sync state for a listing.
+   * Used by the admin UI to decide which button label to show.
+   */
+  async getListingSyncState(listingId: number) {
+    return this.channexContent.getSyncState(listingId);
+  }
+
+  /**
+   * Sync a listing to Channex (intelligent POST/PUT routing).
+   * Returns SyncResult — never throws; errors surface via result.errorMessage.
+   */
+  async syncListingToChannex(listingId: number) {
+    this.logger.log(`[Admin/Sync] Syncing listing ${listingId} to Channex`);
+    const result = await this.channexContent.syncListing(listingId);
+    this.logger.log(
+      `[Admin/Sync] listing ${listingId} → outcome=${result.outcome} ` +
+      `propertyId=${result.channexPropertyId} roomTypeId=${result.channexRoomTypeId}`,
+    );
+    return result;
+  }
+
+  /**
+   * Deactivate a listing on Channex and archive it locally.
+   */
+  async deactivateListingOnChannex(listingId: number) {
+    this.logger.log(`[Admin/Sync] Deactivating listing ${listingId} on Channex`);
+    return this.channexContent.deactivateListing(listingId);
   }
 }

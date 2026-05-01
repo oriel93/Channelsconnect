@@ -159,6 +159,31 @@ export class AdminController {
     return this.adminService.rejectListing(listingId, body?.reason);
   }
 
+  // ── Channex Sync Engine ─────────────────────────────────────────────────
+
+  @Get('listings/:listingId/sync-state')
+  @ApiOperation({ summary: 'Get Channex sync state for a listing (for smart button label)' })
+  getListingSyncState(@Param('listingId', ParseIntPipe) listingId: number) {
+    this.logger.log(`[Admin] GET /admin/listings/${listingId}/sync-state`);
+    return this.adminService.getListingSyncState(listingId);
+  }
+
+  @Post('listings/:listingId/sync')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Publish or sync a listing to Channex (POST if new, PUT if existing)' })
+  syncListingToChannex(@Param('listingId', ParseIntPipe) listingId: number) {
+    this.logger.log(`[Admin] POST /admin/listings/${listingId}/sync`);
+    return this.adminService.syncListingToChannex(listingId);
+  }
+
+  @Post('listings/:listingId/deactivate')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Set Channex property inactive and archive locally' })
+  deactivateListing(@Param('listingId', ParseIntPipe) listingId: number) {
+    this.logger.log(`[Admin] POST /admin/listings/${listingId}/deactivate`);
+    return this.adminService.deactivateListingOnChannex(listingId);
+  }
+
   // ── POST /admin/listings/:listingId/images/:imageId/convert ──────────────
 
   @Post('listings/:listingId/images/:imageId/convert')
