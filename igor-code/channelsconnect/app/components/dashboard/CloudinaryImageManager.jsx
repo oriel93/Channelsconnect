@@ -1,459 +1,555 @@
 /**
- * CloudinaryImageManager.jsx (renamed in spirit — now uses Supabase Storage)
+ * CloudinaryImageManager.jsx — Fault-Tolerant Bulk Media Pipeline
  *
- * Handles multi-image upload with:
- *  - Hi-res OTA conversion (min 2048px, max 4096px, JPEG 92%)
- *  - Direct Supabase Storage upload
- *  - property_images table persistence
- *  - Cover photo + reordering
- *  - Parallel upload (max 3 concurrent) with per-image progress bars
+ * Implements the 5-step enterprise upload spec:
+ *   Step 1  Client-side compression (max 1920px, <1MB, WebP/JPEG)
+ *   Step 2  Session preflight (refresh token before batch starts)
+ *   Step 3  Concurrency limiter (max 3 workers, Promise.allSettled — never aborts batch)
+ *   Step 4  Partial-success handling + atomic bulk DB INSERT for fulfilled uploads
+ *   Step 5  UI lock during upload + granular progress + beforeunload guard
  *
- * SAFE: Zero changes to channex-http.client.ts, webhook controllers, or ARI sync.
+ * SAFE: Zero dependency on Channex sync, webhook, or ARI logic.
  */
 
-const MAX_CONCURRENT_UPLOADS = 3;
+const MAX_CONCURRENT = 3;
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import {
-  UploadCloud,
-  CheckCircle,
-  AlertCircle,
-  Loader2,
-  Image as ImageIcon,
-  Trash2,
-  X,
-  Hourglass,
-  Star,
-  ArrowUp,
-  ArrowDown,
-  Eye,
-  Sparkles,
+  UploadCloud, CheckCircle, AlertCircle, Loader2, Image as ImageIcon,
+  Trash2, Star, ArrowUp, ArrowDown, Eye, X, RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  uploadImageToSupabase,
-  saveImageRecord,
+  compressImage,
+  refreshSessionPreflight,
+  uploadBlobToSupabase,
+  bulkSaveImageRecords,
   fetchListingImages,
   deleteImageRecord,
   updateImageRecord,
 } from '../../lib/imageUpload';
 
-// ─── Image Card ───────────────────────────────────────────────────────────────
+// ─── Per-Image Status ─────────────────────────────────────────────────────────
+// idle | compressing | uploading | success | error
 
-const ImageCard = ({ image, index, totalImages, onDelete, onSetCover, onMoveUp, onMoveDown, isDeleting }) => (
+// ─── Image Card ───────────────────────────────────────────────────────────────
+const ImageCard = ({ image, index, total, onDelete, onSetCover, onMoveUp, onMoveDown, isDeleting }) => (
   <div className="relative group bg-white rounded-lg border shadow-sm overflow-hidden">
-    <div className="aspect-video relative">
+    <div className="aspect-video relative bg-slate-100">
       <img
-        src={image.url}
+        src={image.highResUrl || image.url}
         alt={image.filename}
         className="w-full h-full object-cover"
         loading="lazy"
       />
-      {image.is_cover && (
-        <Badge className="absolute top-2 left-2 bg-yellow-500 text-white">
-          <Star className="w-3 h-3 mr-1" />
-          Cover Photo
+      {(image.isCover || image.is_cover) && (
+        <Badge className="absolute top-2 left-2 bg-yellow-500 text-white text-xs">
+          <Star className="w-3 h-3 mr-1" />Cover
         </Badge>
       )}
-      <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
-        <div className="flex gap-2">
-          {!image.is_cover && (
-            <Button size="sm" variant="secondary" onClick={() => onSetCover(image.id)} title="Set as cover photo">
-              <Star className="w-4 h-4" />
-            </Button>
-          )}
-          <Button size="sm" variant="secondary" onClick={() => window.open(image.url, '_blank')} title="View full size">
-            <Eye className="w-4 h-4" />
+      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100 gap-2">
+        {!(image.isCover || image.is_cover) && (
+          <Button size="sm" variant="secondary" onClick={() => onSetCover(image.id)} title="Set as cover">
+            <Star className="w-4 h-4" />
           </Button>
-          <Button
-            size="sm"
-            variant="destructive"
-            onClick={() => onDelete(image.id, image.storage_path)}
-            disabled={isDeleting === image.id}
-            title="Delete image"
-          >
-            {isDeleting === image.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-          </Button>
-        </div>
+        )}
+        <Button size="sm" variant="secondary" onClick={() => window.open(image.highResUrl || image.url, '_blank')}>
+          <Eye className="w-4 h-4" />
+        </Button>
+        <Button
+          size="sm"
+          variant="destructive"
+          onClick={() => onDelete(image.id, image.storagePath || image.storage_path)}
+          disabled={isDeleting === image.id}
+        >
+          {isDeleting === image.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+        </Button>
       </div>
     </div>
-    <div className="p-3">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-medium truncate pr-2">{image.filename}</p>
-        <div className="flex gap-1">
-          <Button size="sm" variant="ghost" onClick={() => onMoveUp(index)} disabled={index === 0} title="Move up">
-            <ArrowUp className="w-3 h-3" />
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => onMoveDown(index)}
-            disabled={index === totalImages - 1}
-            title="Move down"
-          >
-            <ArrowDown className="w-3 h-3" />
-          </Button>
-        </div>
+    <div className="p-2 flex items-center justify-between gap-1">
+      <p className="text-xs font-medium truncate flex-1">{image.filename}</p>
+      <div className="flex gap-1 flex-shrink-0">
+        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => onMoveUp(index)} disabled={index === 0}>
+          <ArrowUp className="w-3 h-3" />
+        </Button>
+        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => onMoveDown(index)} disabled={index === total - 1}>
+          <ArrowDown className="w-3 h-3" />
+        </Button>
       </div>
-      <p className="text-xs text-gray-500">
-        #{index + 1} · {new Date(image.created_at || image.created_date || Date.now()).toLocaleDateString()}
-      </p>
     </div>
   </div>
 );
 
-// ─── Main Component ────────────────────────────────────────────────────────────
+// ─── Pending File Row ─────────────────────────────────────────────────────────
+const PendingFileRow = ({ item, onRemove, isUploading }) => {
+  const statusIcon = {
+    idle:        <ImageIcon className="w-4 h-4 text-slate-400" />,
+    compressing: <Loader2  className="w-4 h-4 text-blue-500 animate-spin" />,
+    uploading:   <Loader2  className="w-4 h-4 text-blue-500 animate-spin" />,
+    success:     <CheckCircle className="w-4 h-4 text-emerald-500" />,
+    error:       <AlertCircle className="w-4 h-4 text-red-500" />,
+  }[item.status] ?? null;
 
+  const statusLabel = {
+    idle:        'Queued',
+    compressing: 'Compressing…',
+    uploading:   `Uploading ${item.progress}%`,
+    success:     'Done',
+    error:       item.error || 'Failed',
+  }[item.status] ?? '';
+
+  return (
+    <div className={`flex items-center gap-3 px-3 py-2 rounded-lg border text-sm
+      ${item.status === 'success' ? 'bg-emerald-50 border-emerald-200' :
+        item.status === 'error'   ? 'bg-red-50 border-red-200' :
+        'bg-slate-50 border-slate-200'}`}
+    >
+      {item.preview ? (
+        <img src={item.preview} alt="" className="w-10 h-10 object-cover rounded flex-shrink-0" />
+      ) : (
+        <div className="w-10 h-10 bg-slate-200 rounded flex-shrink-0 flex items-center justify-center">
+          {statusIcon}
+        </div>
+      )}
+      <div className="flex-1 min-w-0">
+        <p className="truncate font-medium text-xs">{item.file.name}</p>
+        <div className="flex items-center gap-2 mt-0.5">
+          {statusIcon}
+          <span className={`text-xs ${item.status === 'error' ? 'text-red-600' : 'text-slate-500'}`}>
+            {statusLabel}
+          </span>
+        </div>
+        {(item.status === 'compressing' || item.status === 'uploading') && (
+          <Progress value={item.progress} className="h-1 mt-1" />
+        )}
+      </div>
+      {!isUploading && item.status !== 'success' && (
+        <Button size="sm" variant="ghost" className="h-6 w-6 p-0 flex-shrink-0" onClick={() => onRemove(item.id)}>
+          <X className="w-3 h-3" />
+        </Button>
+      )}
+    </div>
+  );
+};
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 export default function CloudinaryImageManager({ listingId }) {
-  const [filesToUpload, setFilesToUpload] = useState([]);
-  const [existingImages, setExistingImages] = useState([]);
-  const [uploadStatus, setUploadStatus] = useState('idle'); // idle | uploading | completed
-  const [isLoadingImages, setIsLoadingImages] = useState(false);
-  const [deletingId, setDeletingId] = useState(null);
-  const [uploadStats, setUploadStats] = useState({ total: 0, completed: 0, failed: 0 });
+  const [queue, setQueue]               = useState([]);          // files to upload
+  const [existingImages, setExisting]   = useState([]);
+  const [isLoadingImages, setLoadingImg]= useState(false);
+  const [deletingId, setDeletingId]     = useState(null);
 
-  // ── Fetch existing images ──────────────────────────────────────────────────
+  // Upload phase state
+  const [phase, setPhase]               = useState('idle'); // idle | preflight | uploading | done
+  const [phaseLabel, setPhaseLabel]     = useState('');
+  const [uploadedCount, setUploadedCount] = useState(0);
+  const [failedCount, setFailedCount]   = useState(0);
+  const [failedItems, setFailedItems]   = useState([]); // items to show in retry alert
+
+  const fileInputRef = useRef(null);
+  const isUploading  = phase === 'preflight' || phase === 'uploading';
+
+  // ── beforeunload guard ─────────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e) => {
+      if (!isUploading) return;
+      e.preventDefault();
+      e.returnValue = 'Upload in progress. Leaving now will cancel remaining uploads.';
+      return e.returnValue;
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isUploading]);
+
+  // ── Load existing images ───────────────────────────────────────────────────
   const fetchImages = useCallback(async () => {
     if (!listingId) return;
-    setIsLoadingImages(true);
+    setLoadingImg(true);
     try {
-      const images = await fetchListingImages(listingId);
-      setExistingImages(images);
+      setExisting(await fetchListingImages(listingId));
     } catch (err) {
-      toast.error('Failed to load images: ' + (err.message || 'Unknown error'));
+      toast.error('Could not load images: ' + err.message);
     } finally {
-      setIsLoadingImages(false);
+      setLoadingImg(false);
     }
   }, [listingId]);
 
-  useEffect(() => {
-    fetchImages();
-  }, [fetchImages]);
+  useEffect(() => { fetchImages(); }, [fetchImages]);
 
   // ── Add files to queue ─────────────────────────────────────────────────────
-  const addFiles = (newFiles) => {
-    const valid = Array.from(newFiles)
-      .filter((file) => {
-        if (!file.type.startsWith('image/')) {
-          toast.error(`${file.name} is not an image file.`);
-          return false;
-        }
-        if (file.size > 50 * 1024 * 1024) {
-          toast.error(`${file.name} exceeds 50MB limit.`);
-          return false;
-        }
+  const addFiles = (fileList) => {
+    const valid = Array.from(fileList)
+      .filter((f) => {
+        if (!f.type.startsWith('image/')) { toast.error(`${f.name}: not an image`); return false; }
+        if (f.size > 50 * 1024 * 1024)    { toast.error(`${f.name}: exceeds 50MB`); return false; }
         return true;
       })
-      .map((file) => ({
-        file,
-        status: 'pending',
+      .map((f) => ({
+        id:       crypto.randomUUID(),
+        file:     f,
+        status:   'idle',
         progress: 0,
-        error: null,
-        id: crypto.randomUUID(),
-        preview: URL.createObjectURL(file),
+        error:    null,
+        preview:  URL.createObjectURL(f),
+        blob:     null, // set after compression
+        result:   null, // set after upload { publicUrl, storagePath }
       }));
 
-    setFilesToUpload((prev) => [...prev, ...valid]);
+    if (valid.length === 0) return;
+    setQueue((q) => [...q, ...valid]);
+    setPhase('idle');
+    setFailedItems([]);
   };
 
-  const removeFile = (id) => {
-    setFilesToUpload((prev) => {
-      const item = prev.find((f) => f.id === id);
+  const removeFromQueue = (id) => {
+    setQueue((q) => {
+      const item = q.find((f) => f.id === id);
       if (item?.preview) URL.revokeObjectURL(item.preview);
-      return prev.filter((f) => f.id !== id);
+      return q.filter((f) => f.id !== id);
     });
   };
 
-  const clearAllFiles = () => {
-    filesToUpload.forEach((item) => { if (item.preview) URL.revokeObjectURL(item.preview); });
-    setFilesToUpload([]);
-    setUploadStatus('idle');
-  };
+  const updateItem = (id, patch) =>
+    setQueue((q) => q.map((f) => f.id === id ? { ...f, ...patch } : f));
 
-  // ── Upload handler (parallel, max 3 concurrent) ───────────────────────────
+  // ── Main upload handler ────────────────────────────────────────────────────
   const handleUpload = async () => {
-    const pending = filesToUpload.filter((f) => f.status === 'pending');
-    if (pending.length === 0) return;
+    const pending = queue.filter((f) => f.status === 'idle' || f.status === 'error');
+    if (pending.length === 0 || isUploading) return;
 
-    setUploadStatus('uploading');
-    setUploadStats({ total: pending.length, completed: 0, failed: 0 });
+    setPhase('preflight');
+    setPhaseLabel('Establishing secure session…');
+    setUploadedCount(0);
+    setFailedCount(0);
+    setFailedItems([]);
 
-    // Upload one file item, updating its per-image progress bar as we go
-    const uploadOne = async (fileItem, slotIndex) => {
-      // Mark as uploading
-      setFilesToUpload((prev) =>
-        prev.map((f) => f.id === fileItem.id ? { ...f, status: 'uploading', progress: 5 } : f)
-      );
+    // STEP 2: Session preflight — refresh token once before batch
+    try {
+      await refreshSessionPreflight();
+    } catch (err) {
+      setPhase('idle');
+      toast.error(err.message);
+      return;
+    }
 
+    setPhase('uploading');
+    const total = pending.length;
+    let doneCount = 0;
+
+    // Per-item pipeline: compress → upload
+    const processOne = async (item) => {
+      // STEP 1: Compress
+      updateItem(item.id, { status: 'compressing', progress: 5 });
+      setPhaseLabel(`Compressing… (${++doneCount} of ${total})`);
+
+      let blob;
       try {
-        const { publicUrl, storagePath } = await uploadImageToSupabase({
-          file: fileItem.file,
-          listingId,
-          onProgress: (pct) => {
-            setFilesToUpload((prev) =>
-              prev.map((f) => f.id === fileItem.id ? { ...f, progress: pct } : f)
-            );
-          },
-        });
+        blob = await compressImage(item.file);
+        updateItem(item.id, { blob, progress: 30 });
+      } catch {
+        blob = item.file; // fallback: use original
+        updateItem(item.id, { blob: item.file, progress: 30 });
+      }
 
-        // Compute sort order using current existingImages length + how many we've
-        // already queued successfully (approximate — reorder UI handles fine-grained)
-        const sortOrder = existingImages.length + slotIndex;
-        const isCover = existingImages.length === 0 && slotIndex === 0;
+      // STEP 3: Upload
+      updateItem(item.id, { status: 'uploading' });
+      setPhaseLabel(`Uploading ${doneCount} of ${total}…`);
 
-        await saveImageRecord({
-          listingId,
-          filename: fileItem.file.name,
-          url: publicUrl,
-          storagePath,
-          sortOrder,
-          isCover,
-        });
+      const result = await uploadBlobToSupabase({
+        blob,
+        file: item.file,
+        listingId,
+        onProgress: (p) => updateItem(item.id, { progress: 30 + Math.round(p * 0.7) }),
+      });
 
-        setFilesToUpload((prev) =>
-          prev.map((f) => f.id === fileItem.id ? { ...f, status: 'success', progress: 100 } : f)
-        );
-        setUploadStats((prev) => ({ ...prev, completed: prev.completed + 1 }));
+      return result;
+    };
 
-      } catch (err) {
-        console.error(`Upload error for ${fileItem.file.name}:`, err);
-        setFilesToUpload((prev) =>
-          prev.map((f) =>
-            f.id === fileItem.id ? { ...f, status: 'error', error: err.message || 'Upload failed' } : f
-          )
-        );
-        setUploadStats((prev) => ({ ...prev, failed: prev.failed + 1 }));
+    // STEP 3: Semaphore worker pool — max MAX_CONCURRENT, Promise.allSettled
+    const workQueue  = [...pending];
+    const results    = new Array(pending.length);
+    let   workIndex  = 0;
+
+    const worker = async () => {
+      while (workIndex < pending.length) {
+        const i    = workIndex++;
+        const item = pending[i];
+        try {
+          results[i] = { status: 'fulfilled', value: { item, result: await processOne(item) } };
+          updateItem(item.id, { status: 'success', progress: 100 });
+        } catch (err) {
+          results[i] = { status: 'rejected', reason: { item, error: err } };
+          updateItem(item.id, { status: 'error', progress: 0, error: err.message || 'Upload failed' });
+        }
       }
     };
 
-    // Run MAX_CONCURRENT_UPLOADS uploads in parallel using a semaphore-style approach
-    const queue = pending.map((item, i) => ({ item, i }));
-    const workers = Array.from({ length: Math.min(MAX_CONCURRENT_UPLOADS, queue.length) }, async () => {
-      while (queue.length > 0) {
-        const next = queue.shift();
-        if (next) await uploadOne(next.item, next.i);
+    const workers = Array.from({ length: Math.min(MAX_CONCURRENT, pending.length) }, worker);
+    await Promise.allSettled(workers);
+
+    // STEP 4: Separate fulfilled vs rejected
+    const fulfilled = results.filter((r) => r?.status === 'fulfilled').map((r) => r.value);
+    const rejected  = results.filter((r) => r?.status === 'rejected').map((r) => r.reason);
+
+    const successCount = fulfilled.length;
+    const failCount    = rejected.length;
+
+    // Atomic bulk INSERT for all successful uploads in a single DB call
+    if (fulfilled.length > 0) {
+      try {
+        const currentCount = existingImages.length;
+        const records = fulfilled.map(({ item, result }, idx) => ({
+          listingId,
+          filename:    item.file.name,
+          url:         result.publicUrl,
+          storagePath: result.storagePath,
+          sortOrder:   currentCount + idx,
+          isCover:     currentCount === 0 && idx === 0,
+        }));
+
+        await bulkSaveImageRecords(records);
+      } catch (err) {
+        toast.error('Images uploaded but failed to save metadata: ' + err.message);
       }
-    });
-    await Promise.all(workers);
+    }
+
+    setUploadedCount(successCount);
+    setFailedCount(failCount);
+    setFailedItems(rejected.map((r) => ({ id: r.item.id, name: r.item.file.name, error: r.error.message })));
+    setPhase('done');
+
+    if (failCount === 0) {
+      toast.success(`${successCount} image${successCount !== 1 ? 's' : ''} uploaded successfully ✓`);
+    } else if (successCount > 0) {
+      toast.warning(`${successCount} uploaded, ${failCount} failed — see retry below`);
+    } else {
+      toast.error(`All ${failCount} uploads failed`);
+    }
 
     await fetchImages();
-    setUploadStatus('completed');
 
-    // Auto-clear successful uploads after 3.5 s
+    // Auto-clear successful items after 4 s (keep failed ones for retry)
     setTimeout(() => {
-      setFilesToUpload((prev) => prev.filter((f) => f.status !== 'success'));
-      setUploadStatus('idle');
-    }, 3500);
+      setQueue((q) => q.filter((f) => f.status !== 'success'));
+      if (failCount === 0) setPhase('idle');
+    }, 4000);
   };
 
+  // ── Retry failed items ─────────────────────────────────────────────────────
+  const retryFailed = () => {
+    setQueue((q) => q.map((f) =>
+      f.status === 'error' ? { ...f, status: 'idle', progress: 0, error: null } : f
+    ));
+    setPhase('idle');
+    setFailedItems([]);
+  };
+
+  // ── Reorder existing images ────────────────────────────────────────────────
+  const moveImage = useCallback(async (index, direction) => {
+    const images = [...existingImages];
+    const target = direction === 'up' ? index - 1 : index + 1;
+    if (target < 0 || target >= images.length) return;
+    [images[index], images[target]] = [images[target], images[index]];
+    setExisting(images);
+    try {
+      await Promise.all([
+        updateImageRecord(images[index].id, { sortOrder: index }),
+        updateImageRecord(images[target].id, { sortOrder: target }),
+      ]);
+    } catch {
+      await fetchImages(); // revert on failure
+    }
+  }, [existingImages, fetchImages]);
+
+  // ── Set cover ─────────────────────────────────────────────────────────────
+  const handleSetCover = useCallback(async (imageId) => {
+    try {
+      await Promise.all(
+        existingImages.map((img) =>
+          updateImageRecord(img.id, { isCover: img.id === imageId })
+        )
+      );
+      await fetchImages();
+      toast.success('Cover photo updated');
+    } catch (err) {
+      toast.error('Could not update cover: ' + err.message);
+    }
+  }, [existingImages, fetchImages]);
+
   // ── Delete ─────────────────────────────────────────────────────────────────
-  const handleDelete = async (imageId, storagePath) => {
-    if (!window.confirm('Delete this image?')) return;
+  const handleDelete = useCallback(async (imageId, storagePath) => {
+    if (!confirm('Delete this image? This cannot be undone.')) return;
     setDeletingId(imageId);
     try {
       await deleteImageRecord(imageId, storagePath);
-      setExistingImages((prev) => prev.filter((img) => img.id !== imageId));
-      toast.success('Image deleted.');
+      await fetchImages();
+      toast.success('Image deleted');
     } catch (err) {
-      toast.error('Failed to delete: ' + (err.message || 'Unknown error'));
+      toast.error('Delete failed: ' + err.message);
     } finally {
       setDeletingId(null);
     }
-  };
-
-  // ── Set cover ──────────────────────────────────────────────────────────────
-  const handleSetCover = async (imageId) => {
-    try {
-      const current = existingImages.find((img) => img.is_cover);
-      if (current) await updateImageRecord(current.id, { is_cover: false });
-      await updateImageRecord(imageId, { is_cover: true });
-      toast.success('Cover photo updated.');
-      await fetchImages();
-    } catch (err) {
-      toast.error('Failed to update cover: ' + (err.message || ''));
-    }
-  };
-
-  // ── Reorder ────────────────────────────────────────────────────────────────
-  const handleMoveImage = async (index, direction) => {
-    const newIndex = direction === 'up' ? index - 1 : index + 1;
-    if (newIndex < 0 || newIndex >= existingImages.length) return;
-    try {
-      const a = existingImages[index];
-      const b = existingImages[newIndex];
-      await updateImageRecord(a.id, { sort_order: b.sort_order });
-      await updateImageRecord(b.id, { sort_order: a.sort_order });
-      await fetchImages();
-    } catch (err) {
-      toast.error('Reorder failed: ' + (err.message || ''));
-    }
-  };
+  }, [fetchImages]);
 
   // ─────────────────────────────────────────────────────────────────────────
+  const pendingQueue = queue.filter((f) => f.status !== 'success');
+  const hasQueue     = pendingQueue.length > 0;
+  const idleItems    = queue.filter((f) => f.status === 'idle').length;
+
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-
-      {/* ── Upload Section ── */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span className="flex items-center gap-2">
-              <UploadCloud className="w-5 h-5" />
-              Upload Photos
-            </span>
-            {uploadStatus === 'uploading' && (
-              <Badge variant="secondary">
-                {uploadStats.completed}/{uploadStats.total} · {MAX_CONCURRENT_UPLOADS} parallel
-              </Badge>
-            )}
-          </CardTitle>
-          <CardDescription className="flex items-center gap-1">
-            <Sparkles className="w-3.5 h-3.5 text-yellow-500" />
-            Auto-converted to OTA hi-res spec (min 2048px, JPEG 92%) · up to {MAX_CONCURRENT_UPLOADS} parallel uploads
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-
-          {uploadStatus === 'completed' && (
-            <Alert className="bg-green-50 border-green-200">
-              <CheckCircle className="h-4 w-4 text-green-600" />
-              <AlertDescription className="text-green-800">
-                {uploadStats.completed} uploaded successfully
-                {uploadStats.failed > 0 && `, ${uploadStats.failed} failed`}.
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Drop Zone */}
-          <Label
-            htmlFor={`img-upload-${listingId}`}
-            onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
-            onDragOver={(e) => e.preventDefault()}
-            className="w-full flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-8 text-center border-slate-300 cursor-pointer hover:bg-slate-50 transition-colors"
-          >
-            <UploadCloud className="w-12 h-12 text-slate-400 mb-3" />
-            <span className="font-semibold text-blue-600">Click to browse or drag &amp; drop</span>
-            <span className="text-slate-500 mt-1 text-sm">PNG, JPG, WebP · up to 50MB each · select as many as you need</span>
-            <Input
-              id={`img-upload-${listingId}`}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={(e) => addFiles(e.target.files)}
-              multiple
-              className="hidden"
-            />
-          </Label>
-
-          {/* Queue */}
-          {filesToUpload.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <h4 className="font-medium text-sm">Queue ({filesToUpload.length})</h4>
-                <Button variant="ghost" size="sm" onClick={clearAllFiles} disabled={uploadStatus === 'uploading'}>
-                  Clear all
-                </Button>
-              </div>
-
-              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                {filesToUpload.map((item) => (
-                  <div key={item.id} className="bg-slate-50 p-3 rounded-md space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <img src={item.preview} alt="preview" className="w-12 h-12 object-cover rounded border flex-shrink-0" />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            {item.status === 'pending'   && <Hourglass className="w-4 h-4 text-slate-400 flex-shrink-0" />}
-                            {item.status === 'uploading' && <Loader2 className="w-4 h-4 text-blue-500 animate-spin flex-shrink-0" />}
-                            {item.status === 'success'   && <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />}
-                            {item.status === 'error'     && <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />}
-                            <span className="truncate text-sm font-medium">{item.file.name}</span>
-                          </div>
-                          <p className="text-xs text-slate-500">{(item.file.size / 1024 / 1024).toFixed(1)} MB</p>
-                        </div>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 flex-shrink-0"
-                        onClick={() => removeFile(item.id)}
-                        disabled={item.status === 'uploading'}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                    {item.status === 'uploading' && <Progress value={item.progress} className="h-1.5" />}
-                    {item.status === 'error' && (
-                      <p className="text-xs text-red-600 bg-red-50 p-2 rounded">{item.error}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              <Button
-                onClick={handleUpload}
-                disabled={uploadStatus === 'uploading' || filesToUpload.filter(f => f.status === 'pending').length === 0}
-                size="lg"
-                className="w-full"
-              >
-                {uploadStatus === 'uploading' ? (
-                  <><Loader2 className="w-5 h-5 mr-2 animate-spin" />Uploading &amp; converting…</>
-                ) : (
-                  <><UploadCloud className="w-5 h-5 mr-2" />Upload {filesToUpload.filter(f => f.status === 'pending').length} Photo{filesToUpload.filter(f => f.status === 'pending').length !== 1 ? 's' : ''}</>
-                )}
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ── Existing Images ── */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>Property Photos ({existingImages.length})</span>
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
+          <span className="flex items-center gap-2">
+            <UploadCloud className="w-5 h-5 text-blue-500" />
+            Property Media
             {existingImages.length > 0 && (
-              <Badge variant="outline">{existingImages.filter(i => i.is_cover).length} cover</Badge>
+              <Badge variant="secondary">{existingImages.length} uploaded</Badge>
             )}
-          </CardTitle>
-          <CardDescription>Star to set cover · arrows to reorder · hover to delete</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoadingImages ? (
-            <div className="flex justify-center items-center h-48">
-              <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-            </div>
-          ) : existingImages.length === 0 ? (
-            <div className="text-center py-12 text-slate-500">
-              <ImageIcon className="w-16 h-16 mx-auto mb-4 text-slate-300" />
-              <h3 className="font-medium mb-1">No photos yet</h3>
-              <p className="text-sm">Upload photos using the panel on the left.</p>
-            </div>
+          </span>
+          <Button variant="outline" size="sm" onClick={fetchImages} disabled={isLoadingImages}>
+            <RefreshCw className={`w-4 h-4 mr-1 ${isLoadingImages ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </CardTitle>
+        <CardDescription>
+          Upload up to 30 images. Images are compressed to max 1920px before upload.
+        </CardDescription>
+      </CardHeader>
+
+      <CardContent className="space-y-4">
+
+        {/* ── Drop Zone ─────────────────────────────────────────────────── */}
+        <div
+          className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors
+            ${isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-50 hover:border-blue-400'}
+            ${hasQueue ? 'border-blue-300 bg-blue-50/30' : 'border-slate-300'}`}
+          onClick={() => !isUploading && fileInputRef.current?.click()}
+          onDrop={(e) => { e.preventDefault(); if (!isUploading) addFiles(e.dataTransfer.files); }}
+          onDragOver={(e) => e.preventDefault()}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }}
+            disabled={isUploading}
+          />
+          <UploadCloud className="w-10 h-10 text-slate-400 mx-auto mb-2" />
+          {hasQueue ? (
+            <p className="text-sm font-medium text-blue-700">
+              {queue.length} image{queue.length !== 1 ? 's' : ''} queued — click to add more
+            </p>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[32rem] overflow-y-auto">
-              {existingImages.map((image, index) => (
+            <>
+              <p className="text-sm font-semibold text-blue-600">Click to browse or drag &amp; drop</p>
+              <p className="text-xs text-slate-500 mt-1">JPEG, PNG, WebP, HEIC — max 50MB per file</p>
+            </>
+          )}
+        </div>
+
+        {/* ── Phase progress banner ──────────────────────────────────────── */}
+        {isUploading && (
+          <div className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-3 flex items-center gap-3">
+            <Loader2 className="w-5 h-5 text-blue-600 animate-spin flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-blue-800">{phaseLabel}</p>
+              <p className="text-xs text-blue-600 mt-0.5">
+                Do not close this tab — upload in progress.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* ── Partial failure alert with Retry ──────────────────────────── */}
+        {phase === 'done' && failedCount > 0 && (
+          <Alert className="border-amber-300 bg-amber-50">
+            <AlertCircle className="w-4 h-4 text-amber-600" />
+            <AlertDescription className="flex items-center justify-between flex-wrap gap-2">
+              <span className="text-sm">
+                <strong>{uploadedCount}</strong> image{uploadedCount !== 1 ? 's' : ''} uploaded
+                successfully. <strong className="text-red-600">{failedCount} failed</strong>:&nbsp;
+                {failedItems.slice(0, 3).map((f) => f.name).join(', ')}
+                {failedItems.length > 3 && ` +${failedItems.length - 3} more`}
+              </span>
+              <Button size="sm" variant="outline" className="border-amber-400 text-amber-700 hover:bg-amber-100" onClick={retryFailed}>
+                <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                Retry Failed
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* ── Queue list ─────────────────────────────────────────────────── */}
+        {pendingQueue.length > 0 && (
+          <div className="space-y-2 max-h-72 overflow-y-auto">
+            {pendingQueue.map((item) => (
+              <PendingFileRow
+                key={item.id}
+                item={item}
+                onRemove={removeFromQueue}
+                isUploading={isUploading}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* ── Upload button ──────────────────────────────────────────────── */}
+        {idleItems > 0 && (
+          <Button
+            className="w-full"
+            onClick={handleUpload}
+            disabled={isUploading}
+          >
+            {isUploading
+              ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{phaseLabel}</>
+              : <><UploadCloud className="w-4 h-4 mr-2" />Upload {idleItems} Image{idleItems !== 1 ? 's' : ''}</>
+            }
+          </Button>
+        )}
+
+        {/* ── Existing images grid ───────────────────────────────────────── */}
+        {isLoadingImages ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+          </div>
+        ) : existingImages.length > 0 ? (
+          <div>
+            <p className="text-sm font-medium text-slate-600 mb-3">
+              Uploaded Images ({existingImages.length})
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {existingImages.map((img, i) => (
                 <ImageCard
-                  key={image.id}
-                  image={image}
-                  index={index}
-                  totalImages={existingImages.length}
+                  key={img.id}
+                  image={img}
+                  index={i}
+                  total={existingImages.length}
                   onDelete={handleDelete}
                   onSetCover={handleSetCover}
-                  onMoveUp={() => handleMoveImage(index, 'up')}
-                  onMoveDown={() => handleMoveImage(index, 'down')}
+                  onMoveUp={(idx) => moveImage(idx, 'up')}
+                  onMoveDown={(idx) => moveImage(idx, 'down')}
                   isDeleting={deletingId}
                 />
               ))}
             </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+          </div>
+        ) : (
+          !isLoadingImages && !hasQueue && (
+            <div className="text-center py-8 text-slate-400">
+              <ImageIcon className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+              <p className="text-sm">No images uploaded yet</p>
+            </div>
+          )
+        )}
+      </CardContent>
+    </Card>
   );
 }
