@@ -24,45 +24,60 @@ export function AuthProvider({ children }) {
   const [session, setSession]       = useState(null);
   const [dbUser, setDbUser]         = useState(null);
   const [isLoadingAuth, setLoading] = useState(true);
+  // Track whether getSession() has returned — prevents premature "not authenticated"
+  const initialCheckDone = React.useRef(false);
 
   // Fetch the user's DB profile (has role, tosAcceptedAt, etc.)
-  const fetchDbProfile = async (accessToken) => {
+  const fetchDbProfile = async () => {
     try {
       const res = await api.users.me();
       return res.data || null;
     } catch (err) {
-      // 401 after refresh attempt → not authenticated
+      // 401 / 403 → not authenticated or not yet in DB
       // 404 → user not in public.users yet (new signup)
-      if (err.response?.status === 404 || err.response?.status === 401) return null;
+      if ([401, 403, 404].includes(err.response?.status)) return null;
       console.warn('[AuthProvider] Could not fetch DB profile:', err.message);
       return null;
     }
   };
 
   useEffect(() => {
-    // Get the current session on mount
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session);
-      if (session) {
-        const profile = await fetchDbProfile(session.access_token);
+    // Subscribe FIRST so we never miss an event that fires before getSession resolves
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, newSession) => {
+        setSession(newSession);
+
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          const profile = await fetchDbProfile();
+          setDbUser(profile);
+          setLoading(false); // auth fully resolved after profile fetch
+        } else if (event === 'SIGNED_OUT') {
+          setDbUser(null);
+          setLoading(false);
+        } else if (event === 'INITIAL_SESSION') {
+          // Supabase v2 emits INITIAL_SESSION on mount (with session=null if not logged in)
+          if (!newSession) {
+            // Definitely not logged in — resolve immediately
+            setLoading(false);
+          }
+          // If session exists, SIGNED_IN will fire next and handle setLoading(false)
+        }
+      }
+    );
+
+    // Also call getSession() as a fallback for environments where onAuthStateChange
+    // INITIAL_SESSION doesn't fire reliably
+    supabase.auth.getSession().then(async ({ data: { session: existingSession } }) => {
+      if (initialCheckDone.current) return; // already handled by onAuthStateChange
+      initialCheckDone.current = true;
+
+      if (existingSession) {
+        setSession(existingSession);
+        const profile = await fetchDbProfile();
         setDbUser(profile);
       }
       setLoading(false);
     });
-
-    // Subscribe to auth state changes (login / logout / token refresh)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setSession(session);
-
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          const profile = await fetchDbProfile(session?.access_token);
-          setDbUser(profile);
-        } else if (event === 'SIGNED_OUT') {
-          setDbUser(null);
-        }
-      }
-    );
 
     return () => subscription.unsubscribe();
   }, []);
