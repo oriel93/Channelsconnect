@@ -423,16 +423,18 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
         u.closedToArrival !== undefined ||
         u.closedToDeparture !== undefined
       ) {
+        // Restrictions are rate-plan level — NO room_type_id.
+        // Use stop_sell (not closed) per Channex API spec.
         rateValues.push({
-          property_id: channexPropertyId,
+          property_id:  channexPropertyId,
           ...(u.channexRatePlanId ? { rate_plan_id: u.channexRatePlanId } : {}),
-          date_from: u.date,
-          date_to: u.date,
-          ...(u.price !== undefined ? { rate: Math.round(u.price * 100) } : {}),
-          min_stay_arrival: u.minStay ?? 1,
-          ...(u.maxStay !== undefined ? { max_stay: u.maxStay } : {}),
-          ...(u.stopSell !== undefined ? { closed: u.stopSell } : {}),
-          ...(u.closedToArrival !== undefined ? { closed_to_arrival: u.closedToArrival } : {}),
+          date_from:    u.date,
+          date_to:      u.date,
+          ...(u.price !== undefined    ? { rate: Math.round(u.price * 100) }       : {}),
+          min_stay_arrival:             u.minStay ?? 1,
+          ...(u.maxStay !== undefined  ? { max_stay: u.maxStay }                   : {}),
+          ...(u.stopSell !== undefined ? { stop_sell: u.stopSell }                 : {}),  // stop_sell not closed
+          ...(u.closedToArrival !== undefined   ? { closed_to_arrival:   u.closedToArrival }   : {}),
           ...(u.closedToDeparture !== undefined ? { closed_to_departure: u.closedToDeparture } : {}),
         });
       }
@@ -680,12 +682,13 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
     let taskId: string | null = null;
 
     if (update.price !== undefined) {
+      // Restrictions are rate-plan level — NO room_type_id.
       const ratePayload = [{
-        property_id: ids.channexPropertyId,
+        property_id:  ids.channexPropertyId,
         ...(ids.channexRatePlanId ? { rate_plan_id: ids.channexRatePlanId } : {}),
-        date_from: update.date,
-        date_to: update.date,
-        rate: Math.round(update.price * 100), // Channex expects cents (integer)
+        date_from:    update.date,
+        date_to:      update.date,
+        rate:         Math.round(update.price * 100),
         ...(update.minStay !== undefined ? { min_stay_arrival: update.minStay } : {}),
       }];
       const rateRes = await this.http.post<any>('/restrictions', apiKey, { values: ratePayload });

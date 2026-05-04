@@ -245,14 +245,20 @@ export class ChannexWhitelabelController {
     };
   }
 
-  /** PMS Cert Test #11 — Booking Acknowledge */
+  /** PMS Cert Test #11-T14 — Booking Revision Acknowledge
+   * Channex requires POST /booking_revisions/:revision_id/ack
+   * The param here is the booking_revision UUID (not the booking UUID).
+   * The webhook controller auto-ACKs on receipt; this endpoint is the
+   * manual trigger used by the Cert Dashboard to prove ACK capability.
+   */
   @Public()
-  @Post('booking/:bookingId/ack')
-  async acknowledgeBooking(@Param('bookingId') bookingId: string) {
-    this.logger.log(`[Cert#11] Acknowledging booking ${bookingId}`);
-    const res = await this.http.post<any>(`/bookings/${bookingId}/ack`, this.masterKey, {});
+  @Post('booking/:revisionId/ack')
+  async acknowledgeBooking(@Param('revisionId') revisionId: string) {
+    this.logger.log(`[Cert#11] ACKing booking_revision ${revisionId}`);
+    // Correct endpoint: /booking_revisions/:id/ack  (NOT /bookings/:id/ack)
+    const res = await this.http.post<any>(`/booking_revisions/${revisionId}/ack`, this.masterKey, {});
     this.logger.log(`[Cert#11] ACK response: ${JSON.stringify(res)}`);
-    return { success: true, message: 'Booking acknowledged.', data: res };
+    return { success: true, message: 'Booking revision acknowledged.', data: res };
   }
 
   /** PMS Cert — Full 500-day ARI across ALL room type + rate plan combos */

@@ -177,7 +177,7 @@ export default function CertDashboard() {
   const [t8, setT8] = useState({});
   const [t9, setT9] = useState({});
   const [t10, setT10] = useState({});
-  const [t11, setT11] = useState({ bookingId: '' });
+  const [t11, setT11] = useState({ bookingId: '', revisionId: '' });
 
   const addTask = useCallback((label, id) => {
     if (!id) return;
@@ -429,9 +429,12 @@ export default function CertDashboard() {
   // always responds { ack: true }. T11=new, T12=modify, T13/T14=cancel.
   // To get the task ID for the form, enter the Channex booking ID here.
   const runT11 = () => run(setT11, async () => {
-    if (!t11.bookingId?.trim()) throw new Error('Enter the Channex booking ID from the webhook payload');
-    const r = await apiFetch(`/connect/booking/${t11.bookingId.trim()}/ack`, { method: 'POST' });
-    addTask('T11-T14 Booking ACK', t11.bookingId.trim());
+    // Channex requires ACK on booking_revision UUID (NOT the booking UUID).
+    // Find the revision ID in: staging.channex.io → Logs → booking_revision event → id field
+    const revId = t11.revisionId?.trim() || t11.bookingId?.trim();
+    if (!revId) throw new Error('Enter the Channex booking_revision ID (from staging.channex.io Logs)');
+    const r = await apiFetch(`/connect/booking/${revId}/ack`, { method: 'POST' });
+    addTask('T11-T14 Booking Revision ACK', revId);
     return r;
   });
 
@@ -639,43 +642,45 @@ export default function CertDashboard() {
 
         {/* T11–T14 */}
         <Section
-          title="T11–T14 — Booking Events (Webhook Auto-Handled)"
-          badge="WEBHOOK"
-          desc="These tests are triggered by Booking.com, NOT by this dashboard. Use the test booking URL below to fire them. Our webhook at /connect/webhook/booking-revision always responds { ack: true } automatically."
-          warn="To get task IDs for the form: check Channex staging → Logs after each booking action, or enter the booking ID below to manually ACK."
+          title="T11–T14 — Booking Events (Webhook + ACK)"
+          badge="WEBHOOK + ACK"
+          desc="T11=New / T12=Modify / T13/T14=Cancel. Triggered by Booking.com. Our webhook at /connect/webhook/booking-revision auto-ACKs each revision via POST /booking_revisions/:id/ack. Use this button for manual ACK (e.g. after T12/T13/T14)."
+          warn="IMPORTANT: Enter the booking_revision ID (UUID), NOT the booking ID. Find it in staging.channex.io → Logs → click the event → copy the top-level 'id' field."
         >
           <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 12 }}>
             <strong style={{ color: '#f1f5f9' }}>Test booking URL:</strong>{' '}
-            <a href="https://secure.booking.com/book.html?hotel_id=10745030&test=1"
+            <a href="https://secure.booking.com/book.html?hotel_id=5868189&test=1"
               target="_blank" rel="noreferrer" style={{ color: '#38bdf8' }}>
-              https://secure.booking.com/book.html?hotel_id=10745030&amp;test=1
+              https://secure.booking.com/book.html?hotel_id=5868189&amp;test=1
             </a>
             <br />
             <span style={{ fontSize: 12 }}>Card: 4111-1111-1111-1111 / CVC 123 / any future expiry</span>
           </div>
           <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 12 }}>
-            <strong style={{ color: '#f1f5f9' }}>Sequence:</strong>
-            {' '}T11 = New booking → T12 = Modify → T13/T14 = Cancel
+            <strong style={{ color: '#f1f5f9' }}>How to get the revision ID:</strong><br />
+            <span style={{ fontSize: 12 }}>1. Fire booking action on Booking.com test page</span><br />
+            <span style={{ fontSize: 12 }}>2. Go to <a href="https://staging.channex.io" target="_blank" rel="noreferrer" style={{ color: '#38bdf8' }}>staging.channex.io</a> → Logs tab</span><br />
+            <span style={{ fontSize: 12 }}>3. Find the booking_revision event → click it → copy the <code style={{ color: '#fbbf24' }}>"id"</code> UUID (top level, not booking_id)</span>
           </div>
           <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
             <input
               type="text"
-              value={t11.bookingId || ''}
-              onChange={e => setT11(s => ({ ...s, bookingId: e.target.value }))}
-              placeholder="Channex booking ID (from webhook payload or Channex Logs)"
+              value={t11.revisionId || ''}
+              onChange={e => setT11(s => ({ ...s, revisionId: e.target.value }))}
+              placeholder="booking_revision UUID (from Channex Logs → event id field)"
               style={{
-                flex: 1, minWidth: 280, padding: '8px 12px',
+                flex: 1, minWidth: 320, padding: '8px 12px',
                 background: '#0f172a', border: '1px solid #334155', borderRadius: 8,
                 color: '#f1f5f9', fontSize: 13,
               }}
             />
             <Btn loading={t11.loading} onClick={runT11} color="green"
-              disabled={!t11.bookingId?.trim()}>
-              Manual ACK
+              disabled={!t11.revisionId?.trim()}>
+              Send ACK
             </Btn>
           </div>
           <ErrBox msg={t11.error} />
-          {t11.result && <TaskBox taskId={t11.bookingId} label="T11-T14 Booking ID" />}
+          {t11.result && <TaskBox taskId={t11.revisionId} label="T11-T14 Revision ACK" />}
         </Section>
 
         {/* Task Log */}
