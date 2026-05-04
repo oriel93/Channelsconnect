@@ -127,9 +127,9 @@ function ListingRow({ listing, onSynced }) {
           <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 2 }}>
             ID: {listing.id} · {listing.city || '—'} · {listing.currency || 'USD'}
           </div>
-          {listing.beds24PropId && (
+          {listing.channexPropertyId && (
             <div style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
-              Channex Property: {listing.beds24PropId}
+              Channex Property: {listing.channexPropertyId}
             </div>
           )}
         </div>
