@@ -404,13 +404,13 @@ export class ChannexDeepSyncService {
 
     // ── Call 2: Rates & Restrictions (all 500 days, single payload) ────────
     const rateValues = Array.from(rateMap.entries()).map(([dateStr, data]) => ({
-      property_id: channexPropId,
-      rate_plan_id: mapping.channexRatePlanId,
-      date_from: dateStr,
-      date_to: dateStr,
-      rate: Math.round(data.price * 100), // Channex expects cents (integer)
+      // No property_id, no room_type_id — restrictions are rate-plan level only
+      rate_plan_id:        mapping.channexRatePlanId,
+      date_from:           dateStr,
+      date_to:             dateStr,
+      rate:                Math.round(data.price * 100),
       min_stay_arrival:    data.minStay,
-      stop_sell:           !data.available,   // stop_sell not closed per Channex spec
+      stop_sell:           !data.available,
       closed_to_arrival:   false,
       closed_to_departure: false,
     }));
@@ -690,15 +690,13 @@ export class ChannexDeepSyncService {
         dayEntries,
         ([, v]) => `${v.rate}|${v.minStay}`,
         ([d, v]) => ({
-          property_id:         propId,
-          // room_type_id intentionally omitted — restrictions are rate-plan level only
+          // Channex /restrictions: no property_id, no room_type_id (rate-plan level only)
           rate_plan_id:        ratePlanId,
           date_from:           d,
           date_to:             d,
-          // Rate varies by room type (+$roomSeed offset) so rooms don't look identical
           rate:                Math.round((v.rate + roomSeed) * 100),
           min_stay_arrival:    v.minStay,
-          stop_sell:           v.avail === 0,   // stop_sell not closed per Channex spec
+          stop_sell:           v.avail === 0,
           closed_to_arrival:   false,
           closed_to_departure: false,
         }),
@@ -816,17 +814,18 @@ export class ChannexDeepSyncService {
     // Note: room_type_id is NOT sent — restrictions are rate-plan level only.
     // Note: use stop_sell (not closed) per Channex API spec.
     if (hasRestriction) {
+      // Channex /restrictions accepts ONLY rate-plan-level fields.
+      // Do NOT include property_id or room_type_id — Andrew Yudin confirmed this.
       const rateAttrs: Record<string, any> = {
-        property_id:  propId,
         rate_plan_id: ratePlanId,
         date_from:    dateFrom,
         date_to:      dateTo,
       };
-      if (values.rate !== undefined)            rateAttrs.rate              = Math.round(values.rate * 100);
-      if (values.minStay !== undefined)         rateAttrs.min_stay_arrival  = values.minStay;
-      if (values.maxStay !== undefined)         rateAttrs.max_stay          = values.maxStay;
-      if (values.stopSell !== undefined)        rateAttrs.stop_sell         = values.stopSell;   // ← stop_sell not closed
-      if (values.closedToArrival !== undefined) rateAttrs.closed_to_arrival = values.closedToArrival;
+      if (values.rate !== undefined)              rateAttrs.rate                = Math.round(values.rate * 100);
+      if (values.minStay !== undefined)           rateAttrs.min_stay_arrival    = values.minStay;
+      if (values.maxStay !== undefined)           rateAttrs.max_stay            = values.maxStay;
+      if (values.stopSell !== undefined)          rateAttrs.stop_sell           = values.stopSell;
+      if (values.closedToArrival !== undefined)   rateAttrs.closed_to_arrival   = values.closedToArrival;
       if (values.closedToDeparture !== undefined) rateAttrs.closed_to_departure = values.closedToDeparture;
 
       const rateRes = await this.http.post<any>('/restrictions', this.masterKey, {
@@ -884,11 +883,10 @@ export class ChannexDeepSyncService {
     }>,
   ): Promise<string | undefined> {
     const restrictionValues = entries.map(e => {
-      // rate_plan_id level only — NO room_type_id in restrictions payload.
-      // Use stop_sell (not closed) per Channex API spec.
+      // Channex /restrictions: rate-plan level only.
+      // No property_id, no room_type_id — confirmed by Andrew Yudin (certifier).
       const attrs: Record<string, any> = {
-        property_id:  propId,
-        rate_plan_id: e.ratePlanId,   // ← no room_type_id
+        rate_plan_id: e.ratePlanId,
         date_from:    e.dateFrom,
         date_to:      e.dateTo,
       };

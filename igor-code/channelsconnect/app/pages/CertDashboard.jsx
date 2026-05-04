@@ -237,19 +237,20 @@ export default function CertDashboard() {
 
   // ── T2: Single Date Update for Single Rate ────────────────────────────────
   // Spec: Twin Room | Best Available Rate | 22 Nov 2026 | $333
+  // T2: certifier confirmed — pure restriction (stop_sell), NO rate, NO property_id, NO room_type_id
   const runT2 = () => run(setT2, async () => {
     const r = await apiFetch('/connect/ari/update', {
       method: 'POST',
       body: JSON.stringify({
         propertyId: P.propertyId,
-        roomTypeId: RT_TWIN,
+        roomTypeId: RT_TWIN,   // used for availability routing only; NOT sent to /restrictions
         ratePlanId: RP_TWIN_BAR,
         dateFrom:   '2026-11-22',
         dateTo:     '2026-11-22',
-        rate:       333,
+        stopSell:   false,     // restriction field — no rate
       }),
     });
-    addTask('T2 Single Date / Single Rate (Twin BAR Nov 22 = $333)', r.taskId);
+    addTask('T2 Restriction: Twin BAR Nov 22 stop_sell=false', r.taskId);
     return r;
   });
 
@@ -502,11 +503,11 @@ export default function CertDashboard() {
 
         {/* T2 */}
         <Section
-          title="T2 — Single Date / Single Rate"
-          badge="1 API call"
-          desc="Spec: Twin Room | Best Available Rate | 22 Nov 2026 | $333"
+          title="T2 — Single Date Restriction (stop_sell)"
+          badge="1 API call — /restrictions"
+          desc="Certifier confirmed: stop_sell restriction only — no rate, no property_id, no room_type_id. Payload: { rate_plan_id, date_from, date_to, stop_sell: false }"
         >
-          <SpecTable rows={[{ 'Room': 'Twin', 'Rate Plan': 'Best Available', 'Date': '22 Nov 2026', 'Value': '$333' }]} />
+          <SpecTable rows={[{ 'Room Type': 'Twin', 'Rate Plan': 'Best Available', 'Date': '22 Nov 2026', 'Field': 'stop_sell', 'Value': 'false' }]} />
           <Btn loading={t2.loading} onClick={runT2}>Send T2</Btn>
           <ErrBox msg={t2.error} />
           <TaskBox taskId={t2.result?.taskId} label="T2 Restrictions Task ID" />
