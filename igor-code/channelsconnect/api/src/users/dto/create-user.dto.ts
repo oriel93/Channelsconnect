@@ -33,5 +33,8 @@ export class CreateUserDto {
 
   @ApiProperty({ required: false, description: 'IP address at time of registration (legal audit trail)' })
   signupIp?: string;
+
+  @ApiProperty({ required: false, description: 'User phone number collected at signup' })
+  phone?: string;
 }
 

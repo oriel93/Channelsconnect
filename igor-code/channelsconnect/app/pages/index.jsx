@@ -101,7 +101,7 @@ import Settings from "./Settings";
 import FinancialReports from "./FinancialReports";
 
 import AdminDashboard from "./AdminDashboard";
-import TapeChart from "./TapeChart";
+import PropertyList from "./PropertyList";
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
 import { ProtectedRoute } from '../lib/authContext';
 
@@ -206,7 +206,7 @@ const PAGES = {
     
     FinancialReports: FinancialReports,
     AdminDashboard: AdminDashboard,
-    TapeChart: TapeChart,
+    PropertyList: PropertyList,
 }
 
 function _getCurrentPage(url) {
@@ -333,8 +333,11 @@ function PagesContent() {
 
                 <Route path="/AdminDashboard" element={<ProtectedRoute requireAdmin={true}><AdminDashboard /></ProtectedRoute>} />
                 <Route path="/admin" element={<ProtectedRoute requireAdmin={true}><AdminDashboard /></ProtectedRoute>} />
-                <Route path="/TapeChart" element={<ProtectedRoute><TapeChart /></ProtectedRoute>} />
-                <Route path="/tape-chart" element={<ProtectedRoute><TapeChart /></ProtectedRoute>} />
+                <Route path="/PropertyList" element={<ProtectedRoute><PropertyList /></ProtectedRoute>} />
+                <Route path="/property-list" element={<ProtectedRoute><PropertyList /></ProtectedRoute>} />
+                {/* Legacy redirect so any old /tape-chart links still work */}
+                <Route path="/TapeChart" element={<ProtectedRoute><PropertyList /></ProtectedRoute>} />
+                <Route path="/tape-chart" element={<ProtectedRoute><PropertyList /></ProtectedRoute>} />
 
                 {/* Channex PMS Certification — hidden route, no auth required */}
                 <Route path="/cert-test" element={<CertDashboard />} />

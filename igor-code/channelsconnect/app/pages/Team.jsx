@@ -11,7 +11,7 @@ const teamMembers = [
     role: "CEO",
     bio: "A visionary leader, Eli drives the company's strategic direction, leveraging extensive experience in hospitality technology to innovate and inspire growth.",
     image: "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/e499bc31c_eliphoto.jpeg",
-    linkedin: "#",
+    linkedin: "https://www.linkedin.com/in/elirouimi-7867085552/",
     email: "Eli@erorentals.com"
   },
   {
@@ -19,7 +19,7 @@ const teamMembers = [
     role: "COO",
     bio: "Oriel masterfully oversees all daily operations, ensuring organizational excellence and scaling our business processes to support rapid global expansion.",
     image: "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/99b9c7584_orielphoto.jpg",
-    linkedin: "#",
+    linkedin: "https://www.linkedin.com/in/oriel-hagbi-427096169/",
     email: "Oriel@erorentals.com"
   },
   {
@@ -35,7 +35,7 @@ const teamMembers = [
     role: "Director of Sales",
     bio: "As the head of our sales division, Dianh develops powerful strategies to expand our market share and builds lasting relationships with key enterprise clients.",
     image: "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/c52ef3bc5_PicsArt_07-02-050312.jpg",
-    linkedin: "#",
+    linkedin: "https://www.linkedin.com/in/dianh-aguinaldo-73383589/",
     email: "Sales@erorentals.com"
   },
   {
@@ -122,16 +122,17 @@ export default function Team() {
                   <p className="text-blue-600 font-semibold mb-4 text-sm sm:text-base">{member.role}</p>
                   <p className="text-slate-600 mb-6 leading-relaxed text-sm sm:text-base">{member.bio}</p>
                   <div className="flex gap-3">
-                    <a
-                      href={member.linkedin}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`flex-1 sm:flex-none inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 ${member.linkedin === "#" ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-                      onClick={member.linkedin === "#" ? (e) => e.preventDefault() : undefined}
-                    >
-                      <Linkedin className="w-4 h-4 mr-2" />
-                      <span className="sm:inline">LinkedIn</span>
-                    </a>
+                    {member.linkedin && member.linkedin !== "#" ? (
+                      <a
+                        href={member.linkedin}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 cursor-pointer"
+                      >
+                        <Linkedin className="w-4 h-4 mr-2 text-[#0A66C2]" />
+                        <span className="sm:inline">LinkedIn</span>
+                      </a>
+                    ) : null}
                     <a
                       href={`mailto:${member.email}?subject=Inquiry%20about%20Channels%20Connect&body=Hi%20${member.name}%2C%0A%0AI%20would%20like%20to%20learn%20more%20about%20Channels%20Connect%20and%20how%20it%20can%20help%20my%20property.%0A%0APlease%20let%20me%20know%20when%20would%20be%20a%20good%20time%20to%20discuss.%0A%0AThank%20you%21`}
                       className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 cursor-pointer"

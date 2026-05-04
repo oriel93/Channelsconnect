@@ -27,6 +27,7 @@ model User {
   tosAcceptedAt           DateTime?
   tos_accepted_at         DateTime?             @db.Timestamptz(6)
   signup_ip               String?
+  phone                   String?
   airbnbConnections       AirbnbConnection?
   bookings                Booking[]
   calendarAuditLogs       CalendarAuditLog[]

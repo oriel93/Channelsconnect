@@ -30,7 +30,7 @@ import {
 const USER_NAV = [
   { name: 'Add Properties',    href: createPageUrl('PropertyIngestionHub'), icon: Upload  },
   { name: 'Dashboard',         href: createPageUrl('Dashboard'),        icon: Calendar    },
-  { name: 'Tape Chart',        href: createPageUrl('TapeChart'),        icon: LayoutGrid  },
+  { name: 'Property List',     href: createPageUrl('PropertyList'),     icon: LayoutGrid  },
   { name: 'Financial Reports', href: createPageUrl('FinancialReports'), icon: BarChart3   },
   { name: 'My Listings',       href: createPageUrl('Listings'),         icon: Briefcase   },
   { name: 'Image Manager',     href: createPageUrl('ImageManager'),     icon: ImageIcon   },
@@ -68,7 +68,7 @@ function NavLink({ item, active, onClick }) {
 
 // ─── Logo mark ────────────────────────────────────────────────────────────────
 
-const LOGO_URL = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/f50093011_channelsconnectlogo.png';
+const LOGO_URL = '/assets/logo-highres.jpg';
 
 function LogoBar({ mobile }) {
   return (

@@ -256,67 +256,74 @@ export default function Home() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      {/* Enhanced Mobile-First Hero Section */}
-      <section className="relative h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-indigo-900 overflow-hidden">
-        {/* Background Image */}
-        <div className="absolute inset-0">
-          <img 
-            src="https://images.unsplash.com/photo-1615571022219-eb45cf7faa9d?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80" 
-            alt="Beachfront condo ocean view" 
-            className="w-full h-full object-cover opacity-60"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-blue-900/80 to-transparent"></div>
-        </div>
+      {/* Enhanced Mobile-First Hero Section — two-column layout */}
+      <section className="relative min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-indigo-900 overflow-hidden">
+        {/* Subtle ambient background overlay */}
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-900/95 via-blue-800/90 to-indigo-900/95" />
 
-        {/* Mobile-Optimized Hero Content */}
-        <div className="relative z-10 h-full flex items-center">
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="max-w-4xl">
-              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-7xl font-bold text-white mb-4 md:mb-6 leading-tight pt-10">
-                Get FREE 
-                <span className="text-blue-300 block">Instant Bookings</span>
-              </h1>
-              
-              <p className="text-base sm:text-lg md:text-xl lg:text-2xl text-blue-100 mb-6 md:mb-8 max-w-3xl leading-relaxed">
-                The only completely FREE distribution platform that generates instant bookings with immediate guest payment. 
-                <span className="text-white font-semibold block sm:inline"> Works with ANY PMS system.</span>
-              </p>
+        {/* Two-column hero content */}
+        <div className="relative z-10 min-h-screen flex items-center">
+          <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-20">
+            <div className="flex flex-col md:flex-row items-center gap-10 lg:gap-16">
 
-              <div className="flex flex-col sm:flex-row gap-3 md:gap-4 mb-6 md:mb-8">
-                <Button 
-                  size="lg" 
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 md:px-8 py-3 md:py-4 text-base md:text-lg font-semibold"
-                  onClick={handleGetStarted}
-                  disabled={loading}
-                >
-                  {loading ? 'Loading...' : 'Connect Your Airbnb'}
-                  <ArrowRight className="ml-2 w-4 h-4 md:w-5 md:h-5" />
-                </Button>
-              </div>
+              {/* ── Left Column: copy ── */}
+              <div className="flex-1 min-w-0">
+                <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-7xl font-bold text-white mb-4 md:mb-6 leading-tight">
+                  Get FREE
+                  <span className="text-blue-300 block">Instant Bookings</span>
+                </h1>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-6 text-white text-sm md:text-base">
-                <div className="flex items-center space-x-2 md:space-x-3">
-                  <CheckCircle className="w-5 h-5 md:w-6 md:h-6 text-green-400 flex-shrink-0" />
-                  <span className="font-medium">100% Free Forever</span>
+                <p className="text-base sm:text-lg md:text-xl lg:text-2xl text-blue-100 mb-6 md:mb-8 max-w-2xl leading-relaxed">
+                  The only completely FREE distribution platform that generates instant bookings with immediate guest payment.
+                  <span className="text-white font-semibold block sm:inline"> Works with ANY PMS system.</span>
+                </p>
+
+                <div className="flex flex-col sm:flex-row gap-3 md:gap-4 mb-6 md:mb-8">
+                  <Button
+                    size="lg"
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 md:px-8 py-3 md:py-4 text-base md:text-lg font-semibold"
+                    onClick={handleGetStarted}
+                    disabled={loading}
+                  >
+                    {loading ? 'Loading...' : 'Connect Your Airbnb'}
+                    <ArrowRight className="ml-2 w-4 h-4 md:w-5 md:h-5" />
+                  </Button>
                 </div>
-                <div className="flex items-center space-x-2 md:space-x-3">
-                  <CheckCircle className="w-5 h-5 md:w-6 md:h-6 text-green-400 flex-shrink-0" />
-                  <span className="font-medium">Instant Guest Payment</span>
-                </div>
-                <div className="flex items-center space-x-2 md:space-x-3 sm:col-span-2 md:col-span-1">
-                  <CheckCircle className="w-5 h-5 md:w-6 md:h-6 text-green-400 flex-shrink-0" />
-                  <span className="font-medium">Works with ANY PMS</span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-6 text-white text-sm md:text-base">
+                  <div className="flex items-center space-x-2 md:space-x-3">
+                    <CheckCircle className="w-5 h-5 md:w-6 md:h-6 text-green-400 flex-shrink-0" />
+                    <span className="font-medium">100% Free Forever</span>
+                  </div>
+                  <div className="flex items-center space-x-2 md:space-x-3">
+                    <CheckCircle className="w-5 h-5 md:w-6 md:h-6 text-green-400 flex-shrink-0" />
+                    <span className="font-medium">Instant Guest Payment</span>
+                  </div>
+                  <div className="flex items-center space-x-2 md:space-x-3">
+                    <CheckCircle className="w-5 h-5 md:w-6 md:h-6 text-green-400 flex-shrink-0" />
+                    <span className="font-medium">Works with ANY PMS</span>
+                  </div>
                 </div>
               </div>
+
+              {/* ── Right Column: hero image ── */}
+              <div className="flex-shrink-0 w-full md:w-[420px] lg:w-[520px] mt-8 md:mt-0">
+                <img
+                  src="/assets/channels-hero.png"
+                  alt="Channels Connect — connect to 100s of booking channels"
+                  className="w-full h-auto object-cover rounded-2xl shadow-2xl ring-1 ring-white/10"
+                />
+              </div>
+
             </div>
           </div>
         </div>
 
-        {/* Mobile-Friendly Scroll Indicator */}
-        <div className="absolute bottom-6 md:bottom-8 left-1/2 transform -translate-x-1/2 z-10">
+        {/* Scroll indicator */}
+        <div className="absolute bottom-6 md:bottom-8 left-1/2 -translate-x-1/2 z-10">
           <div className="animate-bounce">
             <div className="w-5 h-8 md:w-6 md:h-10 border-2 border-white rounded-full flex justify-center">
-              <div className="w-1 h-2 md:h-3 bg-white rounded-full mt-1 md:mt-2"></div>
+              <div className="w-1 h-2 md:h-3 bg-white rounded-full mt-1 md:mt-2" />
             </div>
           </div>
         </div>

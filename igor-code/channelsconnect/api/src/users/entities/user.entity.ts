@@ -38,6 +38,9 @@ export class UserEntity implements User {
   @ApiProperty({ required: false, nullable: true, description: 'IP address at time of registration (legal audit trail)' })
   signupIp: string | null;
 
+  @ApiProperty({ required: false, nullable: true, description: 'Phone number collected at signup' })
+  phone: string | null;
+
   // Snake_case aliases added by manual DB migration; present in Prisma type after db pull
   @ApiPropertyOptional()
   tos_accepted_at: Date | null;

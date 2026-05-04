@@ -28,6 +28,7 @@ export default function Login() {
     password: '',
     confirmPassword: '',
     fullName: '',
+    phone: '',
   });
   // Legal consent checkbox — must be checked before signup submission
   const [tosAccepted, setTosAccepted] = useState(false);
@@ -73,6 +74,11 @@ export default function Login() {
       if (formData.password !== formData.confirmPassword) {
         setError('Passwords do not match');
         return false;
+      }
+      if (!formData.phone) {
+        setError('Phone number is required.');
+        setLoading(false);
+        return;
       }
       if (!formData.fullName) {
         setError('Full name is required');
@@ -120,6 +126,7 @@ export default function Login() {
           formData.password,
           {
             full_name: formData.fullName,
+            phone:     formData.phone,
           }
         );
 
@@ -142,11 +149,21 @@ export default function Login() {
             'Account created successfully! Please check your email to verify your account.'
           );
           // Clear form
+          // Persist phone via PATCH /users/me (best-effort)
+          try {
+            if (data.session && formData.phone) {
+              await api.users.update({ phone: formData.phone });
+            }
+          } catch (phoneErr) {
+            console.warn('[Signup] Could not persist phone:', phoneErr?.message);
+          }
+
           setFormData({
             email: '',
             password: '',
             confirmPassword: '',
             fullName: '',
+            phone: '',
           });
           setTosAccepted(false);
           // Switch to login mode after a delay
@@ -224,19 +241,35 @@ export default function Login() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {!isLogin && (
-              <div className="space-y-2">
-                <Label htmlFor="fullName">Full Name</Label>
-                <Input
-                  id="fullName"
-                  name="fullName"
-                  type="text"
-                  placeholder="John Doe"
-                  value={formData.fullName}
-                  onChange={handleChange}
-                  disabled={loading}
-                  required={!isLogin}
-                />
-              </div>
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="fullName">Full Name</Label>
+                  <Input
+                    id="fullName"
+                    name="fullName"
+                    type="text"
+                    placeholder="John Doe"
+                    value={formData.fullName}
+                    onChange={handleChange}
+                    disabled={loading}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone Number</Label>
+                  <Input
+                    id="phone"
+                    name="phone"
+                    type="tel"
+                    placeholder="+1 (555) 000-0000"
+                    value={formData.phone}
+                    onChange={handleChange}
+                    disabled={loading}
+                    required
+                  />
+                </div>
+              </>
             )}
 
             <div className="space-y-2">
