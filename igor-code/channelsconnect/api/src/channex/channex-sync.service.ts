@@ -423,11 +423,12 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
         u.closedToArrival !== undefined ||
         u.closedToDeparture !== undefined
       ) {
-        // Channex /restrictions: rate-plan level only — no property_id, no room_type_id.
+        // Channex /restrictions requires property_id + rate_plan_id.
         rateValues.push({
+          property_id:  channexPropertyId,
           ...(u.channexRatePlanId ? { rate_plan_id: u.channexRatePlanId } : {}),
-          date_from:           u.date,
-          date_to:             u.date,
+          date_from:    u.date,
+          date_to:      u.date,
           ...(u.price !== undefined    ? { rate: Math.round(u.price * 100) }                   : {}),
           min_stay_arrival:    u.minStay ?? 1,
           ...(u.maxStay !== undefined          ? { max_stay:          u.maxStay }              : {}),
@@ -680,8 +681,9 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
     let taskId: string | null = null;
 
     if (update.price !== undefined) {
-      // Channex /restrictions: no property_id, no room_type_id (rate-plan level only)
+      // Channex /restrictions requires property_id + rate_plan_id.
       const ratePayload = [{
+        property_id:  ids.channexPropertyId,
         ...(ids.channexRatePlanId ? { rate_plan_id: ids.channexRatePlanId } : {}),
         date_from:    update.date,
         date_to:      update.date,

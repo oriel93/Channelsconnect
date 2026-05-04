@@ -404,7 +404,7 @@ export class ChannexDeepSyncService {
 
     // ── Call 2: Rates & Restrictions (all 500 days, single payload) ────────
     const rateValues = Array.from(rateMap.entries()).map(([dateStr, data]) => ({
-      // No property_id, no room_type_id — restrictions are rate-plan level only
+      property_id:         channexPropId,  // required by Channex /restrictions
       rate_plan_id:        mapping.channexRatePlanId,
       date_from:           dateStr,
       date_to:             dateStr,
@@ -690,7 +690,7 @@ export class ChannexDeepSyncService {
         dayEntries,
         ([, v]) => `${v.rate}|${v.minStay}`,
         ([d, v]) => ({
-          // Channex /restrictions: no property_id, no room_type_id (rate-plan level only)
+          property_id:         propId,     // required by Channex /restrictions
           rate_plan_id:        ratePlanId,
           date_from:           d,
           date_to:             d,
@@ -814,9 +814,10 @@ export class ChannexDeepSyncService {
     // Note: room_type_id is NOT sent — restrictions are rate-plan level only.
     // Note: use stop_sell (not closed) per Channex API spec.
     if (hasRestriction) {
-      // Channex /restrictions accepts ONLY rate-plan-level fields.
-      // Do NOT include property_id or room_type_id — Andrew Yudin confirmed this.
+      // Channex /restrictions requires property_id + rate_plan_id.
+      // room_type_id not needed (accepted but ignored).
       const rateAttrs: Record<string, any> = {
+        property_id:  propId,
         rate_plan_id: ratePlanId,
         date_from:    dateFrom,
         date_to:      dateTo,
@@ -883,9 +884,9 @@ export class ChannexDeepSyncService {
     }>,
   ): Promise<string | undefined> {
     const restrictionValues = entries.map(e => {
-      // Channex /restrictions: rate-plan level only.
-      // No property_id, no room_type_id — confirmed by Andrew Yudin (certifier).
+      // Channex /restrictions requires property_id + rate_plan_id.
       const attrs: Record<string, any> = {
+        property_id:  propId,
         rate_plan_id: e.ratePlanId,
         date_from:    e.dateFrom,
         date_to:      e.dateTo,
