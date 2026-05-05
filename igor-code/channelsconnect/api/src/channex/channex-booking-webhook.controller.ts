@@ -342,7 +342,17 @@ export class ChannexBookingWebhookController {
         },
       });
 
-      // ── 4. Send Booking ACK back to Channex (Source 106) ─────────────────
+      // ── 4. Fetch revision by ID (required by Channex cert spec) ──────────
+      // Andrew Yudin confirmed: must call GET /booking_revisions/:id
+      // (not the list endpoint) before acknowledging.
+      try {
+        await this.http.get(`/booking_revisions/${revision.id}`, apiKey);
+        this.logger.log(`[Webhook] Fetched revision by ID: ${revision.id}`);
+      } catch (fetchErr: any) {
+        this.logger.warn(`[Webhook] Fetch by ID failed (non-blocking): ${fetchErr.message}`);
+      }
+
+      // ── 5. Send Booking ACK back to Channex (Source 106) ─────────────────
       // MUST be sent even if booking was already in DB (idempotent).
       if (apiKey) {
         await this.sendBookingAck(revision.id, apiKey);

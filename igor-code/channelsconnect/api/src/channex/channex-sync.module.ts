@@ -13,10 +13,11 @@
  */
 
 import { Module } from '@nestjs/common';
-import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ChannexSyncService } from './channex-sync.service';
 import { ChannexSyncController } from './channex-sync.controller';
 import { ChannexBookingWebhookController } from './channex-booking-webhook.controller';
+import { ChannexBookingFeedService } from './channex-booking-feed.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ChannexServicesModule } from '../services/channex/channex-services.module';
 
@@ -24,11 +25,12 @@ import { ChannexServicesModule } from '../services/channex/channex-services.modu
   imports: [
     PrismaModule,
     ChannexServicesModule, // provides ChannexHttpClient
-    // EventEmitterModule.forRoot() should be registered once in AppModule.
-    // If it is NOT already registered there, uncomment the next line:
-    // EventEmitterModule.forRoot({ wildcard: false, delimiter: '.' }),
+    ScheduleModule.forRoot(), // required for @Cron in ChannexBookingFeedService
   ],
-  providers: [ChannexSyncService],
+  providers: [
+    ChannexSyncService,
+    ChannexBookingFeedService, // 15-min feed polling (cert requirement)
+  ],
   controllers: [
     ChannexSyncController,
     ChannexBookingWebhookController,
