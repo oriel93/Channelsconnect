@@ -8,12 +8,136 @@ import PWAInstaller from "@/components/pwa/PWAInstaller";
 import { InvokeLLM } from "@/api/integrations";
 import { X, Bot } from "lucide-react";
 
-// ─── Contact FAB ─────────────────────────────────────────────────────────────
-// Update COMPANY_PHONE to enable the Call Us and WhatsApp buttons.
+// ─── Config ──────────────────────────────────────────────────────────────────
+// Set COMPANY_PHONE once to activate Call Us + WhatsApp FAB buttons.
 const COMPANY_PHONE = ""; // e.g. "12125551234" (digits only, no + or spaces)
+
+// GHL CRM config — set when sub-account API key is available
+const GHL_LOCATION_ID = "pit-49b382eb-2452-4e99-93ab-d3ba44340757";
+const GHL_API_KEY = ""; // paste sub-account private key here when ready
+
+async function pushToGHL({ firstName, lastName, email, phone, source }) {
+  if (!GHL_API_KEY) return; // silently skip if key not configured yet
+  try {
+    await fetch(`https://services.leadconnectorhq.com/contacts/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${GHL_API_KEY}`,
+        'Version': '2021-07-28',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        locationId: GHL_LOCATION_ID,
+        firstName,
+        lastName,
+        email,
+        phone,
+        source: source || 'website',
+        tags: [source || 'website'],
+      }),
+    });
+  } catch (_) {
+    // non-blocking — CRM push failure never breaks the UI
+  }
+}
+
+// ─── Book a Demo Modal ───────────────────────────────────────────────────────
+function BookDemoModal({ onClose }) {
+  const [step, setStep] = useState('form'); // 'form' | 'calendly'
+  const [fields, setFields] = useState({ firstName: '', lastName: '', email: '', phone: '' });
+  const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+
+  const validate = () => {
+    const e = {};
+    if (!fields.firstName.trim()) e.firstName = 'Required';
+    if (!fields.lastName.trim()) e.lastName = 'Required';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fields.email)) e.email = 'Valid email required';
+    if (!fields.phone.trim()) e.phone = 'Required';
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const handleSubmit = async (ev) => {
+    ev.preventDefault();
+    if (!validate()) return;
+    setSubmitting(true);
+    await pushToGHL({ ...fields, source: 'demo-request' });
+    setSubmitting(false);
+    setStep('calendly');
+  };
+
+  const inp = (name, placeholder, type = 'text') => (
+    <div>
+      <input
+        type={type}
+        placeholder={placeholder}
+        value={fields[name]}
+        onChange={e => setFields(f => ({ ...f, [name]: e.target.value }))}
+        className={`w-full h-10 rounded-xl border px-4 py-2 text-sm font-sans text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 ${
+          errors[name] ? 'border-red-400' : 'border-slate-200'
+        }`}
+      />
+      {errors[name] && <p className="text-xs text-red-500 mt-1">{errors[name]}</p>}
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.55)' }}>
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-slate-100">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">Book a Demo</h2>
+            <p className="text-sm text-slate-500 mt-0.5">See Channels Connect in action — free, no commitment.</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 transition-colors" aria-label="Close">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5">
+          {step === 'form' ? (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                {inp('firstName', 'First name')}
+                {inp('lastName', 'Last name')}
+              </div>
+              {inp('email', 'Work email', 'email')}
+              {inp('phone', 'Phone number', 'tel')}
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full h-11 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold text-sm transition-all duration-150 disabled:opacity-60"
+              >
+                {submitting ? 'Submitting…' : 'Get More Info & Book a Time →'}
+              </button>
+              <p className="text-xs text-center text-slate-400">No spam. We'll only contact you about your demo request.</p>
+            </form>
+          ) : (
+            <div>
+              <p className="text-sm text-slate-600 mb-4 text-center">Thanks! Pick a time that works for you:</p>
+              <div
+                className="calendly-inline-widget"
+                data-url="https://calendly.com/oriel-erorentals/intro-channels-connect"
+                style={{ minWidth: '320px', height: '600px' }}
+              />
+              <script
+                type="text/javascript"
+                src="https://assets.calendly.com/assets/external/widget.js"
+                async
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ContactFAB() {
   const [open, setOpen] = useState(false);
+  const [showDemo, setShowDemo] = useState(false);
 
   // WhatsApp SVG (official brand colours)
   const WhatsAppIcon = () => (
@@ -31,10 +155,25 @@ function ContactFAB() {
 
   return (
     <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+      {/* Book a Demo modal */}
+      {showDemo && <BookDemoModal onClose={() => setShowDemo(false)} />}
+
       {/* Flyout buttons */}
       {open && (
         <div className="flex flex-col gap-2 mb-1 animate-in slide-in-from-bottom-2">
-          {COMPANY_PHONE ? (
+          {/* Book a Demo — always visible */}
+          <button
+            onClick={() => { setShowDemo(true); setOpen(false); }}
+            className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white text-sm font-semibold px-4 py-2.5 rounded-full shadow-lg transition-all duration-150 whitespace-nowrap"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+            Book a Demo
+          </button>
+
+          {/* WhatsApp + Call Us — only shown when phone is configured */}
+          {COMPANY_PHONE && (
             <>
               <a
                 href={`https://wa.me/${COMPANY_PHONE}`}
@@ -53,10 +192,6 @@ function ContactFAB() {
                 Call Us
               </a>
             </>
-          ) : (
-            <div className="bg-white border border-slate-200 text-slate-500 text-xs px-4 py-2 rounded-full shadow">
-              Phone not configured
-            </div>
           )}
         </div>
       )}
