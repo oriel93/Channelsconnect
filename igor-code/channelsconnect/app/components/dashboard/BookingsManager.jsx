@@ -16,6 +16,9 @@ export default function BookingsManager({ listingId }) {
 
   useEffect(() => {
     loadBookings();
+    // Auto-refresh every 30s so incoming Channex bookings appear live
+    const interval = setInterval(loadBookings, 30000);
+    return () => clearInterval(interval);
   }, [listingId]);
 
   const loadBookings = async () => {
@@ -36,6 +39,16 @@ export default function BookingsManager({ listingId }) {
       setError('Failed to load bookings. Please try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const formatCurrency = (amount, currency) => {
+    const num = parseFloat(amount) || 0;
+    const code = (currency || 'USD').toUpperCase();
+    try {
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: code, maximumFractionDigits: 0 }).format(num);
+    } catch {
+      return `${code} ${num.toLocaleString()}`;
     }
   };
 
@@ -216,11 +229,11 @@ export default function BookingsManager({ listingId }) {
                     <div className="flex items-baseline gap-2">
                       <DollarSign className="w-5 h-5 text-green-600" />
                       <span className="text-2xl font-bold text-gray-900">
-                        ${parseFloat(totalPrice).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        {formatCurrency(totalPrice, booking.currency)}
                       </span>
                       {nights && (
                         <span className="text-sm text-gray-500">
-                          (${(parseFloat(totalPrice) / nights).toFixed(0)}/night)
+                          ({formatCurrency(parseFloat(totalPrice) / nights, booking.currency)}/night)
                         </span>
                       )}
                     </div>
