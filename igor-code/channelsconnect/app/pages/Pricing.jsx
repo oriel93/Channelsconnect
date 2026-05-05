@@ -11,7 +11,7 @@ export default function Pricing() {
     document.title = "Pricing | Channels Connect";
     const metaDesc = document.querySelector('meta[name="description"]') || document.createElement('meta');
     metaDesc.name = 'description';
-    metaDesc.content = "Simple, transparent pricing. Channels Connect is free to get started. We only succeed when you do.";
+    metaDesc.content = "Simple, transparent pricing for property managers. Connect your listings to Airbnb, Booking.com, Vrbo, and more with Channels Connect.";
     if (!document.querySelector('meta[name="description"]')) {
       document.head.appendChild(metaDesc);
     }

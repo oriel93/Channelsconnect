@@ -9,10 +9,10 @@ import { CheckCircle, Download, ArrowRight, TrendingUp, Users, MessageSquare, Sm
 
 export default function StateOfHotelTech2024() {
   useEffect(() => {
-    document.title = "State of Hotel Tech – The Latest Trends & Benchmarks | Channels Connect";
+    document.title = "State of Hotel Tech 2024 | Channels Connect";
     const metaDesc = document.createElement('meta');
     metaDesc.name = 'description';
-    metaDesc.content = 'Our 2024 industry report on hotel technology trends, benchmarks, and opportunities.';
+    metaDesc.content = 'Benchmark report on hotel technology adoption, direct bookings, and revenue management trends in 2024.';
     document.head.appendChild(metaDesc);
     return () => {
       document.head.removeChild(metaDesc);

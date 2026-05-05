@@ -9,10 +9,10 @@ import { CheckCircle, Download, ArrowRight, Globe, DollarSign, Shield, BarChart 
 
 export default function HotelChannelManagementGuide2024() {
   useEffect(() => {
-    document.title = "The 2024 Guide to Hotel Channel Management | Channels Connect";
+    document.title = "Hotel Channel Management Guide 2024 | Channels Connect";
     const metaDesc = document.createElement('meta');
     metaDesc.name = 'description';
-    metaDesc.content = 'Everything you need to build a successful channel management strategy in 2024 and beyond.';
+    metaDesc.content = 'A complete guide to hotel channel management, rate parity, and OTA distribution strategy in 2024.';
     document.head.appendChild(metaDesc);
     return () => {
       document.head.removeChild(metaDesc);

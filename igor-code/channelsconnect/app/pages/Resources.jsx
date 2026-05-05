@@ -59,7 +59,7 @@ export default function Resources() {
     document.title = "Resources | Channels Connect";
     const metaDesc = document.querySelector('meta[name="description"]') || document.createElement('meta');
     metaDesc.name = 'description';
-    metaDesc.content = "Explore our library of guides, reports, and customer stories to stay ahead in the hospitality industry.";
+    metaDesc.content = "Guides, checklists, and tools to help property managers improve distribution and grow bookings.";
     if (!document.querySelector('meta[name="description"]')) {
       document.head.appendChild(metaDesc);
     }

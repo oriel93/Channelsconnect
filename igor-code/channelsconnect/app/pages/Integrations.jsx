@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, Database, Banknote, BrainCircuit, MessageSquare, Briefcase } from 'lucide-react';
@@ -44,6 +44,18 @@ const integrationCategories = [
 ];
 
 export default function Integrations() {
+  useEffect(() => {
+    document.title = 'Integrations | Channels Connect';
+    const metaDesc = document.querySelector('meta[name="description"]') || document.createElement('meta');
+    metaDesc.name = 'description';
+    metaDesc.content = 'Connect your PMS, OTAs, payment gateways, and revenue tools through Channels Connect.';
+    if (!document.querySelector('meta[name="description"]')) {
+      document.head.appendChild(metaDesc);
+    }
+    return () => {
+      if (document.head.contains(metaDesc)) document.head.removeChild(metaDesc);
+    };
+  }, []);
   return (
     <div className="bg-white">
       <section className="bg-slate-50 py-20">
