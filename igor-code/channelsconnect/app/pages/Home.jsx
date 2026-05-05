@@ -288,12 +288,23 @@ export default function Home() {
                     {loading ? 'Loading...' : 'Connect Your Airbnb'}
                     <ArrowRight className="ml-2 w-4 h-4 md:w-5 md:h-5" />
                   </Button>
+                  <a
+                    href="https://calendly.com/channelsconnect/demo"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-2 px-6 md:px-8 py-3 md:py-4 text-base md:text-lg font-semibold rounded-md border-2 border-white text-white hover:bg-white hover:text-blue-900 transition-colors"
+                  >
+                    Book a Demo
+                  </a>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-6 text-white text-sm md:text-base">
-                  <div className="flex items-center space-x-2 md:space-x-3">
-                    <CheckCircle className="w-5 h-5 md:w-6 md:h-6 text-green-400 flex-shrink-0" />
-                    <span className="font-medium">100% Free Forever</span>
+                  <div className="flex flex-col">
+                    <div className="flex items-center space-x-2 md:space-x-3">
+                      <CheckCircle className="w-5 h-5 md:w-6 md:h-6 text-green-400 flex-shrink-0" />
+                      <span className="font-medium">100% Free Forever</span>
+                    </div>
+                    <span className="text-blue-200 text-xs ml-7 md:ml-8 mt-0.5">No credit card needed</span>
                   </div>
                   <div className="flex items-center space-x-2 md:space-x-3">
                     <CheckCircle className="w-5 h-5 md:w-6 md:h-6 text-green-400 flex-shrink-0" />
@@ -745,6 +756,17 @@ export default function Home() {
           
           <div className="max-w-md mx-auto mb-6 md:mb-8">
             <HeroForm />
+          </div>
+
+          <div className="mb-6">
+            <a
+              href="https://calendly.com/channelsconnect/demo"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-6 py-3 text-base font-semibold rounded-md border-2 border-white text-white hover:bg-white hover:text-blue-700 transition-colors"
+            >
+              Book a Demo
+            </a>
           </div>
 
           <div className="text-blue-100 text-xs md:text-sm">

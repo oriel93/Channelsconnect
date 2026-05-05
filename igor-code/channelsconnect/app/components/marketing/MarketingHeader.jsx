@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { Menu, X, LayoutDashboard } from 'lucide-react';
+import { Menu, X, LayoutDashboard, Phone } from 'lucide-react';
 import { authHelpers } from '@/lib/supabase';
 
 const navLinks = [
@@ -128,6 +128,13 @@ export default function MarketingHeader() {
 
           {/* Combined Auth Buttons and Mobile Menu Trigger */}
           <div className="flex items-center gap-4">
+            <a
+              href="tel:+17867131266"
+              className="hidden md:inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 hover:text-blue-600 transition-colors border border-slate-200 rounded-full px-3 py-1.5"
+            >
+              <Phone className="w-3.5 h-3.5" />
+              Call Us
+            </a>
             <AuthButtons />
             <button
               className="md:hidden" // Button visible only on screens smaller than md
