@@ -9,7 +9,7 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { ChannexHttpClient } from '../services/channex/channex-http.client';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
@@ -30,7 +30,7 @@ export class ChannexBookingFeedService {
    * fetches each one by ID (required by Channex cert spec),
    * persists any new ones, then ACKs them.
    */
-  @Cron(CronExpression.EVERY_15_MINUTES)
+  @Cron('0 */15 * * * *') // every 15 minutes
   async pollBookingFeed(): Promise<void> {
     if (!this.apiKey) {
       this.logger.warn('[BookingFeed] CHANNEX_API_KEY not set — skipping feed poll');
