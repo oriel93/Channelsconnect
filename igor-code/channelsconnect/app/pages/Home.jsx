@@ -10,6 +10,10 @@ import { Badge } from '@/components/ui/badge';
 import HeroForm from '../components/marketing/HeroForm';
 import { User } from '@/api/entities';
 
+// ── Change this URL any time you want to update the demo booking link ──────
+const BOOK_A_DEMO_URL = 'https://calendly.com/channelsconnect/demo';
+// ───────────────────────────────────────────────────────────────────────────
+
 export default function Home() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -289,7 +293,7 @@ export default function Home() {
                     <ArrowRight className="ml-2 w-4 h-4 md:w-5 md:h-5" />
                   </Button>
                   <a
-                    href="https://calendly.com/channelsconnect/demo"
+                    href={BOOK_A_DEMO_URL}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center justify-center gap-2 px-6 md:px-8 py-3 md:py-4 text-base md:text-lg font-semibold rounded-md border-2 border-white text-white hover:bg-white hover:text-blue-900 transition-colors"
@@ -760,7 +764,7 @@ export default function Home() {
 
           <div className="mb-6">
             <a
-              href="https://calendly.com/channelsconnect/demo"
+              href={BOOK_A_DEMO_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 px-6 py-3 text-base font-semibold rounded-md border-2 border-white text-white hover:bg-white hover:text-blue-700 transition-colors"
