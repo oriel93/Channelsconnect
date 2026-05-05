@@ -23,6 +23,7 @@ export default $config({
         const supabaseKey = new sst.Secret("SUPABASE_ANON_KEY");
         const dbUrl = new sst.Secret("DATABASE_URL");
         const channexKey = new sst.Secret("CHANNEX_API_KEY");
+        const channexWebhookSecret = new sst.Secret("CHANNEX_WEBHOOK_SECRET");
 
         const vpc = new sst.aws.Vpc("Vpc");
         const cluster = new sst.aws.Cluster("Cluster", { vpc });
@@ -30,7 +31,7 @@ export default $config({
         // 2. API Service
         const api = new sst.aws.Service("Api", {
             cluster,
-            link: [supabaseUrl, supabaseKey, dbUrl, channexKey],
+            link: [supabaseUrl, supabaseKey, dbUrl, channexKey, channexWebhookSecret],
             image: {
                 context: "api",
                 dockerfile: "Dockerfile",
@@ -59,6 +60,7 @@ export default $config({
                 SUPABASE_URL: supabaseUrl.value,
                 SUPABASE_ANON_KEY: supabaseKey.value,
                 CHANNEX_API_KEY: channexKey.value,
+                CHANNEX_WEBHOOK_SECRET: channexWebhookSecret.value,
                 FRONTEND_URL: "https://channelsconnect.com"
             },
             dev: {

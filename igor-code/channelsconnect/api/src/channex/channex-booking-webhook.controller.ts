@@ -34,6 +34,26 @@ import * as crypto from 'crypto';
 // See: https://docs.channex.io/api-v.1-documentation/booking-revisions
 // ---------------------------------------------------------------------------
 
+interface ChannexRoom {
+  meta?: {
+    mapping_id?: string;               // Internal mapping UUID
+    rate_plan_code?: number;
+    room_type_code?: string;           // BDC room type code
+    days_breakdown?: Array<{
+      date: string;
+      amount: string;
+      rate_plan: string;               // Channex rate_plan UUID
+    }>;
+  };
+  checkin_date?: string;
+  checkout_date?: string;
+  occupancy?: {
+    adults?: number;
+    children?: number;
+    infants?: number;
+  };
+}
+
 interface ChannexBookingRevisionPayload {
   event: string;                       // e.g. 'booking_revision'
   booking_revision: {
@@ -45,8 +65,9 @@ interface ChannexBookingRevisionPayload {
     arrival_date: string;              // 'YYYY-MM-DD'
     departure_date: string;            // 'YYYY-MM-DD'
     property_id: string;               // Channex property UUID
-    room_type_id: string;              // Channex room_type UUID
-    rate_plan_id?: string;             // Channex rate_plan UUID
+    // NOTE: room_type_id is NOT a top-level field in real Channex payloads.
+    // Room data is inside the rooms[] array.
+    rooms?: ChannexRoom[];
     amount: string | number;           // Total booking amount
     currency: string;
     guests?: {
@@ -84,46 +105,44 @@ export class ChannexBookingWebhookController {
   // -------------------------------------------------------------------------
 
   /**
-   * Validates the X-Channex-Signature HMAC-SHA256 signature that Channex
-   * attaches to every webhook delivery. Rejects requests with an invalid or
-   * missing signature.
+   * Validates the X-Channex-Webhook-Secret header that Channex attaches to
+   * every webhook delivery.
    *
-   * If CHANNEX_WEBHOOK_SECRET is not configured, validation is skipped with
-   * a warning (allows local development without secrets).
+   * Channex sends the secret as a PLAIN header value (not HMAC-signed).
+   * The header is configured in the Channex webhook settings as:
+   *   headers: { "x-channex-webhook-secret": "<secret>" }
+   *
+   * We compare it against CHANNEX_WEBHOOK_SECRET env var using constant-time
+   * comparison to prevent timing attacks.
+   *
+   * If CHANNEX_WEBHOOK_SECRET is not configured, validation is skipped
+   * (allows development without the env var set).
    */
-  private validateSignature(
-    rawBody: Buffer | string,
-    signature: string | undefined,
-  ): void {
-    const secret = process.env.CHANNEX_WEBHOOK_SECRET;
-    if (!secret) {
+  private validateSecret(incomingSecret: string | undefined): void {
+    const expectedSecret = process.env.CHANNEX_WEBHOOK_SECRET;
+    if (!expectedSecret) {
       this.logger.warn(
-        '[Webhook] CHANNEX_WEBHOOK_SECRET not set — skipping signature validation',
+        '[Webhook] CHANNEX_WEBHOOK_SECRET not set — skipping secret validation',
       );
       return;
     }
 
-    if (!signature) {
-      throw new UnauthorizedException('Missing X-Channex-Signature header');
+    if (!incomingSecret) {
+      this.logger.error('[Webhook] Missing x-channex-webhook-secret header');
+      throw new UnauthorizedException('Missing webhook secret header');
     }
 
-    const expected =
-      'sha256=' +
-      crypto
-        .createHmac('sha256', secret)
-        .update(rawBody)
-        .digest('hex');
-
     // Constant-time comparison to prevent timing attacks
-    const sigBuffer = Buffer.from(signature, 'utf8');
-    const expBuffer = Buffer.from(expected, 'utf8');
+    const incomingBuf = Buffer.from(incomingSecret, 'utf8');
+    const expectedBuf = Buffer.from(expectedSecret, 'utf8');
 
-    if (
-      sigBuffer.length !== expBuffer.length ||
-      !crypto.timingSafeEqual(sigBuffer, expBuffer)
-    ) {
-      this.logger.error('[Webhook] Invalid signature — rejecting request');
-      throw new UnauthorizedException('Invalid webhook signature');
+    const valid =
+      incomingBuf.length === expectedBuf.length &&
+      crypto.timingSafeEqual(incomingBuf, expectedBuf);
+
+    if (!valid) {
+      this.logger.error('[Webhook] Invalid x-channex-webhook-secret — rejecting request');
+      throw new UnauthorizedException('Invalid webhook secret');
     }
   }
 
@@ -212,17 +231,16 @@ export class ChannexBookingWebhookController {
   })
   @ApiOkResponse({ description: 'Webhook received and processed' })
   @ApiHeader({
-    name: 'x-channex-signature',
+    name: 'x-channex-webhook-secret',
     required: false,
-    description: 'HMAC-SHA256 signature for payload verification',
+    description: 'Plain-text shared secret configured in Channex webhook settings',
   })
   async handleBookingRevision(
     @Body() payload: ChannexBookingRevisionPayload,
-    @Headers('x-channex-signature') signature?: string,
-    @Headers('x-raw-body') rawBody?: string,
+    @Headers('x-channex-webhook-secret') webhookSecret?: string,
   ) {
-    // ── 1. Validate signature ──────────────────────────────────────────────
-    this.validateSignature(rawBody ?? JSON.stringify(payload), signature);
+    // ── 1. Validate secret ─────────────────────────────────────────────────
+    this.validateSecret(webhookSecret);
 
     const revision = payload?.booking_revision;
     if (!revision?.id) {
@@ -238,51 +256,91 @@ export class ChannexBookingWebhookController {
     const apiKey = process.env.CHANNEX_API_KEY || '';
 
     try {
-      // ── 2. Map Channex UUIDs → internal IDs ─────────────────────────────
+      // ── 2. Fetch full revision by ID from Channex API (cert requirement) ─
+      // Andrew Yudin (certifier) requires GET /booking_revisions/:id before ACK.
+      let fullRevision = revision;
+      if (apiKey && revision.id) {
+        try {
+          const revRes = await this.http.get<any>(
+            `/booking_revisions/${revision.id}`,
+            apiKey,
+          );
+          fullRevision = revRes?.data?.attributes ?? revision;
+          this.logger.log(`[Webhook] Fetched full revision ${revision.id} from Channex API`);
+        } catch (fetchErr: any) {
+          this.logger.warn(`[Webhook] Could not fetch full revision, using webhook payload: ${fetchErr.message}`);
+        }
+      }
+
+      // ── 3. Extract room_type_id from rooms[] array or API response ────────
+      // Real Channex payloads have rooms[] not a flat room_type_id.
+      // The full API response has room_type_id at the top level.
+      const roomTypeId: string | undefined =
+        (fullRevision as any).room_type_id ??
+        fullRevision.rooms?.[0]?.meta?.room_type_code ??
+        undefined;
+
+      // ── 4. Map Channex UUIDs → internal IDs ──────────────────────────────
       const { listingId, userId } = await this.resolveInternalIds(
-        revision.property_id,
-        revision.room_type_id,
+        fullRevision.property_id ?? revision.property_id,
+        roomTypeId ?? '',
       );
 
-      // ── 3. Persist booking to DB ─────────────────────────────────────────
+      // ── 5. Persist booking to DB — use fullRevision for authoritative data
+      // fullRevision is the data fetched from GET /booking_revisions/:id
+      // which has all fields populated. Fall back to webhook payload fields.
+      const fr = fullRevision as any; // cast for flexible field access
+      const arrivalDate: string = fr.arrival_date ?? revision.arrival_date;
+      const departureDate: string = fr.departure_date ?? revision.departure_date;
+      const bookingId: string = fr.booking_id ?? revision.booking_id;
+      const otaName: string = fr.ota_name ?? revision.ota_name ?? 'channex';
+      const otaRef: string | undefined = fr.ota_reservation_code ?? revision.ota_reservation_code;
+      const revStatus: string = fr.status ?? revision.status;
+      const revAmount: string | number = fr.amount ?? revision.amount;
+      const customer = fr.customer ?? revision.customer ?? {};
+      const guests = fr.guests ?? revision.guests ?? {};
+      const revNotes: string | undefined = fr.notes ?? revision.notes;
+
+      if (!arrivalDate || !departureDate) {
+        this.logger.error(`[Webhook] Missing arrival/departure dates for revision ${revision.id}`);
+        await this.sendBookingAck(revision.id, apiKey);
+        return { ack: true, received: true, bookingRevisionId: revision.id, processed: false, error: 'missing_dates' };
+      }
+
       const guestName =
-        [revision.customer?.name, revision.customer?.surname]
-          .filter(Boolean)
-          .join(' ') || 'Guest';
+        [customer.name, customer.surname].filter(Boolean).join(' ') || 'Guest';
 
       const bookingData = {
         userId,
         listingId,
         guestName,
-        guestEmail: revision.customer?.email ?? null,
-        guestPhone: revision.customer?.phone ?? null,
-        checkIn: new Date(revision.arrival_date),
-        checkOut: new Date(revision.departure_date),
+        guestEmail: customer.email ?? null,
+        guestPhone: customer.phone ?? null,
+        checkIn: new Date(arrivalDate),
+        checkOut: new Date(departureDate),
         numGuests:
-          (revision.guests?.adults ?? 1) +
-          (revision.guests?.children ?? 0) +
-          (revision.guests?.infants ?? 0),
-        totalPrice: parseFloat(String(revision.amount)) || 0,
-        status: this.mapChannexStatus(revision.status),
-        bookingSource: revision.ota_name ?? 'channex',
-        externalId: revision.booking_id,
+          (guests.adults ?? 1) +
+          (guests.children ?? 0) +
+          (guests.infants ?? 0),
+        totalPrice: parseFloat(String(revAmount)) || 0,
+        status: this.mapChannexStatus(revStatus),
+        bookingSource: otaName,
+        externalId: bookingId,
         notes: [
-          revision.ota_reservation_code
-            ? `OTA ref: ${revision.ota_reservation_code}`
-            : null,
-          revision.notes ?? null,
+          otaRef ? `OTA ref: ${otaRef}` : null,
+          revNotes ?? null,
         ]
           .filter(Boolean)
           .join(' | ') || null,
       };
 
-      // ── 3a. Determine action type for logging and inventory logic ────────
-      const actionType = this.resolveActionType(revision.status);
-      this.logger.log(`[Webhook] Action: ${actionType} — booking_id=${revision.booking_id}`);
+      // ── 5a. Determine action type for logging and inventory logic ─────────
+      const actionType = this.resolveActionType(revStatus);
+      this.logger.log(`[Webhook] Action: ${actionType} — booking_id=${bookingId}`);
 
-      // ── 3b. Upsert booking — idempotent on re-delivery ───────────────────
+      // ── 5b. Upsert booking — idempotent on re-delivery ────────────────────
       const existing = await this.prisma.booking.findFirst({
-        where: { externalId: revision.booking_id, listingId },
+        where: { externalId: bookingId, listingId },
       });
 
       let bookingDbId: number;
@@ -301,59 +359,46 @@ export class ChannexBookingWebhookController {
         });
         bookingDbId = existing.id;
         this.logger.log(
-          `[Webhook] Action: ${actionType} — updated booking id=${existing.id} (external=${revision.booking_id})`,
+          `[Webhook] Action: ${actionType} — updated booking id=${existing.id} (external=${bookingId})`,
         );
       } else {
         const created = await this.prisma.booking.create({ data: bookingData });
         bookingDbId = created.id;
         this.logger.log(
-          `[Webhook] Action: ${actionType} — created booking id=${created.id} (external=${revision.booking_id})`,
+          `[Webhook] Action: ${actionType} — created booking id=${created.id} (external=${bookingId})`,
         );
       }
 
-      // ── 3c. Update local inventory (Rate table) based on action ──────────
-      // When a booking is created/modified → mark dates as unavailable.
-      // When a booking is cancelled → restore availability.
-      // This keeps the Rate table in sync with real occupancy so the
-      // next ARI push reflects correct inventory.
+      // ── 5c. Update local inventory (Rate table) based on action ──────────
       await this.adjustInventory({
         listingId,
-        arrivalDate: revision.arrival_date,
-        departureDate: revision.departure_date,
+        arrivalDate,
+        departureDate,
         actionType,
       });
 
-      // ── 3d. Log sync activity ─────────────────────────────────────────────
+      // ── 5d. Log sync activity ───────────────────────────────────────────────
       await this.prisma.syncLog.create({
         data: {
           userId,
           syncType: 'channex_booking_webhook',
           entityType: 'booking',
           status: 'synced',
-          message: `booking_revision ${revision.id} processed — Action: ${actionType} (booking ${revision.booking_id})`,
+          message: `booking_revision ${revision.id} processed — Action: ${actionType} (booking ${bookingId})`,
           details: {
             bookingRevisionId: revision.id,
-            bookingId: revision.booking_id,
+            bookingId,
             actionType,
-            status: revision.status,
+            status: revStatus,
             listingId,
             bookingDbId,
           } as unknown as Prisma.JsonObject,
         },
       });
 
-      // ── 4. Fetch revision by ID (required by Channex cert spec) ──────────
-      // Andrew Yudin confirmed: must call GET /booking_revisions/:id
-      // (not the list endpoint) before acknowledging.
-      try {
-        await this.http.get(`/booking_revisions/${revision.id}`, apiKey);
-        this.logger.log(`[Webhook] Fetched revision by ID: ${revision.id}`);
-      } catch (fetchErr: any) {
-        this.logger.warn(`[Webhook] Fetch by ID failed (non-blocking): ${fetchErr.message}`);
-      }
-
-      // ── 5. Send Booking ACK back to Channex (Source 106) ─────────────────
-      // MUST be sent even if booking was already in DB (idempotent).
+      // ── 6. Send Booking ACK back to Channex (Source 106) ─────────────────
+      // Revision was already fetched by ID in step 2 (cert requirement).
+      // Now send ACK.
       if (apiKey) {
         await this.sendBookingAck(revision.id, apiKey);
       } else {
@@ -367,7 +412,7 @@ export class ChannexBookingWebhookController {
         ack: true,
         received: true,
         bookingRevisionId: revision.id,
-        bookingId: revision.booking_id,
+        bookingId,
         listingId,
         actionType,
         status: bookingData.status,
