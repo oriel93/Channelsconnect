@@ -11,7 +11,7 @@ import HeroForm from '../components/marketing/HeroForm';
 import { User } from '@/api/entities';
 
 // ── Change this URL any time you want to update the demo booking link ──────
-const BOOK_A_DEMO_URL = 'https://calendly.com/channelsconnect/demo';
+const BOOK_A_DEMO_URL = 'https://calendly.com/oriel-erorentals/intro-channels-connect';
 // ───────────────────────────────────────────────────────────────────────────
 
 export default function Home() {
