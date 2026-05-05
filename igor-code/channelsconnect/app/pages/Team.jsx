@@ -73,7 +73,7 @@ export default function Team() {
       document.head.appendChild(metaDesc);
     }
     metaDesc.name = 'description';
-    metaDesc.content = "Meet the industry veterans behind Channels Connect, with decades of experience in hospitality technology and revenue optimization.";
+    metaDesc.content = "Meet the team behind Channels Connect and our mission to improve property management distribution.";
     
     return () => {
       // It's generally better to reset or remove only the meta tags you specifically added,

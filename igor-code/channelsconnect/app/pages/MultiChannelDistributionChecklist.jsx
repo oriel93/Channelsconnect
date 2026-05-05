@@ -9,10 +9,10 @@ import { CheckCircle, Download, ArrowRight } from 'lucide-react';
 
 export default function MultiChannelDistributionChecklist() {
   useEffect(() => {
-    document.title = "The Ultimate Checklist for Multi-Channel Distribution Success | Channels Connect";
+    document.title = "Multi-Channel Distribution Checklist | Channels Connect";
     const metaDesc = document.createElement('meta');
     metaDesc.name = 'description';
-    metaDesc.content = 'Download our comprehensive checklist for successful multi-channel distribution and streamline your property management.';
+    metaDesc.content = 'Use this checklist to set up and optimize multi-channel distribution for your properties.';
     document.head.appendChild(metaDesc);
     return () => {
       document.head.removeChild(metaDesc);
