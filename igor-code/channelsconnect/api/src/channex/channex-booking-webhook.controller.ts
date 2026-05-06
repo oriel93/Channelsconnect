@@ -256,50 +256,36 @@ export class ChannexBookingWebhookController {
     const apiKey = process.env.CHANNEX_API_KEY || '';
 
     try {
-      // ── 2. Fetch full revision by ID from Channex API (cert requirement) ─
-      // Andrew Yudin (certifier) requires GET /booking_revisions/:id before ACK.
-      let fullRevision = revision;
-      if (apiKey && revision.id) {
-        try {
-          const revRes = await this.http.get<any>(
-            `/booking_revisions/${revision.id}`,
-            apiKey,
-          );
-          fullRevision = revRes?.data?.attributes ?? revision;
-          this.logger.log(`[Webhook] Fetched full revision ${revision.id} from Channex API`);
-        } catch (fetchErr: any) {
-          this.logger.warn(`[Webhook] Could not fetch full revision, using webhook payload: ${fetchErr.message}`);
-        }
-      }
+      // ── 2. Use webhook payload directly ───────────────────────────────────
+      // Per Andrew Yudin (Channex): the Feed payload is identical to what
+      // GET /booking_revisions/:id would return — no need for an extra API call.
+      // Use the webhook payload as the authoritative source of truth.
 
-      // ── 3. Extract room_type_id from rooms[] array or API response ────────
+      // ── 3. Extract room_type_id from rooms[] array ────────────────────────
       // Real Channex payloads have rooms[] not a flat room_type_id.
-      // The full API response has room_type_id at the top level.
       const roomTypeId: string | undefined =
-        (fullRevision as any).room_type_id ??
-        fullRevision.rooms?.[0]?.meta?.room_type_code ??
+        (revision as any).room_type_id ??
+        revision.rooms?.[0]?.meta?.room_type_code ??
         undefined;
 
       // ── 4. Map Channex UUIDs → internal IDs ──────────────────────────────
       const { listingId, userId } = await this.resolveInternalIds(
-        fullRevision.property_id ?? revision.property_id,
+        revision.property_id,
         roomTypeId ?? '',
       );
 
-      // ── 5. Persist booking to DB — use fullRevision for authoritative data
-      // fullRevision is the data fetched from GET /booking_revisions/:id
-      // which has all fields populated. Fall back to webhook payload fields.
-      const fr = fullRevision as any; // cast for flexible field access
-      const arrivalDate: string = fr.arrival_date ?? revision.arrival_date;
-      const departureDate: string = fr.departure_date ?? revision.departure_date;
-      const bookingId: string = fr.booking_id ?? revision.booking_id;
-      const otaName: string = fr.ota_name ?? revision.ota_name ?? 'channex';
-      const otaRef: string | undefined = fr.ota_reservation_code ?? revision.ota_reservation_code;
-      const revStatus: string = fr.status ?? revision.status;
-      const revAmount: string | number = fr.amount ?? revision.amount;
-      const customer = fr.customer ?? revision.customer ?? {};
-      const guests = fr.guests ?? revision.guests ?? {};
-      const revNotes: string | undefined = fr.notes ?? revision.notes;
+      // ── 5. Persist booking to DB ──────────────────────────────────────────
+      const fr = revision as any; // cast for flexible field access
+      const arrivalDate: string = fr.arrival_date;
+      const departureDate: string = fr.departure_date;
+      const bookingId: string = fr.booking_id;
+      const otaName: string = fr.ota_name ?? 'channex';
+      const otaRef: string | undefined = fr.ota_reservation_code;
+      const revStatus: string = fr.status;
+      const revAmount: string | number = fr.amount;
+      const customer = fr.customer ?? {};
+      const guests = fr.guests ?? {};
+      const revNotes: string | undefined = fr.notes;
 
       if (!arrivalDate || !departureDate) {
         this.logger.error(`[Webhook] Missing arrival/departure dates for revision ${revision.id}`);
@@ -397,8 +383,6 @@ export class ChannexBookingWebhookController {
       });
 
       // ── 6. Send Booking ACK back to Channex (Source 106) ─────────────────
-      // Revision was already fetched by ID in step 2 (cert requirement).
-      // Now send ACK.
       if (apiKey) {
         await this.sendBookingAck(revision.id, apiKey);
       } else {
