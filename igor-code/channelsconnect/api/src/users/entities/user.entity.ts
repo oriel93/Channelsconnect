@@ -41,6 +41,9 @@ export class UserEntity implements User {
   @ApiProperty({ required: false, nullable: true, description: 'Phone number collected at signup' })
   phone: string | null;
 
+  @ApiPropertyOptional({ description: 'Admin-only markup % applied before Channex price push. Default 0 = no markup.' })
+  adminMarkup: any; // Prisma Decimal — serialised as string in JSON
+
   // Snake_case aliases added by manual DB migration; present in Prisma type after db pull
   @ApiPropertyOptional()
   tos_accepted_at: Date | null;
