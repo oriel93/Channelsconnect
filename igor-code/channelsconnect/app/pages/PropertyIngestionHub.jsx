@@ -1231,8 +1231,8 @@ function PropertyIngestionHubContent() {
                 </div>
                 {/* Text */}
                 <p className="font-bold text-slate-900 text-[15px] leading-tight">{tier.label}</p>
-                <p className="text-[11px] text-slate-400 font-medium mt-0.5 line-clamp-1">{tier.sub}</p>
-                <p className="text-[13px] text-slate-500 mt-2 leading-relaxed line-clamp-3">{tier.desc}</p>
+                <p className="text-[11px] text-slate-400 font-medium mt-0.5" style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{tier.sub}</p>
+                <p className="text-[13px] text-slate-500 mt-2 leading-relaxed" style={{overflow:'hidden',display:'-webkit-box',WebkitLineClamp:3,WebkitBoxOrient:'vertical'}}>{tier.desc}</p>
                 {/* CTA arrow */}
                 <div className="flex items-center gap-1 mt-4 text-[11px] font-bold text-purple-600 opacity-0 group-hover:opacity-100 transition-all duration-200 translate-x-0 group-hover:translate-x-1">
                   Get started <ArrowRight className="w-3 h-3" />

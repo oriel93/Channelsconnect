@@ -549,21 +549,21 @@ function OnboardingModal({ open, onClose, onSuccess }) {
 
         <Tabs defaultValue="ical" className="mt-2">
           <TabsList className="grid grid-cols-4 mb-4">
-            <TabsTrigger value="ical" className="text-xs sm:text-sm">
-              <Calendar className="w-4 h-4 mr-1" />
-              iCal
+            <TabsTrigger value="ical" className="text-xs sm:text-sm flex-col sm:flex-row gap-0.5 sm:gap-1 h-auto py-1.5">
+              <Calendar className="w-4 h-4 shrink-0" />
+              <span>iCal</span>
             </TabsTrigger>
-            <TabsTrigger value="excel" className="text-xs sm:text-sm">
-              <FileSpreadsheet className="w-4 h-4 mr-1" />
-              Excel
+            <TabsTrigger value="excel" className="text-xs sm:text-sm flex-col sm:flex-row gap-0.5 sm:gap-1 h-auto py-1.5">
+              <FileSpreadsheet className="w-4 h-4 shrink-0" />
+              <span>Excel</span>
             </TabsTrigger>
-            <TabsTrigger value="manual" className="text-xs sm:text-sm">
-              <MapIcon className="w-4 h-4 mr-1" />
-              Manual
+            <TabsTrigger value="manual" className="text-xs sm:text-sm flex-col sm:flex-row gap-0.5 sm:gap-1 h-auto py-1.5">
+              <MapIcon className="w-4 h-4 shrink-0" />
+              <span>Manual</span>
             </TabsTrigger>
-            <TabsTrigger value="website" className="text-xs sm:text-sm">
-              <ChevronRight className="w-4 h-4 mr-1" />
-              Website
+            <TabsTrigger value="website" className="text-xs sm:text-sm flex-col sm:flex-row gap-0.5 sm:gap-1 h-auto py-1.5">
+              <ChevronRight className="w-4 h-4 shrink-0" />
+              <span>Website</span>
             </TabsTrigger>
           </TabsList>
 
