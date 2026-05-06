@@ -491,7 +491,7 @@ export default function Features() {
               {loading ? 'Loading...' : 'Get More Bookings Now'}
             </Button>
             <Link to={`${createPageUrl('Compare')}#siteminder`}>
-              <Button size="lg" variant="outline" className="text-lg border-white text-white hover:bg-white hover:text-slate-900">
+              <Button size="lg" className="text-lg bg-blue-600 border-2 border-blue-400 text-white hover:bg-blue-500">
                 Compare vs SiteMinder
                 <ArrowRight className="w-5 h-5 ml-2" />
               </Button>

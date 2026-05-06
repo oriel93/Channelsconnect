@@ -1,7 +1,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowRight, Mail } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { createPageUrl } from '@/utils';
 
 export default function HeroForm() {
@@ -14,20 +14,18 @@ export default function HeroForm() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 w-full max-w-md mx-auto">
-      <div className="relative flex-1">
-        <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+      <div className="flex-1">
         <Input
           type="email"
           placeholder="Enter your email to get started"
-          className="pl-10 py-3 text-base border-white/20 bg-white/10 text-white placeholder:text-white/70 focus:bg-white focus:text-gray-900 focus:placeholder:text-gray-500"
-          // Email input is now just for show, but can be used for analytics later
+          className="w-full py-3 px-4 text-base rounded-lg bg-white text-gray-900 placeholder:text-gray-400 border-0 shadow-sm focus:ring-2 focus:ring-blue-300"
           required
         />
       </div>
       <Button 
         type="submit"
         size="lg" 
-        className="bg-white text-blue-600 hover:bg-gray-100 font-semibold px-6 py-3 whitespace-nowrap"
+        className="bg-white text-blue-600 hover:bg-gray-100 font-semibold px-6 py-3 whitespace-nowrap shadow-sm"
       >
         Get Started Free
         <ArrowRight className="ml-2 w-4 h-4" />
