@@ -1231,8 +1231,10 @@ function PropertyIngestionHubContent() {
                     </span>
                   </div>
                   {/* Text */}
-                  <p className="font-bold text-slate-900 text-[15px] leading-tight">{tier.label}</p>
-                  <p className="text-[11px] text-slate-400 font-medium mt-0.5">{tier.sub}</p>
+                  <div className="flex flex-col">
+                    <p className="font-bold text-slate-900 text-[15px] leading-snug">{tier.label}</p>
+                    <p className="text-[11px] text-slate-400 font-medium mt-1 leading-normal">{tier.sub}</p>
+                  </div>
                   <p className="text-[13px] text-slate-500 mt-2 leading-relaxed flex-1">{tier.desc}</p>
                   {/* CTA arrow */}
                   <div className="flex items-center gap-1 mt-4 text-[11px] font-bold text-purple-600 opacity-0 group-hover:opacity-100 transition-all duration-200 translate-x-0 group-hover:translate-x-1">
@@ -1267,8 +1269,8 @@ function PropertyIngestionHubContent() {
                     <Icon className="w-4 h-4 text-white" />
                   </div>
                   <div>
-                    <CardTitle className="text-base text-slate-900">{tier.label}</CardTitle>
-                    <CardDescription className="text-xs mt-0.5 text-slate-500">{tier.sub}</CardDescription>
+                    <CardTitle className="text-base text-slate-900 leading-snug">{tier.label}</CardTitle>
+                    <CardDescription className="text-xs mt-1 text-slate-500 leading-normal">{tier.sub}</CardDescription>
                   </div>
                 </div>
               </CardHeader>
