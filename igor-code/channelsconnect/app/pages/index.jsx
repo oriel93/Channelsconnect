@@ -335,9 +335,7 @@ function PagesContent() {
                 <Route path="/admin" element={<ProtectedRoute requireAdmin={true}><AdminDashboard /></ProtectedRoute>} />
                 <Route path="/PropertyList" element={<ProtectedRoute><PropertyList /></ProtectedRoute>} />
                 <Route path="/property-list" element={<ProtectedRoute><PropertyList /></ProtectedRoute>} />
-                {/* Legacy redirect so any old /tape-chart links still work */}
-                <Route path="/TapeChart" element={<ProtectedRoute><PropertyList /></ProtectedRoute>} />
-                <Route path="/tape-chart" element={<ProtectedRoute><PropertyList /></ProtectedRoute>} />
+
 
                 {/* Channex PMS Certification — hidden route, no auth required */}
                 <Route path="/cert-test" element={<CertDashboard />} />
