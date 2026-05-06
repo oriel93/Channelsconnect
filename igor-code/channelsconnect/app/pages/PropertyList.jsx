@@ -1,216 +1,199 @@
 /**
- * PropertyList.jsx — Property Management Hub
+ * PropertyList.jsx — Virtualized Multi-Calendar (Inventory Management)
  *
- * Three integrated panels per property:
- *   1. Property card (summary, status, quick actions)
- *   2. Tape chart row (90-day scrollable, bookings + rates + blocks)
- *   3. Side drawer (iCal import/export, rate override, PriceLabs markup)
+ * Architecture:
+ *   Module A: 2D virtualization via @tanstack/react-virtual
+ *             - Y axis: property rows (useVirtualizer, overscan=3)
+ *             - X axis: date columns (useVirtualizer, overscan=7)
+ *             - Only visible cells are in the DOM
  *
- * Data flow:
- *   - Listings:  GET /listings          → property rows
- *   - Bookings:  GET /bookings?listingId → booking pills
- *   - Rates:     GET /calendar/rates     → per-day rate cells
- *   - Blocked:   GET /calendar/blocked-dates → grey cells
- *   - iCal:      GET /ical/connections   → per-property iCal feeds
+ *   Module B: Neutral visual blocks
+ *             - All bookings → identical charcoal pill (bg-slate-700)
+ *             - No channel color-coding
+ *             - Pill shows: guest name + "Xn" stay duration
  *
- * Write flow (RED ZONE safe — no direct Channex calls):
- *   - Rate update:  POST /calendar/rates/bulk  → applyChange queue
- *   - Block dates:  POST /calendar/block/bulk
- *   - iCal add:     POST /ical/connections
- *   - iCal sync:    POST /ical/sync/:id
- *   - iCal export:  GET  /listings/:id/calendar.ics
+ *   Module C: Drag-to-select → Block Room | Override Price
+ *             - mousedown + mousemove + mouseup on date cells
+ *             - Modal with two options; save calls api.calendar.updateRate
+ *               or api.calendar.blockDate → goes through applyChange queue
+ *
+ *   Module D: O(1) hash maps built once on data load
+ *             - rateMap:    `${listingId}_${date}` → Rate
+ *             - blockMap:   `${listingId}_${date}` → true
+ *             - bookingMap: `${listingId}_${date}` → { guestName, nights, bookingId, isStart }
+ *
+ * Data source: GET /calendar/tape  (single round-trip for all listings)
  */
 
 import React, {
-  useState, useEffect, useCallback, useRef, useMemo,
+  useState, useEffect, useCallback, useRef, useMemo, useReducer,
 } from 'react';
-import { format, addDays, parseISO, isToday, isWeekend, startOfDay, differenceInDays } from 'date-fns';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import {
+  format, addDays, parseISO, isToday, isWeekend,
+  startOfDay, differenceInDays, isSameMonth,
+} from 'date-fns';
 import { toast } from 'sonner';
-import { useAuth } from '@/lib/authContext';
 import { api } from '@/lib/apiClient';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import {
-  Sheet, SheetContent, SheetHeader, SheetTitle,
-} from '@/components/ui/sheet';
+import { SearchInput } from '@/components/ui/search-input';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle,
+} from '@/components/ui/sheet';
 import {
   Tabs, TabsList, TabsTrigger, TabsContent,
 } from '@/components/ui/tabs';
 import AppLayout from '@/components/app/AppLayout';
 import {
-  ChevronLeft, ChevronRight, RefreshCw, Search, Settings2,
-  Calendar, Link2, Download, Upload, Loader2, X, Check,
-  DollarSign, Lock, Unlock, Copy, ExternalLink, Percent,
-  Plus, Trash2, AlertCircle,
+  ChevronLeft, ChevronRight, RefreshCw, Loader2,
+  DollarSign, Lock, Unlock, Settings2, Check, AlertCircle,
+  Calendar, Copy, ExternalLink, Plus, Trash2, Percent,
 } from 'lucide-react';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Layout constants ─────────────────────────────────────────────────────────
 
-const DAYS_VISIBLE  = 365;
-const COL_W         = 34;   // px per day cell
-const PROP_COL_W    = 220;  // px for sticky property name column
+const PROP_W     = 200;   // sticky left column width (px)
+const COL_W      = 36;    // date column width (px)
+const ROW_H      = 52;    // property row height (px)
+const HEADER_H   = 44;    // date header height (px)
+const DAYS_TOTAL = 365;   // 12-month window
 
-// ─── Date helpers ─────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function dateKey(d) { return format(d, 'yyyy-MM-dd'); }
+const dk = (d) => format(d, 'yyyy-MM-dd');
 
-function buildDateRange(start, count) {
-  return Array.from({ length: count }, (_, i) => addDays(start, i));
+function buildDates(startOffset) {
+  const base = addDays(startOfDay(new Date()), startOffset);
+  return Array.from({ length: DAYS_TOTAL }, (_, i) => addDays(base, i));
 }
 
-// All bookings render identically — availability is what matters, not channel source
-function bookingBg() { return 'bg-slate-700'; }
+// ─── Module D: Build O(1) hash maps ──────────────────────────────────────────
 
-// ─── Build lookup maps from API data ─────────────────────────────────────────
-
-function buildMaps(rates = [], blocked = [], bookings = []) {
-  const rateMap    = {};   // `${listingId}_${date}` → { price, minStay, available }
-  const blockMap   = {};   // `${listingId}_${date}` → true
-  const bookingMap = {};   // listingId → [ ...booking segments ]
-
+function buildMaps(rates = [], blockedDates = [], bookings = []) {
+  // rateMap[`${lid}_${date}`] → { price, minStay, available }
+  const rateMap = {};
   for (const r of rates) {
-    rateMap[`${r.listingId}_${r.date?.slice(0, 10)}`] = r;
+    const d = typeof r.date === 'string' ? r.date.slice(0, 10) : dk(new Date(r.date));
+    rateMap[`${r.listingId}_${d}`] = r;
   }
-  for (const b of blocked) {
-    const dk = b.date?.slice(0, 10) || dateKey(parseISO(b.date));
-    blockMap[`${b.listingId}_${dk}`] = true;
+
+  // blockMap[`${lid}_${date}`] → true
+  const blockMap = {};
+  for (const b of blockedDates) {
+    const d = typeof b.date === 'string' ? b.date.slice(0, 10) : dk(new Date(b.date));
+    blockMap[`${b.listingId}_${d}`] = true;
   }
+
+  // bookingMap[`${lid}_${date}`] → { guestName, nights, bookingId, isStart }
+  // We mark every date in the booking span so rendering is O(1) per cell
+  const bookingMap = {};
+  // Also keep an array of booking objects per listing for pill rendering
+  const bookingsByListing = {};
+
   for (const bk of bookings) {
-    const lid = bk.listingId;
-    if (!bookingMap[lid]) bookingMap[lid] = [];
-    bookingMap[lid].push(bk);
+    const cin  = startOfDay(parseISO(bk.checkIn));
+    const cout = startOfDay(parseISO(bk.checkOut));
+    const nights = differenceInDays(cout, cin);
+    const lid  = bk.listingId;
+
+    if (!bookingsByListing[lid]) bookingsByListing[lid] = [];
+    bookingsByListing[lid].push({ ...bk, nights, cinDate: cin, coutDate: cout });
+
+    // Mark check-in day as isStart=true; subsequent days as continuation
+    let cur = cin;
+    let dayIndex = 0;
+    while (cur < cout) {
+      const key = `${lid}_${dk(cur)}`;
+      bookingMap[key] = {
+        guestName: bk.guestName,
+        nights,
+        bookingId: bk.id,
+        isStart:   dayIndex === 0,
+        booking:   bk,
+      };
+      cur = addDays(cur, 1);
+      dayIndex++;
+    }
   }
 
-  return { rateMap, blockMap, bookingMap };
+  return { rateMap, blockMap, bookingMap, bookingsByListing };
 }
 
-// ─── Inline rate editor cell ──────────────────────────────────────────────────
+// ─── Drag-select state ────────────────────────────────────────────────────────
 
-function RateCell({ listingId, date, rateMap, blockMap, bookedDates, onEdit }) {
-  const dk      = dateKey(date);
-  const key     = `${listingId}_${dk}`;
-  const r       = rateMap[key];
-  const blocked = blockMap[key];
-  const booked  = bookedDates?.[key];
-  const today   = isToday(date);
-  const weekend = isWeekend(date);
+const initialDrag = { dragging: false, listingId: null, startDate: null, endDate: null };
 
-  // Availability-first colour logic
-  let bg        = weekend ? 'bg-slate-50' : 'bg-white';
-  let textColor = 'text-slate-400';
-  if (today)   { bg = 'bg-blue-50'; }
-  if (blocked) { bg = 'bg-slate-300'; textColor = 'text-slate-500'; }
-  // booked cells are handled entirely by the pill overlay — cell stays white
-
-  return (
-    <div
-      className={`relative flex flex-col items-center justify-center border-r border-b border-slate-100 cursor-pointer group transition-colors hover:bg-blue-50 ${bg} ${today ? 'ring-inset ring-1 ring-blue-300' : ''}`}
-      style={{ width: COL_W, minWidth: COL_W, height: 52 }}
-      onClick={() => !booked && onEdit(listingId, date, r)}
-      title={blocked ? 'Blocked — click to unblock' : booked ? 'Booked' : r?.price ? `$${r.price} — click to edit` : 'Available — click to set rate'}
-    >
-      {blocked && <Lock className="w-3 h-3 text-slate-500" />}
-      {!blocked && !booked && r?.price && (
-        <span className={`text-[9px] font-semibold leading-none ${textColor} group-hover:text-blue-600`}>
-          ${Number(r.price).toFixed(0)}
-        </span>
-      )}
-      {!blocked && !booked && !r?.price && (
-        <span className="text-[8px] text-slate-200 group-hover:text-blue-300">•</span>
-      )}
-      {r?.minStay && r.minStay > 1 && !blocked && !booked && (
-        <span className="text-[7px] text-slate-300 leading-none mt-0.5">{r.minStay}n</span>
-      )}
-    </div>
-  );
+function dragReducer(state, action) {
+  switch (action.type) {
+    case 'START':  return { dragging: true, listingId: action.lid, startDate: action.date, endDate: action.date };
+    case 'MOVE':   return state.dragging && action.lid === state.listingId
+                     ? { ...state, endDate: action.date }
+                     : state;
+    case 'END':    return { ...state, dragging: false };
+    case 'RESET':  return initialDrag;
+    default:       return state;
+  }
 }
 
-// ─── Booking pills ────────────────────────────────────────────────────────────
+// ─── Block/Rate modal ─────────────────────────────────────────────────────────
 
-function BookingPills({ listingId, dates, bookingMap, onClickBooking }) {
-  const bookings  = bookingMap[listingId] || [];
-  const startDate = dates[0];
-  const endDate   = dates[dates.length - 1];
-
-  return (
-    <div className="absolute inset-0 pointer-events-none" style={{ overflow: 'hidden' }}>
-      {bookings.map((bk) => {
-        const cin  = startOfDay(parseISO(bk.checkIn));
-        const cout = startOfDay(parseISO(bk.checkOut));
-        if (cout <= startDate || cin > endDate) return null;
-
-        const offsetDays = Math.max(0, differenceInDays(cin, startDate));
-        const spanDays   = Math.min(
-          differenceInDays(cout, cin),
-          differenceInDays(endDate, cin) + 1,
-          DAYS_VISIBLE - offsetDays,
-        );
-        if (spanDays <= 0) return null;
-
-        const left  = offsetDays * COL_W + 2;
-        const width = spanDays  * COL_W - 4;
-
-        return (
-          <div
-            key={bk.id}
-            className="absolute top-1 h-[34px] rounded-md flex items-center px-2 pointer-events-auto cursor-pointer shadow-sm bg-slate-700 hover:bg-slate-800 transition-colors"
-            style={{ left, width, zIndex: 10 }}
-            onClick={() => onClickBooking(bk)}
-            title={`${bk.guestName} · ${bk.checkIn} → ${bk.checkOut}`}
-          >
-            <span className="text-white text-[10px] font-medium truncate">{bk.guestName}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─── Rate edit dialog ─────────────────────────────────────────────────────────
-
-function RateEditDialog({ open, onClose, onSave, listingId, date, existing }) {
-  const [rate, setRate]       = useState('');
+function ActionModal({ open, onClose, onSave, listing, startDate, endDate }) {
+  const [tab,     setTab]     = useState('block');
+  const [rate,    setRate]    = useState('');
   const [minStay, setMinStay] = useState('');
-  const [blocked, setBlocked] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (open) {
-      setRate(existing?.price ? String(Number(existing.price)) : '');
-      setMinStay(existing?.minStay ? String(existing.minStay) : '');
-      setBlocked(false);
-    }
-  }, [open, existing]);
+  // Sort dates so start is always before end
+  const [dateA, dateB] = useMemo(() => {
+    if (!startDate || !endDate) return [null, null];
+    return startDate <= endDate ? [startDate, endDate] : [endDate, startDate];
+  }, [startDate, endDate]);
+
+  const nights = useMemo(() => {
+    if (!dateA || !dateB) return 0;
+    return differenceInDays(addDays(dateB, 1), dateA);
+  }, [dateA, dateB]);
 
   const save = async () => {
+    if (!listing || !dateA || !dateB) return;
     setLoading(true);
     try {
-      if (blocked) {
-        await api.calendar.blockDate({ listingId, date: dateKey(date) });
-        toast.success('Date blocked');
+      if (tab === 'block') {
+        // Block each date in range individually (existing applyChange queue)
+        const promises = [];
+        let cur = dateA;
+        while (cur <= dateB) {
+          promises.push(api.calendar.blockDate({ listingId: listing.id, date: dk(cur) }));
+          cur = addDays(cur, 1);
+        }
+        await Promise.all(promises);
+        toast.success(`Blocked ${nights} night${nights !== 1 ? 's' : ''}`);
       } else {
+        // Rate override — bulk update via applyChange queue
         if (!rate || isNaN(Number(rate)) || Number(rate) <= 0) {
-          toast.error('Enter a valid rate');
+          toast.error('Enter a valid nightly rate');
+          setLoading(false);
           return;
         }
-        await api.calendar.updateRate({
-          listingId,
-          date:    dateKey(date),
-          price:   Number(rate),
-          minStay: minStay ? Number(minStay) : undefined,
+        await api.calendar.bulkUpdateRates({
+          listingId: listing.id,
+          startDate: dk(dateA),
+          endDate:   dk(dateB),
+          price:     Number(rate),
+          ...(minStay ? { minStay: Number(minStay) } : {}),
         });
-        toast.success('Rate updated');
+        toast.success(`Rate $${rate} set for ${nights} night${nights !== 1 ? 's' : ''}`);
       }
       onSave();
       onClose();
     } catch (e) {
-      toast.error(e?.response?.data?.message || 'Update failed');
+      toast.error(e?.response?.data?.message || 'Save failed');
     } finally {
       setLoading(false);
     }
@@ -222,47 +205,68 @@ function RateEditDialog({ open, onClose, onSave, listingId, date, existing }) {
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-base">
+          <DialogTitle className="text-base flex items-center gap-2">
             <Calendar className="w-4 h-4 text-blue-600" />
-            {date ? format(date, 'EEEE, MMM d yyyy') : ''}
+            {listing?.title}
           </DialogTitle>
+          {dateA && dateB && (
+            <p className="text-xs text-slate-500 mt-1">
+              {format(dateA, 'MMM d')} → {format(dateB, 'MMM d yyyy')}
+              {' '}· {nights} night{nights !== 1 ? 's' : ''}
+            </p>
+          )}
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
-          <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+        <div className="space-y-4 py-1">
+          {/* Tab toggle */}
+          <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-lg">
             <button
-              onClick={() => setBlocked(false)}
-              className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${!blocked ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+              onClick={() => setTab('block')}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-sm font-medium transition-all ${tab === 'block' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
             >
-              Set Rate
+              <Lock className="w-3.5 h-3.5" />Block Room
             </button>
             <button
-              onClick={() => setBlocked(true)}
-              className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${blocked ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+              onClick={() => setTab('rate')}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-sm font-medium transition-all ${tab === 'rate' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
             >
-              Block Date
+              <DollarSign className="w-3.5 h-3.5" />Override Price
             </button>
           </div>
 
-          {!blocked && (
-            <>
+          {tab === 'block' && (
+            <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <Lock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <div>
-                <Label className="text-xs text-slate-600 mb-1 block">Nightly Rate</Label>
+                <p className="text-sm font-medium text-amber-800">Block {nights} night{nights !== 1 ? 's' : ''}</p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  These dates will be closed to new bookings across all connected channels.
+                  Your Channex queue handles the sync automatically.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {tab === 'rate' && (
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs text-slate-600 mb-1.5 block">Nightly Rate</Label>
                 <div className="relative">
                   <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                   <Input
                     type="number"
                     min="0"
+                    step="1"
                     value={rate}
                     onChange={(e) => setRate(e.target.value)}
                     className="pl-10"
-                    placeholder="0.00"
+                    placeholder="0"
                     autoFocus
                   />
                 </div>
               </div>
               <div>
-                <Label className="text-xs text-slate-600 mb-1 block">Min Stay (nights)</Label>
+                <Label className="text-xs text-slate-600 mb-1.5 block">Min Stay (nights)</Label>
                 <Input
                   type="number"
                   min="1"
@@ -271,22 +275,22 @@ function RateEditDialog({ open, onClose, onSave, listingId, date, existing }) {
                   placeholder="1"
                 />
               </div>
-            </>
-          )}
-
-          {blocked && (
-            <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
-              <Lock className="w-4 h-4 text-amber-600 shrink-0" />
-              <p className="text-sm text-amber-800">This date will be closed to new bookings.</p>
+              <p className="text-xs text-slate-400">
+                Rate change queued through Channex rate-limiter — syncs to all connected channels automatically.
+              </p>
             </div>
           )}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
-          <Button onClick={save} disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white">
-            {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-            {blocked ? 'Block' : 'Save Rate'}
+          <Button
+            onClick={save}
+            disabled={loading}
+            className={tab === 'block' ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}
+          >
+            {loading && <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />}
+            {tab === 'block' ? 'Block Dates' : 'Save Rate'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -298,17 +302,17 @@ function RateEditDialog({ open, onClose, onSave, listingId, date, existing }) {
 
 function BookingDrawer({ booking, onClose }) {
   if (!booking) return null;
-  const nights = differenceInDays(parseISO(booking.checkOut), parseISO(booking.checkIn));
+  const nights = differenceInDays(
+    startOfDay(parseISO(booking.checkOut)),
+    startOfDay(parseISO(booking.checkIn)),
+  );
   return (
     <Sheet open={!!booking} onOpenChange={(v) => !v && onClose()}>
       <SheetContent side="right" className="w-80">
         <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
-            <div className={`w-3 h-3 rounded-full ${bookingBg(booking.bookingSource)}`} />
-            Booking Details
-          </SheetTitle>
+          <SheetTitle>Booking Details</SheetTitle>
         </SheetHeader>
-        <div className="mt-6 space-y-4">
+        <div className="mt-5 space-y-4">
           <div className="p-4 bg-slate-50 rounded-xl space-y-3">
             <div>
               <p className="text-xs text-slate-500">Guest</p>
@@ -317,13 +321,7 @@ function BookingDrawer({ booking, onClose }) {
             {booking.guestEmail && (
               <div>
                 <p className="text-xs text-slate-500">Email</p>
-                <p className="text-sm text-slate-700">{booking.guestEmail}</p>
-              </div>
-            )}
-            {booking.guestPhone && (
-              <div>
-                <p className="text-xs text-slate-500">Phone</p>
-                <p className="text-sm text-slate-700">{booking.guestPhone}</p>
+                <p className="text-sm text-slate-700 break-all">{booking.guestEmail}</p>
               </div>
             )}
           </div>
@@ -337,24 +335,18 @@ function BookingDrawer({ booking, onClose }) {
               <p className="font-semibold text-sm">{format(parseISO(booking.checkOut), 'MMM d, yyyy')}</p>
             </div>
           </div>
-          <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-            <span className="text-sm text-slate-600">{nights} night{nights !== 1 ? 's' : ''} · {booking.numGuests} guest{booking.numGuests !== 1 ? 's' : ''}</span>
-            <span className="font-bold text-slate-900">${Number(booking.totalPrice || 0).toFixed(2)}</span>
+          <div className="flex justify-between p-3 bg-slate-50 rounded-lg">
+            <span className="text-sm text-slate-600">{nights} nights · {booking.numGuests || 1} guest{(booking.numGuests || 1) !== 1 ? 's' : ''}</span>
+            <span className="font-bold">${Number(booking.totalPrice || 0).toFixed(2)}</span>
           </div>
           {booking.bookingSource && (
-            <div className="flex items-center gap-2">
-              <div className={`w-2.5 h-2.5 rounded-full ${bookingBg(booking.bookingSource)}`} />
-              <span className="text-sm text-slate-600 capitalize">{booking.bookingSource}</span>
-            </div>
-          )}
-          {booking.externalId && (
-            <div>
-              <p className="text-xs text-slate-500">Ref #</p>
-              <p className="text-sm font-mono text-slate-700">{booking.externalId}</p>
+            <div className="p-3 bg-slate-50 rounded-lg">
+              <p className="text-xs text-slate-500">Source</p>
+              <p className="text-sm font-medium capitalize">{booking.bookingSource}</p>
             </div>
           )}
           {booking.notes && (
-            <div className="p-3 bg-amber-50 rounded-lg border border-amber-100">
+            <div className="p-3 bg-amber-50 border border-amber-100 rounded-lg">
               <p className="text-xs text-amber-700 font-medium mb-1">Notes</p>
               <p className="text-sm text-amber-900">{booking.notes}</p>
             </div>
@@ -368,92 +360,51 @@ function BookingDrawer({ booking, onClose }) {
 // ─── Property settings drawer (iCal + pricing) ───────────────────────────────
 
 function PropertySettingsDrawer({ listing, onClose, onRefresh }) {
-  const [icalConns, setIcalConns]       = useState([]);
-  const [loadingIcal, setLoadingIcal]   = useState(true);
-  const [newFeedUrl, setNewFeedUrl]     = useState('');
-  const [newFeedName, setNewFeedName]   = useState('');
-  const [addingFeed, setAddingFeed]     = useState(false);
-  const [syncingId, setSyncingId]       = useState(null);
-  const [markup, setMarkup]             = useState('');
+  const [icalConns,    setIcalConns]    = useState([]);
+  const [loadingIcal,  setLoadingIcal]  = useState(true);
+  const [newFeedUrl,   setNewFeedUrl]   = useState('');
+  const [newFeedName,  setNewFeedName]  = useState('');
+  const [addingFeed,   setAddingFeed]   = useState(false);
+  const [syncingId,    setSyncingId]    = useState(null);
+  const [markup,       setMarkup]       = useState('');
   const [markupSaving, setMarkupSaving] = useState(false);
-  const [exportUrl, setExportUrl]       = useState('');
-
-  const lid = listing?.id;
+  const exportUrl = useMemo(() => {
+    const base = import.meta.env.VITE_API_URL || '';
+    return listing ? `${base}/listings/${listing.id}/calendar.ics` : '';
+  }, [listing]);
 
   useEffect(() => {
-    if (!lid) return;
+    if (!listing) return;
     setLoadingIcal(true);
-    api.ical.getConnections(lid)
-      .then((res) => setIcalConns(res.data || []))
+    api.ical.getConnections(listing.id)
+      .then((r) => setIcalConns(r.data || []))
       .catch(() => setIcalConns([]))
       .finally(() => setLoadingIcal(false));
-
-    // Build export URL
-    const apiBase = import.meta.env.VITE_API_URL || '';
-    setExportUrl(`${apiBase}/listings/${lid}/calendar.ics`);
-  }, [lid]);
+  }, [listing]);
 
   const addFeed = async () => {
     if (!newFeedUrl.trim()) return;
     setAddingFeed(true);
     try {
-      await api.ical.create({
-        listingId: lid,
-        icalUrl:   newFeedUrl.trim(),
-        name:      newFeedName.trim() || 'iCal Feed',
-        direction: 'import',
-      });
-      toast.success('iCal feed added');
-      setNewFeedUrl('');
-      setNewFeedName('');
-      const res = await api.ical.getConnections(lid);
-      setIcalConns(res.data || []);
-    } catch (e) {
-      toast.error(e?.response?.data?.message || 'Failed to add feed');
-    } finally {
-      setAddingFeed(false);
-    }
+      await api.ical.create({ listingId: listing.id, icalUrl: newFeedUrl.trim(), name: newFeedName.trim() || 'iCal Feed', direction: 'import' });
+      toast.success('Feed added');
+      setNewFeedUrl(''); setNewFeedName('');
+      const r = await api.ical.getConnections(listing.id);
+      setIcalConns(r.data || []);
+    } catch (e) { toast.error('Failed to add feed'); }
+    finally { setAddingFeed(false); }
   };
 
-  const syncFeed = async (connId) => {
-    setSyncingId(connId);
-    try {
-      await api.ical.sync(connId);
-      toast.success('Synced — bookings imported');
-      onRefresh();
-    } catch (e) {
-      toast.error('Sync failed');
-    } finally {
-      setSyncingId(null);
-    }
+  const syncFeed = async (id) => {
+    setSyncingId(id);
+    try { await api.ical.sync(id); toast.success('Synced'); onRefresh(); }
+    catch { toast.error('Sync failed'); }
+    finally { setSyncingId(null); }
   };
 
-  const deleteFeed = async (connId) => {
-    try {
-      await api.ical.delete(connId);
-      setIcalConns((c) => c.filter((x) => x.id !== connId));
-      toast.success('Feed removed');
-    } catch {
-      toast.error('Delete failed');
-    }
-  };
-
-  const copyExport = () => {
-    navigator.clipboard.writeText(exportUrl).then(() => toast.success('Copied!'));
-  };
-
-  const saveMarkup = async () => {
-    const val = parseFloat(markup);
-    if (isNaN(val)) { toast.error('Enter a valid % markup'); return; }
-    setMarkupSaving(true);
-    try {
-      await api.listings.update(lid, { priceLabsMarkup: val });
-      toast.success('Markup saved');
-    } catch {
-      toast.error('Save failed');
-    } finally {
-      setMarkupSaving(false);
-    }
+  const deleteFeed = async (id) => {
+    try { await api.ical.delete(id); setIcalConns((c) => c.filter((x) => x.id !== id)); toast.success('Removed'); }
+    catch { toast.error('Delete failed'); }
   };
 
   if (!listing) return null;
@@ -462,176 +413,72 @@ function PropertySettingsDrawer({ listing, onClose, onRefresh }) {
     <Sheet open={!!listing} onOpenChange={(v) => !v && onClose()}>
       <SheetContent side="right" className="w-96 overflow-y-auto">
         <SheetHeader>
-          <SheetTitle className="text-base">{listing.title}</SheetTitle>
+          <SheetTitle className="text-sm">{listing.title}</SheetTitle>
         </SheetHeader>
-
-        <Tabs defaultValue="ical" className="mt-6">
+        <Tabs defaultValue="ical" className="mt-5">
           <TabsList className="grid grid-cols-2 w-full">
-            <TabsTrigger value="ical">
-              <Calendar className="w-3.5 h-3.5 mr-1.5" />iCal
-            </TabsTrigger>
-            <TabsTrigger value="pricing">
-              <DollarSign className="w-3.5 h-3.5 mr-1.5" />Pricing
-            </TabsTrigger>
+            <TabsTrigger value="ical"><Calendar className="w-3 h-3 mr-1" />iCal</TabsTrigger>
+            <TabsTrigger value="pricing"><DollarSign className="w-3 h-3 mr-1" />Pricing</TabsTrigger>
           </TabsList>
 
-          {/* ─── iCal tab ─────────────────────────────────────────── */}
           <TabsContent value="ical" className="space-y-5 mt-4">
-
-            {/* Export */}
             <div>
-              <p className="text-xs font-semibold text-slate-700 mb-2">Export Your Calendar</p>
-              <p className="text-xs text-slate-500 mb-2">
-                Share this URL with Airbnb, Booking.com, or any iCal-compatible platform to block
-                your confirmed bookings automatically.
-              </p>
+              <p className="text-xs font-semibold text-slate-700 mb-1">Export Calendar</p>
               <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                 <code className="text-[10px] text-slate-600 truncate flex-1">{exportUrl}</code>
-                <button onClick={copyExport} className="text-blue-600 hover:text-blue-800 shrink-0">
+                <button onClick={() => { navigator.clipboard.writeText(exportUrl); toast.success('Copied'); }} className="text-blue-600 hover:text-blue-800">
                   <Copy className="w-3.5 h-3.5" />
                 </button>
-                <a href={exportUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-800 shrink-0">
+                <a href={exportUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-800">
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               </div>
             </div>
-
-            {/* Import feeds */}
             <div>
               <p className="text-xs font-semibold text-slate-700 mb-2">Import Feeds</p>
-              <p className="text-xs text-slate-500 mb-3">
-                Add iCal URLs from other platforms (Airbnb, VRBO, etc.) to import their bookings as
-                blocked dates on your calendar.
-              </p>
-
               {loadingIcal ? (
-                <div className="flex items-center gap-2 text-slate-400 text-sm py-2">
-                  <Loader2 className="w-4 h-4 animate-spin" />Loading feeds…
-                </div>
+                <div className="flex items-center gap-2 text-slate-400 text-sm"><Loader2 className="w-4 h-4 animate-spin" />Loading…</div>
               ) : icalConns.length === 0 ? (
-                <div className="text-center py-4 text-slate-400 text-xs border border-dashed border-slate-200 rounded-lg">
-                  No iCal feeds yet
-                </div>
+                <div className="text-center py-4 text-slate-400 text-xs border border-dashed rounded-lg">No feeds yet</div>
               ) : (
                 <div className="space-y-2">
-                  {icalConns.map((conn) => (
-                    <div key={conn.id} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100">
+                  {icalConns.map((c) => (
+                    <div key={c.id} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100">
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-slate-800 truncate">{conn.name || 'iCal Feed'}</p>
-                        <p className="text-[10px] text-slate-400 truncate">{conn.icalUrl}</p>
+                        <p className="text-xs font-medium truncate">{c.name}</p>
+                        <p className="text-[10px] text-slate-400 truncate">{c.icalUrl}</p>
                       </div>
-                      <button
-                        onClick={() => syncFeed(conn.id)}
-                        disabled={syncingId === conn.id}
-                        className="text-blue-600 hover:text-blue-800 shrink-0"
-                        title="Sync now"
-                      >
-                        {syncingId === conn.id
-                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          : <RefreshCw className="w-3.5 h-3.5" />}
+                      <button onClick={() => syncFeed(c.id)} disabled={syncingId === c.id} className="text-blue-600 hover:text-blue-800">
+                        {syncingId === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                       </button>
-                      <button
-                        onClick={() => deleteFeed(conn.id)}
-                        className="text-red-400 hover:text-red-600 shrink-0"
-                        title="Remove"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <button onClick={() => deleteFeed(c.id)} className="text-red-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   ))}
                 </div>
               )}
-
-              {/* Add new feed */}
               <div className="mt-3 space-y-2">
-                <Input
-                  placeholder="Feed name (e.g. Airbnb)"
-                  value={newFeedName}
-                  onChange={(e) => setNewFeedName(e.target.value)}
-                  className="text-sm"
-                />
-                <Input
-                  placeholder="https://www.airbnb.com/calendar/ical/..."
-                  value={newFeedUrl}
-                  onChange={(e) => setNewFeedUrl(e.target.value)}
-                  className="text-sm font-mono text-xs"
-                />
-                <Button
-                  onClick={addFeed}
-                  disabled={addingFeed || !newFeedUrl.trim()}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                  size="sm"
-                >
-                  {addingFeed ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Plus className="w-3.5 h-3.5 mr-1.5" />}
-                  Add Feed
+                <Input placeholder="Feed name" value={newFeedName} onChange={(e) => setNewFeedName(e.target.value)} className="text-sm" />
+                <Input placeholder="https://..." value={newFeedUrl} onChange={(e) => setNewFeedUrl(e.target.value)} className="text-sm font-mono text-xs" />
+                <Button onClick={addFeed} disabled={addingFeed || !newFeedUrl.trim()} className="w-full bg-blue-600 hover:bg-blue-700 text-white" size="sm">
+                  {addingFeed ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Plus className="w-3.5 h-3.5 mr-1.5" />}Add Feed
                 </Button>
               </div>
             </div>
           </TabsContent>
 
-          {/* ─── Pricing tab ──────────────────────────────────────── */}
           <TabsContent value="pricing" className="space-y-5 mt-4">
             <div>
-              <p className="text-xs font-semibold text-slate-700 mb-1">PriceLabs Markup</p>
-              <p className="text-xs text-slate-500 mb-3">
-                Apply a percentage markup on top of PriceLabs dynamic rates for this property.
-                Use this to add your management fee or margin before rates are pushed to channels.
-              </p>
+              <p className="text-xs font-semibold text-slate-700 mb-1">PriceLabs Markup %</p>
+              <p className="text-xs text-slate-500 mb-3">Applied on top of dynamic rates before pushing to channels.</p>
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
                   <Percent className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                  <Input
-                    type="number"
-                    min="-100"
-                    max="500"
-                    step="0.5"
-                    value={markup}
-                    onChange={(e) => setMarkup(e.target.value)}
-                    className="pl-10"
-                    placeholder="0 = no markup"
-                  />
+                  <Input type="number" min="-100" max="500" step="0.5" value={markup} onChange={(e) => setMarkup(e.target.value)} className="pl-10" placeholder="0" />
                 </div>
-                <Button
-                  onClick={saveMarkup}
-                  disabled={markupSaving}
-                  className="bg-blue-600 hover:bg-blue-700 text-white shrink-0"
-                  size="sm"
-                >
+                <Button onClick={async () => { setMarkupSaving(true); try { await api.listings.update(listing.id, { priceLabsMarkup: parseFloat(markup) }); toast.success('Saved'); } catch { toast.error('Save failed'); } finally { setMarkupSaving(false); } }} disabled={markupSaving} className="bg-blue-600 hover:bg-blue-700 text-white shrink-0" size="sm">
                   {markupSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Save'}
                 </Button>
               </div>
-              <p className="text-[10px] text-slate-400 mt-2">
-                E.g. 10 = rates pushed at 110% of PriceLabs price. Negative values for discounts.
-              </p>
-            </div>
-
-            <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
-              <p className="text-xs font-semibold text-blue-800 mb-1">PriceLabs Integration</p>
-              <p className="text-xs text-blue-700 mb-2">
-                Connect your PriceLabs account to enable dynamic pricing. Rates sync automatically
-                when PriceLabs pushes updates via webhook.
-              </p>
-              <Button variant="outline" size="sm" className="text-xs border-blue-300 text-blue-700 hover:bg-blue-100">
-                <ExternalLink className="w-3 h-3 mr-1.5" />
-                Open PriceLabs
-              </Button>
-            </div>
-
-            <div>
-              <p className="text-xs font-semibold text-slate-700 mb-2">Base Rate</p>
-              <p className="text-xs text-slate-500 mb-1">
-                Set a fallback nightly rate used when PriceLabs hasn't pushed a price for a date.
-              </p>
-              <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                <Input
-                  type="number"
-                  className="pl-10"
-                  placeholder={listing.basePrice ? String(Number(listing.basePrice)) : '0.00'}
-                  disabled
-                />
-              </div>
-              <p className="text-[10px] text-slate-400 mt-1">Edit base rate in property settings.</p>
             </div>
           </TabsContent>
         </Tabs>
@@ -640,211 +487,43 @@ function PropertySettingsDrawer({ listing, onClose, onRefresh }) {
   );
 }
 
-// ─── Date header row ──────────────────────────────────────────────────────────
-
-function DateHeader({ dates, scrollRef }) {
-  return (
-    <div
-      className="sticky top-0 z-20 flex border-b border-slate-200 bg-white shadow-sm"
-    >
-      {/* Property name column placeholder */}
-      <div
-        className="sticky left-0 z-30 bg-white border-r border-slate-200 flex items-center px-4 shrink-0"
-        style={{ width: PROP_COL_W, minWidth: PROP_COL_W }}
-      >
-        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Property</span>
-      </div>
-
-      {/* Scrollable date cells */}
-      <div ref={scrollRef} className="flex overflow-x-hidden">
-        {dates.map((d) => {
-          const isT   = isToday(d);
-          const isWE  = isWeekend(d);
-          const isM   = d.getDate() === 1;
-          return (
-            <div
-              key={dateKey(d)}
-              className={`flex flex-col items-center justify-center border-r border-slate-100 shrink-0 py-1 ${isT ? 'bg-blue-50' : isWE ? 'bg-slate-50' : 'bg-white'}`}
-              style={{ width: COL_W, minWidth: COL_W }}
-            >
-              {isM && (
-                <span className="text-[8px] font-bold text-blue-600 uppercase leading-none">
-                  {format(d, 'MMM')}
-                </span>
-              )}
-              <span className={`text-[9px] font-medium leading-none ${isT ? 'text-blue-700 font-bold' : isWE ? 'text-slate-500' : 'text-slate-400'}`}>
-                {format(d, 'd')}
-              </span>
-              <span className={`text-[8px] leading-none mt-0.5 ${isT ? 'text-blue-600' : 'text-slate-300'}`}>
-                {format(d, 'EEE')[0]}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ─── Single property row ──────────────────────────────────────────────────────
-
-function PropertyRow({ listing, dates, rateMap, blockMap, bookingMap, onEditRate, onClickBooking, onOpenSettings }) {
-  const hasChannex = !!listing.channexPropertyId;
-
-  // Build a set of booked date keys for this listing so RateCell can detect overlap
-  const bookedDates = useMemo(() => {
-    const map = {};
-    const bks = bookingMap[listing.id] || [];
-    for (const bk of bks) {
-      const cin  = startOfDay(parseISO(bk.checkIn));
-      const cout = startOfDay(parseISO(bk.checkOut));
-      let cur = cin;
-      while (cur < cout) {
-        map[`${listing.id}_${dateKey(cur)}`] = true;
-        cur = addDays(cur, 1);
-      }
-    }
-    return map;
-  }, [bookingMap, listing.id]);
-
-  return (
-    <div className="flex border-b border-slate-100 hover:bg-slate-50/50 group transition-colors">
-      {/* Sticky property name */}
-      <div
-        className="sticky left-0 z-10 bg-white group-hover:bg-slate-50/80 border-r border-slate-200 flex items-center gap-3 px-3 shrink-0 transition-colors"
-        style={{ width: PROP_COL_W, minWidth: PROP_COL_W }}
-      >
-        {/* Thumbnail */}
-        <div className="w-9 h-9 rounded-lg bg-slate-100 overflow-hidden shrink-0 flex items-center justify-center">
-          {listing.images?.[0] || listing.mainImage ? (
-            <img
-              src={listing.images?.[0] || listing.mainImage}
-              alt=""
-              className="w-full h-full object-cover"
-              onError={(e) => { e.target.style.display = 'none'; }}
-            />
-          ) : (
-            <span className="text-slate-400 text-xs font-bold">
-              {listing.title?.charAt(0) || '?'}
-            </span>
-          )}
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold text-slate-900 truncate leading-tight">{listing.title}</p>
-          <p className="text-[10px] text-slate-400 truncate leading-tight">
-            {listing.city || ''}{listing.city && listing.country ? ', ' : ''}{listing.country || ''}
-          </p>
-          <div className="flex items-center gap-1 mt-0.5">
-            {hasChannex ? (
-              <span className="inline-flex items-center gap-0.5 text-[9px] text-emerald-600 font-medium">
-                <Check className="w-2.5 h-2.5" />Live
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-0.5 text-[9px] text-amber-600 font-medium">
-                <AlertCircle className="w-2.5 h-2.5" />Pending
-              </span>
-            )}
-          </div>
-        </div>
-
-        <button
-          onClick={() => onOpenSettings(listing)}
-          className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-slate-100 shrink-0"
-          title="iCal & Pricing settings"
-        >
-          <Settings2 className="w-3.5 h-3.5 text-slate-500" />
-        </button>
-      </div>
-
-      {/* Rate cells + booking pills */}
-      <div className="relative flex" style={{ height: 52 }}>
-        {dates.map((d) => (
-          <RateCell
-            key={dateKey(d)}
-            listingId={listing.id}
-            date={d}
-            rateMap={rateMap}
-            blockMap={blockMap}
-            bookedDates={bookedDates}
-            onEdit={onEditRate}
-          />
-        ))}
-        <BookingPills
-          listingId={listing.id}
-          dates={dates}
-          bookingMap={bookingMap}
-          onClickBooking={onClickBooking}
-        />
-      </div>
-    </div>
-  );
-}
-
-// ─── Main page ────────────────────────────────────────────────────────────────
+// ─── Main virtualized calendar ────────────────────────────────────────────────
 
 export default function PropertyList() {
-  const { user }  = useAuth();
-  const today     = useMemo(() => startOfDay(new Date()), []);
-
+  // ── State ──────────────────────────────────────────────────────────────────
   const [listings,    setListings]    = useState([]);
-  const [rateMap,     setRateMap]     = useState({});
-  const [blockMap,    setBlockMap]    = useState({});
-  const [bookingMap,  setBookingMap]  = useState({});
+  const [maps,        setMaps]        = useState({ rateMap: {}, blockMap: {}, bookingMap: {}, bookingsByListing: {} });
   const [loading,     setLoading]     = useState(true);
   const [search,      setSearch]      = useState('');
   const [startOffset, setStartOffset] = useState(0);   // days from today
 
-  // Drawer/dialog state
-  const [editCell,    setEditCell]    = useState(null);  // { listingId, date, existing }
-  const [activeBook,  setActiveBook]  = useState(null);  // booking object
-  const [settingsProp, setSettingsProp] = useState(null); // listing object
+  const [activeBooking,   setActiveBooking]   = useState(null);
+  const [settingsProp,    setSettingsProp]     = useState(null);
+  const [actionModal,     setActionModal]      = useState(null);  // { listing, startDate, endDate }
 
-  // Synchronized scroll refs (header + rows)
-  const headerScrollRef = useRef(null);
-  const bodyScrollRef   = useRef(null);
+  const [drag, dragDispatch] = useReducer(dragReducer, initialDrag);
 
-  const dates = useMemo(
-    () => buildDateRange(addDays(today, startOffset), DAYS_VISIBLE),
-    [today, startOffset],
-  );
+  // ── Dates (memoised) ───────────────────────────────────────────────────────
+  const dates = useMemo(() => buildDates(startOffset), [startOffset]);
 
-  const filtered = useMemo(() => {
+  // ── Filtered property rows ─────────────────────────────────────────────────
+  const filteredListings = useMemo(() => {
     const q = search.toLowerCase();
-    return listings.filter(
-      (l) => !q || l.title?.toLowerCase().includes(q) || l.city?.toLowerCase().includes(q),
-    );
+    return q ? listings.filter((l) => l.title?.toLowerCase().includes(q) || l.city?.toLowerCase().includes(q)) : listings;
   }, [listings, search]);
 
-  // ── Fetch all data ──────────────────────────────────────────────────────────
+  // ── Fetch: single /calendar/tape round-trip ────────────────────────────────
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [listRes, bookRes, ratesRes, blockedRes] = await Promise.allSettled([
-        api.listings.getAll(),
-        api.bookings.getAll(),
-        api.calendar.getRates({
-          startDate: format(dates[0], 'yyyy-MM-dd'),
-          endDate:   format(dates[dates.length - 1], 'yyyy-MM-dd'),
-        }),
-        api.calendar.getBlockedDates({
-          startDate: format(dates[0], 'yyyy-MM-dd'),
-          endDate:   format(dates[dates.length - 1], 'yyyy-MM-dd'),
-        }),
-      ]);
-
-      const ls = listRes.status === 'fulfilled' ? (listRes.value.data || []) : [];
-      const bk = bookRes.status === 'fulfilled' ? (bookRes.value.data || []) : [];
-      const rt = ratesRes.status === 'fulfilled' ? (ratesRes.value.data || []) : [];
-      const bl = blockedRes.status === 'fulfilled' ? (blockedRes.value.data || []) : [];
-
-      setListings(ls);
-      const { rateMap: rm, blockMap: bm, bookingMap: bkm } = buildMaps(rt, bl, bk);
-      setRateMap(rm);
-      setBlockMap(bm);
-      setBookingMap(bkm);
+      const startDate = format(dates[0], 'yyyy-MM-dd');
+      const endDate   = format(dates[dates.length - 1], 'yyyy-MM-dd');
+      const res = await api.calendar.getTapeData(startDate, endDate);
+      const { listings: ls, rates, blockedDates, bookings } = res.data;
+      setListings(ls || []);
+      setMaps(buildMaps(rates || [], blockedDates || [], bookings || []));
     } catch (e) {
-      toast.error('Failed to load property data');
+      toast.error('Failed to load calendar data');
     } finally {
       setLoading(false);
     }
@@ -852,190 +531,412 @@ export default function PropertyList() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // Sync horizontal scroll between header and body
-  const syncScroll = useCallback((src, dst) => {
-    if (dst.current) dst.current.scrollLeft = src.scrollLeft;
+  // ── Virtualizer refs ───────────────────────────────────────────────────────
+  const scrollRef = useRef(null);
+
+  // Y axis: property rows
+  const rowVirt = useVirtualizer({
+    count:         filteredListings.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize:  () => ROW_H,
+    overscan:      3,
+  });
+
+  // X axis: date columns
+  const colVirt = useVirtualizer({
+    count:            DAYS_TOTAL,
+    horizontal:       true,
+    getScrollElement: () => scrollRef.current,
+    estimateSize:     () => COL_W,
+    overscan:         7,
+  });
+
+  const totalW = PROP_W + DAYS_TOTAL * COL_W;
+  const totalH = filteredListings.length * ROW_H;
+
+  // ── Drag handlers ──────────────────────────────────────────────────────────
+  const onCellMouseDown = useCallback((lid, date, e) => {
+    e.preventDefault();
+    dragDispatch({ type: 'START', lid, date });
   }, []);
 
-  const onBodyScroll = useCallback((e) => {
-    syncScroll(e.currentTarget, headerScrollRef);
-  }, [syncScroll]);
+  const onCellMouseEnter = useCallback((lid, date) => {
+    if (drag.dragging) dragDispatch({ type: 'MOVE', lid, date });
+  }, [drag.dragging]);
 
-  // ── Handlers ────────────────────────────────────────────────────────────────
-  const handleEditRate = useCallback((listingId, date, existing) => {
-    setEditCell({ listingId, date, existing });
-  }, []);
+  const onCellMouseUp = useCallback((lid) => {
+    if (!drag.dragging || drag.listingId !== lid) { dragDispatch({ type: 'RESET' }); return; }
+    const listing = filteredListings.find((l) => l.id === drag.listingId);
+    if (!listing) { dragDispatch({ type: 'RESET' }); return; }
+    dragDispatch({ type: 'END' });
+    setActionModal({ listing, startDate: drag.startDate, endDate: drag.endDate });
+  }, [drag, filteredListings]);
 
-  const handleRateSaved = useCallback(() => {
-    fetchAll();
-  }, [fetchAll]);
+  // Prevent ghost drag image
+  useEffect(() => {
+    const up = () => { if (drag.dragging) dragDispatch({ type: 'RESET' }); };
+    window.addEventListener('mouseup', up);
+    return () => window.removeEventListener('mouseup', up);
+  }, [drag.dragging]);
 
-  // Navigate date window
-  const shiftDays = (n) => setStartOffset((o) => Math.max(-30, o + n));
+  // ── Jump to today ──────────────────────────────────────────────────────────
+  const jumpToToday = () => {
+    setStartOffset(0);
+    // After re-render, scroll to column 0
+    setTimeout(() => {
+      if (scrollRef.current) scrollRef.current.scrollLeft = 0;
+    }, 50);
+  };
 
+  // ── Cell renderer ──────────────────────────────────────────────────────────
+  const renderCell = useCallback((listing, date, colIndex) => {
+    const dateStr = dk(date);
+    const key     = `${listing.id}_${dateStr}`;
+    const blocked = maps.blockMap[key];
+    const booked  = maps.bookingMap[key];
+    const rate    = maps.rateMap[key];
+    const today   = isToday(date);
+    const weekend  = isWeekend(date);
+
+    // Determine if this cell is in the drag selection for this listing
+    const inDrag = drag.dragging && drag.listingId === listing.id && (() => {
+      const [dA, dB] = drag.startDate <= drag.endDate
+        ? [drag.startDate, drag.endDate]
+        : [drag.endDate, drag.startDate];
+      return date >= dA && date <= dB;
+    })();
+
+    let cellBg = weekend ? '#f8fafc' : '#ffffff';
+    if (today)   cellBg = '#eff6ff';
+    if (blocked) cellBg = '#cbd5e1';
+    if (inDrag)  cellBg = '#dbeafe';
+
+    return (
+      <div
+        key={key}
+        style={{
+          position:   'absolute',
+          left:       colIndex * COL_W,
+          width:      COL_W,
+          height:     ROW_H,
+          background: cellBg,
+          borderRight: '1px solid #f1f5f9',
+          borderBottom: '1px solid #f1f5f9',
+          boxSizing:   'border-box',
+          cursor:      booked ? 'pointer' : 'crosshair',
+          userSelect:  'none',
+          outline:     today ? '1px inset #93c5fd' : 'none',
+        }}
+        onMouseDown={(e) => !booked && !blocked && onCellMouseDown(listing.id, date, e)}
+        onMouseEnter={() => onCellMouseEnter(listing.id, date)}
+        onMouseUp={() => onCellMouseUp(listing.id)}
+        onClick={() => booked?.isStart && setActiveBooking(booked.booking)}
+        title={blocked ? 'Blocked' : booked ? `${booked.guestName} · ${booked.nights}n` : rate?.price ? `$${Number(rate.price).toFixed(0)}` : 'Drag to block or set rate'}
+      >
+        {/* Blocked indicator */}
+        {blocked && !booked && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+            <Lock style={{ width: 12, height: 12, color: '#64748b' }} />
+          </div>
+        )}
+
+        {/* Rate label on available cells */}
+        {!blocked && !booked && rate?.price && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+            <span style={{ fontSize: 9, fontWeight: 600, color: '#64748b' }}>
+              ${Number(rate.price).toFixed(0)}
+            </span>
+          </div>
+        )}
+
+        {/* Booking pill — only render on check-in day; pill spans multiple cols via absolute overlay */}
+        {booked?.isStart && (
+          <div
+            onClick={(e) => { e.stopPropagation(); setActiveBooking(booked.booking); }}
+            style={{
+              position:  'absolute',
+              top:        6,
+              left:       2,
+              width:      `calc(${booked.nights} * ${COL_W}px - 4px)`,
+              height:     ROW_H - 12,
+              background: '#334155',
+              borderRadius: 5,
+              display:    'flex',
+              alignItems: 'center',
+              paddingLeft: 8,
+              paddingRight: 8,
+              zIndex:     5,
+              cursor:     'pointer',
+              overflow:   'hidden',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <span style={{ fontSize: 10, fontWeight: 600, color: '#fff', marginRight: 4, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {booked.guestName}
+            </span>
+            <span style={{ fontSize: 9, color: '#94a3b8', flexShrink: 0 }}>
+              {booked.nights}n
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }, [maps, drag, onCellMouseDown, onCellMouseEnter, onCellMouseUp]);
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <AppLayout>
-      <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden bg-slate-50">
+      <div
+        style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px)', background: '#f8fafc', overflow: 'hidden' }}
+        onMouseUp={() => { if (drag.dragging) dragDispatch({ type: 'RESET' }); }}
+      >
 
         {/* ── Top bar ─────────────────────────────────────────────── */}
-        <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-slate-200 shrink-0">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', background: '#fff', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
           <div>
-            <h1 className="text-lg font-bold text-slate-900 leading-tight">Property List</h1>
-            <p className="text-xs text-slate-500">12-month tape chart · {filtered.length} properties</p>
+            <h1 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: 0, lineHeight: 1.2 }}>Property Calendar</h1>
+            <p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>
+              {filteredListings.length} properties · 12 months · drag cells to block or price
+            </p>
           </div>
 
-          {/* Search */}
-          <div className="ml-4 flex-1 max-w-xs">
-            <Input
-              placeholder="Search properties…"
-              className="h-9 text-sm"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+          <SearchInput
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onClear={() => setSearch('')}
+            placeholder="Search properties…"
+            className="flex-1 max-w-xs ml-4"
+          />
 
-          <div className="ml-auto flex items-center gap-2">
-            {/* Date navigation */}
-            <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* Date nav */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2, background: '#f1f5f9', borderRadius: 8, padding: 4 }}>
               <button
-                onClick={() => shiftDays(-30)}
-                className="p-1.5 rounded-md hover:bg-white hover:shadow-sm transition-all"
+                onClick={() => setStartOffset((o) => Math.max(-60, o - 30))}
+                style={{ padding: '6px 8px', borderRadius: 6, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                 title="Back 30 days"
               >
-                <ChevronLeft className="w-4 h-4 text-slate-600" />
+                <ChevronLeft style={{ width: 16, height: 16, color: '#475569' }} />
               </button>
               <button
-                onClick={() => setStartOffset(0)}
-                className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-white hover:shadow-sm rounded-md transition-all"
+                onClick={jumpToToday}
+                style={{ padding: '6px 12px', borderRadius: 6, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 12, fontWeight: 500, color: '#475569' }}
               >
                 Today
               </button>
               <button
-                onClick={() => shiftDays(30)}
-                className="p-1.5 rounded-md hover:bg-white hover:shadow-sm transition-all"
+                onClick={() => setStartOffset((o) => o + 30)}
+                style={{ padding: '6px 8px', borderRadius: 6, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                 title="Forward 30 days"
               >
-                <ChevronRight className="w-4 h-4 text-slate-600" />
+                <ChevronRight style={{ width: 16, height: 16, color: '#475569' }} />
               </button>
             </div>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchAll}
-              disabled={loading}
-              className="text-xs"
-            >
-              {loading
-                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                : <RefreshCw className="w-3.5 h-3.5" />}
+            <Button variant="outline" size="sm" onClick={fetchAll} disabled={loading}>
+              {loading ? <Loader2 style={{ width: 14, height: 14 }} className="animate-spin" /> : <RefreshCw style={{ width: 14, height: 14 }} />}
             </Button>
           </div>
         </div>
 
         {/* ── Legend ──────────────────────────────────────────────── */}
-        <div className="flex items-center gap-4 px-4 py-1.5 bg-white border-b border-slate-100 text-[10px] text-slate-500 shrink-0">
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-white ring-1 ring-slate-200 inline-block" />Available</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-slate-700 inline-block" />Booked</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-slate-300 inline-block" />Blocked</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-blue-50 ring-1 ring-blue-300 inline-block" />Today</span>
-          <span className="ml-auto text-slate-400">Click any cell to set rate or block · Click booking for details · Hover property → ⚙ for iCal &amp; pricing</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '6px 16px', background: '#fff', borderBottom: '1px solid #f1f5f9', flexShrink: 0, fontSize: 10, color: '#94a3b8' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 2, background: '#fff', border: '1px solid #e2e8f0', display: 'inline-block' }} />Available
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 2, background: '#334155', display: 'inline-block' }} />Booked
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 2, background: '#cbd5e1', display: 'inline-block' }} />Blocked
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 2, background: '#eff6ff', border: '1px solid #93c5fd', display: 'inline-block' }} />Today
+          </span>
+          <span style={{ marginLeft: 'auto', fontSize: 10 }}>Drag across empty cells → block or price · Click booking for details · Hover row → ⚙ settings</span>
         </div>
 
-        {/* ── Grid ────────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-hidden flex flex-col">
-          {/* Date header — scrolls horizontally in sync with body */}
-          <div className="flex shrink-0 overflow-hidden">
-            <div
-              className="sticky left-0 z-20 bg-white border-r border-slate-200 shrink-0"
-              style={{ width: PROP_COL_W, minWidth: PROP_COL_W }}
-            />
-            <div
-              ref={headerScrollRef}
-              className="flex overflow-x-hidden"
-              style={{ flex: 1 }}
-            >
-              {dates.map((d) => {
-                const isT  = isToday(d);
-                const isWE = isWeekend(d);
-                const isM  = d.getDate() === 1;
-                return (
-                  <div
-                    key={dateKey(d)}
-                    className={`flex flex-col items-center justify-center border-r border-b border-slate-100 shrink-0 py-1.5 ${isT ? 'bg-blue-50' : isWE ? 'bg-slate-50' : 'bg-white'}`}
-                    style={{ width: COL_W, minWidth: COL_W }}
-                  >
-                    {isM && (
-                      <span className="text-[8px] font-bold text-blue-600 uppercase leading-none">
-                        {format(d, 'MMM')}
-                      </span>
-                    )}
-                    <span className={`text-[9px] font-semibold leading-none ${isT ? 'text-blue-700' : isWE ? 'text-slate-500' : 'text-slate-400'}`}>
-                      {format(d, 'd')}
-                    </span>
-                    <span className="text-[8px] text-slate-300 leading-none mt-0.5">
-                      {format(d, 'EEE')[0]}
-                    </span>
-                  </div>
-                );
-              })}
+        {/* ── Main scrollable grid ─────────────────────────────────── */}
+        {loading ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 10, color: '#94a3b8' }}>
+            <Loader2 className="animate-spin" style={{ width: 20, height: 20 }} />
+            <span style={{ fontSize: 14 }}>Loading calendar…</span>
+          </div>
+        ) : filteredListings.length === 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 8, color: '#94a3b8' }}>
+            <Calendar style={{ width: 32, height: 32 }} />
+            <p style={{ fontSize: 14 }}>{search ? 'No matching properties' : 'No active properties found'}</p>
+          </div>
+        ) : (
+          <div
+            ref={scrollRef}
+            style={{ flex: 1, overflow: 'auto', position: 'relative' }}
+          >
+            {/* Total size sizer */}
+            <div style={{ width: totalW, height: HEADER_H + totalH, position: 'relative' }}>
+
+              {/* ── Sticky date header ──────────────────────────── */}
+              <div style={{
+                position: 'sticky',
+                top: 0,
+                zIndex: 30,
+                display: 'flex',
+                height: HEADER_H,
+                background: '#fff',
+                borderBottom: '1px solid #e2e8f0',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+              }}>
+                {/* Property col label */}
+                <div style={{
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: 40,
+                  width: PROP_W,
+                  minWidth: PROP_W,
+                  background: '#fff',
+                  borderRight: '1px solid #e2e8f0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  paddingLeft: 14,
+                }}>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Property</span>
+                </div>
+
+                {/* Virtualised date cells */}
+                <div style={{ position: 'relative', flex: 1 }}>
+                  {colVirt.getVirtualItems().map((vc) => {
+                    const d   = dates[vc.index];
+                    const isT = isToday(d);
+                    const isWE = isWeekend(d);
+                    const isFirst = d.getDate() === 1;
+                    return (
+                      <div
+                        key={vc.key}
+                        style={{
+                          position:   'absolute',
+                          left:       vc.start,
+                          width:      COL_W,
+                          height:     HEADER_H,
+                          display:    'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderRight: '1px solid #f1f5f9',
+                          background: isT ? '#eff6ff' : isWE ? '#f8fafc' : '#fff',
+                          boxSizing:  'border-box',
+                        }}
+                      >
+                        {isFirst && (
+                          <span style={{ fontSize: 8, fontWeight: 700, color: '#3b82f6', textTransform: 'uppercase', lineHeight: 1 }}>
+                            {format(d, 'MMM')}
+                          </span>
+                        )}
+                        <span style={{ fontSize: 10, fontWeight: isT ? 700 : 500, color: isT ? '#2563eb' : isWE ? '#64748b' : '#94a3b8', lineHeight: 1.2 }}>
+                          {format(d, 'd')}
+                        </span>
+                        <span style={{ fontSize: 8, color: isT ? '#93c5fd' : '#cbd5e1', lineHeight: 1 }}>
+                          {format(d, 'EEE')[0]}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ── Virtualised rows ────────────────────────────── */}
+              <div style={{ position: 'relative', height: totalH, top: HEADER_H }}>
+                {rowVirt.getVirtualItems().map((vr) => {
+                  const listing = filteredListings[vr.index];
+                  if (!listing) return null;
+                  const hasChannex = !!listing.channexPropertyId;
+
+                  return (
+                    <div
+                      key={vr.key}
+                      style={{
+                        position:   'absolute',
+                        top:        vr.start,
+                        width:      '100%',
+                        height:     ROW_H,
+                        display:    'flex',
+                      }}
+                      className="group"
+                    >
+                      {/* Sticky property name cell */}
+                      <div style={{
+                        position:    'sticky',
+                        left:        0,
+                        zIndex:      20,
+                        width:       PROP_W,
+                        minWidth:    PROP_W,
+                        height:      ROW_H,
+                        background:  '#fff',
+                        borderRight: '1px solid #e2e8f0',
+                        borderBottom: '1px solid #f1f5f9',
+                        display:     'flex',
+                        alignItems:  'center',
+                        gap:         8,
+                        paddingLeft: 10,
+                        paddingRight: 6,
+                        boxSizing:   'border-box',
+                      }}
+                        className="group-hover:bg-slate-50"
+                      >
+                        {/* Color dot for quick ID */}
+                        <div style={{
+                          width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                          background: hasChannex ? '#10b981' : '#f59e0b',
+                        }} title={hasChannex ? 'Connected to Channex' : 'Pending Channex mapping'} />
+
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ fontSize: 11, fontWeight: 600, color: '#0f172a', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {listing.title}
+                          </p>
+                          {listing.city && (
+                            <p style={{ fontSize: 9, color: '#94a3b8', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {listing.city}
+                            </p>
+                          )}
+                        </div>
+
+                        <button
+                          onClick={() => setSettingsProp(listing)}
+                          style={{ opacity: 0, padding: '4px', borderRadius: 4, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', flexShrink: 0 }}
+                          className="group-hover:!opacity-100 transition-opacity"
+                          title="iCal & Pricing settings"
+                        >
+                          <Settings2 style={{ width: 13, height: 13, color: '#64748b' }} />
+                        </button>
+                      </div>
+
+                      {/* Virtualised date cells for this row */}
+                      <div style={{ position: 'relative', flex: 1, height: ROW_H }}>
+                        {colVirt.getVirtualItems().map((vc) => {
+                          const d = dates[vc.index];
+                          return renderCell(listing, d, vc.index);
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
-
-          {/* Body — vertical scroll + horizontal sync */}
-          <div
-            ref={bodyScrollRef}
-            className="flex-1 overflow-auto"
-            onScroll={(e) => {
-              if (headerScrollRef.current) {
-                headerScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
-              }
-            }}
-          >
-            {loading ? (
-              <div className="flex items-center justify-center h-32 gap-3 text-slate-400">
-                <Loader2 className="w-5 h-5 animate-spin" />
-                <span className="text-sm">Loading properties…</span>
-              </div>
-            ) : filtered.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-48 gap-2 text-slate-400">
-                <Search className="w-6 h-6" />
-                <p className="text-sm">{search ? 'No properties match your search' : 'No properties yet'}</p>
-              </div>
-            ) : (
-              <div>
-                {filtered.map((listing) => (
-                  <PropertyRow
-                    key={listing.id}
-                    listing={listing}
-                    dates={dates}
-                    rateMap={rateMap}
-                    blockMap={blockMap}
-                    bookingMap={bookingMap}
-                    onEditRate={handleEditRate}
-                    onClickBooking={setActiveBook}
-                    onOpenSettings={setSettingsProp}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* ── Dialogs & drawers ──────────────────────────────────────── */}
-      <RateEditDialog
-        open={!!editCell}
-        onClose={() => setEditCell(null)}
-        onSave={handleRateSaved}
-        listingId={editCell?.listingId}
-        date={editCell?.date}
-        existing={editCell?.existing}
+      {/* ── Modals & drawers ────────────────────────────────────── */}
+      <ActionModal
+        open={!!actionModal}
+        onClose={() => setActionModal(null)}
+        onSave={fetchAll}
+        listing={actionModal?.listing}
+        startDate={actionModal?.startDate}
+        endDate={actionModal?.endDate}
       />
 
       <BookingDrawer
-        booking={activeBook}
-        onClose={() => setActiveBook(null)}
+        booking={activeBooking}
+        onClose={() => setActiveBooking(null)}
       />
 
       <PropertySettingsDrawer
