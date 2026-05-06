@@ -207,13 +207,11 @@ function RateEditDialog({ open, onClose, onSave, listingId, date, existing }) {
           toast.error('Enter a valid rate');
           return;
         }
-        await api.calendar.bulkUpdateRates({
-          updates: [{
-            listingId,
-            date:    dateKey(date),
-            price:   Number(rate),
-            minStay: minStay ? Number(minStay) : undefined,
-          }],
+        await api.calendar.updateRate({
+          listingId,
+          date:    dateKey(date),
+          price:   Number(rate),
+          minStay: minStay ? Number(minStay) : undefined,
         });
         toast.success('Rate updated');
       }
@@ -259,13 +257,13 @@ function RateEditDialog({ open, onClose, onSave, listingId, date, existing }) {
               <div>
                 <Label className="text-xs text-slate-600 mb-1 block">Nightly Rate</Label>
                 <div className="relative">
-                  <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                  <DollarSign className="absolute left-3 top-3 w-4 h-4 text-slate-400 pointer-events-none" />
                   <Input
                     type="number"
                     min="0"
                     value={rate}
                     onChange={(e) => setRate(e.target.value)}
-                    className="pl-8"
+                    className="pl-9"
                     placeholder="0.00"
                     autoFocus
                   />

@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BlockDateDto, BulkBlockDatesDto, BulkUnblockDatesDto } from './dto/block-date.dto';
 import { UpdateRateDto, BulkUpdateRatesDto } from './dto/update-rate.dto';
-import { ChannexSyncService } from '../channex/channex-sync.service';
+import { ChannexSyncService, MappingMissingError } from '../channex/channex-sync.service';
 
 @Injectable()
 export class CalendarService {
@@ -28,19 +28,58 @@ export class CalendarService {
     const dateStr = new Date(date).toISOString().split('T')[0];
     this.logger.log(`[Calendar] updateRateAndSync listing=${listingId} date=${dateStr}`);
 
-    await this.channexSync.applyChange({
+    // ── 1. Save to local Rate table first (always) ───────────────────────────
+    // This ensures rates are stored locally even if Channex mapping is missing.
+    if (price !== undefined || minStay !== undefined || available !== undefined) {
+      await this.prisma.rate.upsert({
+        where:  { listingId_date: { listingId, date: new Date(dateStr) } },
+        create: {
+          listingId,
+          date:      new Date(dateStr),
+          price:     price !== undefined ? parseFloat(String(price)) : 0,
+          minStay:   minStay ?? null,
+          available: available ?? true,
+        },
+        update: {
+          ...(price     !== undefined ? { price: parseFloat(String(price)) } : {}),
+          ...(minStay   !== undefined ? { minStay } : {}),
+          ...(available !== undefined ? { available } : {}),
+        },
+      });
+    }
+
+    // ── 2. Push to Channex (non-fatal if mapping missing) ────────────────────
+    let channexStatus = 'queued';
+    try {
+      await this.channexSync.applyChange({
+        listingId,
+        date: dateStr,
+        ...(price     !== undefined ? { price: parseFloat(String(price)) } : {}),
+        ...(minStay   !== undefined ? { minStay } : {}),
+        ...(maxStay   !== undefined ? { maxStay } : {}),
+        ...(available !== undefined ? { available } : {}),
+        ...(stopSell          !== undefined ? { stopSell }          : {}),
+        ...(closedToArrival   !== undefined ? { closedToArrival }   : {}),
+        ...(closedToDeparture !== undefined ? { closedToDeparture } : {}),
+      });
+    } catch (err) {
+      if (err instanceof MappingMissingError) {
+        this.logger.warn(`[Calendar] No Channex mapping for listing ${listingId} — rate saved locally only`);
+        channexStatus = 'pending_mapping';
+      } else {
+        throw err;
+      }
+    }
+
+    return {
+      success: true,
+      message: channexStatus === 'pending_mapping'
+        ? 'Rate saved locally. Will sync to channels once property is connected to Channex.'
+        : 'Rate queued for Channex sync',
+      channexStatus,
       listingId,
       date: dateStr,
-      ...(price     !== undefined ? { price: parseFloat(String(price)) } : {}),
-      ...(minStay   !== undefined ? { minStay } : {}),
-      ...(maxStay   !== undefined ? { maxStay } : {}),
-      ...(available !== undefined ? { available } : {}),
-      ...(stopSell          !== undefined ? { stopSell }          : {}),
-      ...(closedToArrival   !== undefined ? { closedToArrival }   : {}),
-      ...(closedToDeparture !== undefined ? { closedToDeparture } : {}),
-    });
-
-    return { success: true, message: 'Rate queued for Channex sync', listingId, date: dateStr };
+    };
   }
 
   /**
