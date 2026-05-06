@@ -52,8 +52,8 @@ import {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const DAYS_VISIBLE  = 90;
-const COL_W         = 40;   // px per day cell
+const DAYS_VISIBLE  = 365;
+const COL_W         = 34;   // px per day cell
 const PROP_COL_W    = 220;  // px for sticky property name column
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
@@ -64,19 +64,8 @@ function buildDateRange(start, count) {
   return Array.from({ length: count }, (_, i) => addDays(start, i));
 }
 
-// ─── Booking colour by source ─────────────────────────────────────────────────
-
-function bookingBg(source) {
-  if (!source) return 'bg-slate-400';
-  const s = source.toLowerCase();
-  if (s.includes('airbnb'))  return 'bg-rose-500';
-  if (s.includes('booking')) return 'bg-blue-600';
-  if (s.includes('expedia')) return 'bg-yellow-500';
-  if (s.includes('vrbo'))    return 'bg-violet-600';
-  if (s.includes('direct'))  return 'bg-emerald-500';
-  if (s.includes('ical'))    return 'bg-cyan-500';
-  return 'bg-slate-400';
-}
+// All bookings render identically — availability is what matters, not channel source
+function bookingBg() { return 'bg-slate-700'; }
 
 // ─── Build lookup maps from API data ─────────────────────────────────────────
 
@@ -103,37 +92,40 @@ function buildMaps(rates = [], blocked = [], bookings = []) {
 
 // ─── Inline rate editor cell ──────────────────────────────────────────────────
 
-function RateCell({ listingId, date, rateMap, blockMap, onEdit, onBlock }) {
-  const dk  = dateKey(date);
-  const key = `${listingId}_${dk}`;
-  const r   = rateMap[key];
+function RateCell({ listingId, date, rateMap, blockMap, bookedDates, onEdit }) {
+  const dk      = dateKey(date);
+  const key     = `${listingId}_${dk}`;
+  const r       = rateMap[key];
   const blocked = blockMap[key];
+  const booked  = bookedDates?.[key];
   const today   = isToday(date);
   const weekend = isWeekend(date);
 
-  let bg = 'bg-white';
-  if (blocked)       bg = 'bg-slate-200';
-  else if (today)    bg = 'bg-blue-50 ring-1 ring-blue-300';
-  else if (weekend)  bg = 'bg-slate-50';
+  // Availability-first colour logic
+  let bg        = weekend ? 'bg-slate-50' : 'bg-white';
+  let textColor = 'text-slate-400';
+  if (today)   { bg = 'bg-blue-50'; }
+  if (blocked) { bg = 'bg-slate-300'; textColor = 'text-slate-500'; }
+  // booked cells are handled entirely by the pill overlay — cell stays white
 
   return (
     <div
-      className={`relative flex flex-col items-center justify-center border-r border-b border-slate-100 cursor-pointer group transition-colors hover:bg-blue-50 ${bg}`}
+      className={`relative flex flex-col items-center justify-center border-r border-b border-slate-100 cursor-pointer group transition-colors hover:bg-blue-50 ${bg} ${today ? 'ring-inset ring-1 ring-blue-300' : ''}`}
       style={{ width: COL_W, minWidth: COL_W, height: 52 }}
-      onClick={() => onEdit(listingId, date, r)}
-      title={blocked ? 'Blocked' : r ? `$${r.price}` : 'Click to set rate'}
+      onClick={() => !booked && onEdit(listingId, date, r)}
+      title={blocked ? 'Blocked — click to unblock' : booked ? 'Booked' : r?.price ? `$${r.price} — click to edit` : 'Available — click to set rate'}
     >
-      {blocked ? (
-        <Lock className="w-3 h-3 text-slate-400" />
-      ) : r?.price ? (
-        <span className="text-[10px] font-semibold text-slate-700 leading-none">
+      {blocked && <Lock className="w-3 h-3 text-slate-500" />}
+      {!blocked && !booked && r?.price && (
+        <span className={`text-[9px] font-semibold leading-none ${textColor} group-hover:text-blue-600`}>
           ${Number(r.price).toFixed(0)}
         </span>
-      ) : (
-        <span className="text-[9px] text-slate-300 group-hover:text-blue-400">—</span>
       )}
-      {r?.minStay && r.minStay > 1 && (
-        <span className="text-[8px] text-slate-400 leading-none mt-0.5">{r.minStay}n</span>
+      {!blocked && !booked && !r?.price && (
+        <span className="text-[8px] text-slate-200 group-hover:text-blue-300">•</span>
+      )}
+      {r?.minStay && r.minStay > 1 && !blocked && !booked && (
+        <span className="text-[7px] text-slate-300 leading-none mt-0.5">{r.minStay}n</span>
       )}
     </div>
   );
@@ -142,7 +134,7 @@ function RateCell({ listingId, date, rateMap, blockMap, onEdit, onBlock }) {
 // ─── Booking pills ────────────────────────────────────────────────────────────
 
 function BookingPills({ listingId, dates, bookingMap, onClickBooking }) {
-  const bookings = bookingMap[listingId] || [];
+  const bookings  = bookingMap[listingId] || [];
   const startDate = dates[0];
   const endDate   = dates[dates.length - 1];
 
@@ -167,12 +159,12 @@ function BookingPills({ listingId, dates, bookingMap, onClickBooking }) {
         return (
           <div
             key={bk.id}
-            className={`absolute top-1 h-[34px] rounded-md flex items-center px-2 pointer-events-auto cursor-pointer shadow-sm ${bookingBg(bk.bookingSource)}`}
+            className="absolute top-1 h-[34px] rounded-md flex items-center px-2 pointer-events-auto cursor-pointer shadow-sm bg-slate-700 hover:bg-slate-800 transition-colors"
             style={{ left, width, zIndex: 10 }}
             onClick={() => onClickBooking(bk)}
             title={`${bk.guestName} · ${bk.checkIn} → ${bk.checkOut}`}
           >
-            <span className="text-white text-[10px] font-semibold truncate">{bk.guestName}</span>
+            <span className="text-white text-[10px] font-medium truncate">{bk.guestName}</span>
           </div>
         );
       })}
@@ -699,6 +691,22 @@ function DateHeader({ dates, scrollRef }) {
 function PropertyRow({ listing, dates, rateMap, blockMap, bookingMap, onEditRate, onClickBooking, onOpenSettings }) {
   const hasChannex = !!listing.channexPropertyId;
 
+  // Build a set of booked date keys for this listing so RateCell can detect overlap
+  const bookedDates = useMemo(() => {
+    const map = {};
+    const bks = bookingMap[listing.id] || [];
+    for (const bk of bks) {
+      const cin  = startOfDay(parseISO(bk.checkIn));
+      const cout = startOfDay(parseISO(bk.checkOut));
+      let cur = cin;
+      while (cur < cout) {
+        map[`${listing.id}_${dateKey(cur)}`] = true;
+        cur = addDays(cur, 1);
+      }
+    }
+    return map;
+  }, [bookingMap, listing.id]);
+
   return (
     <div className="flex border-b border-slate-100 hover:bg-slate-50/50 group transition-colors">
       {/* Sticky property name */}
@@ -758,8 +766,8 @@ function PropertyRow({ listing, dates, rateMap, blockMap, bookingMap, onEditRate
             date={d}
             rateMap={rateMap}
             blockMap={blockMap}
+            bookedDates={bookedDates}
             onEdit={onEditRate}
-            onBlock={() => {}}
           />
         ))}
         <BookingPills
@@ -873,15 +881,14 @@ export default function PropertyList() {
         <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-slate-200 shrink-0">
           <div>
             <h1 className="text-lg font-bold text-slate-900 leading-tight">Property List</h1>
-            <p className="text-xs text-slate-500">Tape chart · {filtered.length} properties</p>
+            <p className="text-xs text-slate-500">12-month tape chart · {filtered.length} properties</p>
           </div>
 
           {/* Search */}
-          <div className="relative ml-4 flex-1 max-w-xs">
-            <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+          <div className="ml-4 flex-1 max-w-xs">
             <Input
               placeholder="Search properties…"
-              className="pl-9 h-9 text-sm"
+              className="h-9 text-sm"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -891,8 +898,9 @@ export default function PropertyList() {
             {/* Date navigation */}
             <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
               <button
-                onClick={() => shiftDays(-7)}
+                onClick={() => shiftDays(-30)}
                 className="p-1.5 rounded-md hover:bg-white hover:shadow-sm transition-all"
+                title="Back 30 days"
               >
                 <ChevronLeft className="w-4 h-4 text-slate-600" />
               </button>
@@ -903,8 +911,9 @@ export default function PropertyList() {
                 Today
               </button>
               <button
-                onClick={() => shiftDays(7)}
+                onClick={() => shiftDays(30)}
                 className="p-1.5 rounded-md hover:bg-white hover:shadow-sm transition-all"
+                title="Forward 30 days"
               >
                 <ChevronRight className="w-4 h-4 text-slate-600" />
               </button>
@@ -926,13 +935,11 @@ export default function PropertyList() {
 
         {/* ── Legend ──────────────────────────────────────────────── */}
         <div className="flex items-center gap-4 px-4 py-1.5 bg-white border-b border-slate-100 text-[10px] text-slate-500 shrink-0">
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-white ring-1 ring-slate-200 inline-block" />Available</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-slate-700 inline-block" />Booked</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-slate-300 inline-block" />Blocked</span>
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-blue-50 ring-1 ring-blue-300 inline-block" />Today</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-slate-200 inline-block" />Blocked</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-rose-500 inline-block" />Airbnb</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-blue-600 inline-block" />Booking.com</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500 inline-block" />Direct</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-cyan-500 inline-block" />iCal</span>
-          <span className="ml-auto text-slate-400">Click any cell to set rate or block · Click booking to see details · Hover property → ⚙ for iCal & pricing</span>
+          <span className="ml-auto text-slate-400">Click any cell to set rate or block · Click booking for details · Hover property → ⚙ for iCal &amp; pricing</span>
         </div>
 
         {/* ── Grid ────────────────────────────────────────────────── */}
