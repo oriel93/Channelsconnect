@@ -39,7 +39,7 @@ import { api } from '@/lib/apiClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { SearchInput } from '@/components/ui/search-input';
+
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
@@ -700,12 +700,11 @@ export default function PropertyList() {
             </p>
           </div>
 
-          <SearchInput
+          <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            onClear={() => setSearch('')}
             placeholder="Search properties…"
-            className="flex-1 max-w-xs ml-4"
+            style={{ flex: 1, maxWidth: 280, marginLeft: 16, height: 36, fontSize: 13 }}
           />
 
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
