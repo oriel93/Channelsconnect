@@ -580,4 +580,48 @@ export class AdminService {
     this.logger.log(`[Admin/Sync] Deactivating listing ${listingId} on Channex`);
     return this.channexContent.deactivateListing(listingId);
   }
+
+  // ── Admin Markup ───────────────────────────────────────────────────────────
+
+  /**
+   * Returns all users with their current adminMarkup setting.
+   * Used by the Admin Portal markup management panel.
+   */
+  async getMarkupSettings() {
+    const users = await this.prisma.user.findMany({
+      select: {
+        id:          true,
+        email:       true,
+        name:        true,
+        role:        true,
+        adminMarkup: true,
+        _count:      { select: { listings: true } },
+      },
+      orderBy: { email: 'asc' },
+    });
+    return { users };
+  }
+
+  /**
+   * Sets the adminMarkup % for a user.
+   * Value is stored on the User row and applied at Channex push time.
+   * - 0  = no markup (pass-through)
+   * - 10 = all rates pushed to Channex at 110% of stored price
+   * - -5 = all rates pushed at 95% (discount)
+   */
+  async setUserMarkup(userId: string, markup: number) {
+    if (typeof markup !== 'number' || isNaN(markup)) {
+      throw new Error('markup must be a valid number');
+    }
+    if (markup < -100 || markup > 500) {
+      throw new Error('markup must be between -100 and 500');
+    }
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data:  { adminMarkup: markup },
+      select: { id: true, email: true, adminMarkup: true },
+    });
+    this.logger.log(`[Admin] Markup set: user=${userId} markup=${markup}%`);
+    return { success: true, user: updated };
+  }
 }

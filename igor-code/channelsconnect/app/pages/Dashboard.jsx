@@ -269,14 +269,10 @@ export default function Dashboard() {
           */}
 
           <Tabs defaultValue="properties" className="space-y-6">
-            <TabsList className="grid grid-cols-3 w-full max-w-xl">
+            <TabsList className="grid grid-cols-2 w-full max-w-md">
               <TabsTrigger value="properties" className="flex items-center gap-2">
                 <Building2 className="w-4 h-4" />
                 Properties
-              </TabsTrigger>
-              <TabsTrigger value="calendar" className="flex items-center gap-2">
-                <CalendarDays className="w-4 h-4" />
-                Calendar
               </TabsTrigger>
               <TabsTrigger value="bookings" className="flex items-center gap-2">
                 <ClipboardList className="w-4 h-4" />
@@ -295,32 +291,6 @@ export default function Dashboard() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="calendar" className="space-y-6 mt-6">
-              {selectedListingId ? (
-                <div className="space-y-6">
-                  <div className="bg-gradient-to-br from-purple-50 to-white rounded-lg shadow-lg">
-                    <OptimizedCalendarLayout
-                      selectedListingId={selectedListingId}
-                      listings={listings}
-                      lastSyncTimestamp={lastSyncTimestamp}
-                    />
-                  </div>
-                  {/* <div className="bg-gradient-to-br from-purple-50 to-white rounded-lg shadow-lg">
-                    <ICalManager
-                      listingId={selectedListingId}
-                      listingTitle={selectedListingTitle}
-                      onSyncComplete={handleSyncComplete}
-                    />
-                  </div> */}
-                </div>
-              ) : (
-                <Card className="text-center py-12 text-gray-500 bg-gradient-to-br from-purple-50 to-white shadow-lg">
-                  <CalendarDays className="w-12 h-12 mx-auto mb-4 text-purple-400" />
-                  <h3 className="text-lg font-medium mb-2 text-purple-700">Select a Property</h3>
-                  <p className="text-purple-600">Choose a property from the 'Properties' tab to access the calendar and sync settings.</p>
-                </Card>
-              )}
-            </TabsContent>
 
             <TabsContent value="bookings" className="mt-6">
               <Card className="p-0 shadow-lg border-0">

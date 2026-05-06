@@ -28,6 +28,7 @@ model User {
   tos_accepted_at         DateTime?             @db.Timestamptz(6)
   signup_ip               String?
   phone                   String?
+  adminMarkup             Decimal?             @default(0) @db.Decimal(5, 2)  // % markup applied to all rates before Channex push (admin-only)
   airbnbConnections       AirbnbConnection?
   bookings                Booking[]
   calendarAuditLogs       CalendarAuditLog[]

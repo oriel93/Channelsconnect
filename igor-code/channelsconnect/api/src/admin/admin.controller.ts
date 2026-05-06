@@ -220,6 +220,26 @@ export class AdminController {
 
   // ── POST /admin/listings/:listingId/images/:imageId/convert ──────────────
 
+  // ── GET  /admin/markup  — get all users' markup settings ─────────────────
+  // ── PATCH /admin/markup/:userId — set markup for a specific user ──────────
+
+  @Get('markup')
+  @ApiOperation({ summary: 'List all users with their adminMarkup setting' })
+  getMarkupSettings() {
+    this.logger.log('[Admin] GET /admin/markup');
+    return this.adminService.getMarkupSettings();
+  }
+
+  @Patch('markup/:userId')
+  @ApiOperation({ summary: 'Set adminMarkup % for a user (admin-only). Applied to all rates before Channex push.' })
+  setUserMarkup(
+    @Param('userId') userId: string,
+    @Body() body: { markup: number },
+  ) {
+    this.logger.log(`[Admin] PATCH /admin/markup/${userId} markup=${body.markup}`);
+    return this.adminService.setUserMarkup(userId, body.markup);
+  }
+
   @Post('listings/:listingId/images/:imageId/convert')
   @ApiOperation({
     summary: 'Convert a property image to OTA hi-res spec using sharp (admin only)',

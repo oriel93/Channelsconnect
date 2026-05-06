@@ -139,6 +139,120 @@ const SyncButton = ({ listingId, syncStates, syncingListingId, onSync, onLoadSta
   );
 };
 
+
+// ─── Markup Panel (admin-only) ────────────────────────────────────────────────
+function MarkupPanel() {
+  const [users,   setUsers]   = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [saving,  setSaving]  = React.useState({});
+  const [drafts,  setDrafts]  = React.useState({});
+
+  React.useEffect(() => {
+    api.admin.getMarkupSettings()
+      .then(r => {
+        setUsers(r.data.users || []);
+        const d = {};
+        (r.data.users || []).forEach(u => { d[u.id] = String(Number(u.adminMarkup ?? 0)); });
+        setDrafts(d);
+      })
+      .catch(() => toast.error('Failed to load markup settings'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const save = async (userId) => {
+    const val = parseFloat(drafts[userId]);
+    if (isNaN(val) || val < -100 || val > 500) { toast.error('Markup must be -100 to 500'); return; }
+    setSaving(s => ({ ...s, [userId]: true }));
+    try {
+      await api.admin.setUserMarkup(userId, val);
+      setUsers(u => u.map(x => x.id === userId ? { ...x, adminMarkup: val } : x));
+      toast.success(`Markup set to ${val >= 0 ? '+' : ''}${val}%`);
+    } catch (e) { toast.error(e?.response?.data?.message || 'Save failed'); }
+    finally { setSaving(s => ({ ...s, [userId]: false })); }
+  };
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-16 gap-3 text-slate-400">
+      <Loader2 className="w-5 h-5 animate-spin" /><span className="text-sm">Loading markup settings…</span>
+    </div>
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          💹 Rate Markup
+        </CardTitle>
+        <p className="text-xs text-slate-500 mt-1 max-w-2xl">
+          Set a percentage markup applied to <strong>all rates before they are pushed to Channex</strong>.
+          The rate stored in your database is never changed — only what Channex receives is adjusted.
+          Use this to bake your management fee into the channel price per client.
+        </p>
+        <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 max-w-2xl">
+          <strong>⚠️ Admin only — users never see this.</strong> A markup of 10% means a stored $100 rate
+          is pushed to Channex as $110. A value of 0 means no change (pass-through).
+          Negative values are allowed for discounts.
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50">
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">User</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Email</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-20">Listings</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-52">Markup</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map(u => (
+                <tr key={u.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                  <td className="px-4 py-3 font-medium text-slate-900 max-w-[160px]">
+                    <span className="block truncate" title={u.name || ''}>{u.name || <em className="text-slate-400 font-normal">No name</em>}</span>
+                  </td>
+                  <td className="px-4 py-3 text-slate-500 max-w-[220px]">
+                    <span className="block truncate" title={u.email}>{u.email}</span>
+                  </td>
+                  <td className="px-4 py-3 text-right text-slate-500">{u._count?.listings ?? 0}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-end gap-2">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold shrink-0 ${
+                        Number(u.adminMarkup) > 0 ? 'bg-emerald-100 text-emerald-700' :
+                        Number(u.adminMarkup) < 0 ? 'bg-red-100 text-red-700' :
+                        'bg-slate-100 text-slate-500'
+                      }`}>
+                        {Number(u.adminMarkup) > 0 ? '+' : ''}{Number(u.adminMarkup ?? 0).toFixed(1)}% live
+                      </span>
+                      <div className="relative w-24 shrink-0">
+                        <input
+                          type="number" min="-100" max="500" step="0.5"
+                          value={drafts[u.id] ?? '0'}
+                          onChange={e => setDrafts(d => ({ ...d, [u.id]: e.target.value }))}
+                          onKeyDown={e => e.key === 'Enter' && save(u.id)}
+                          className="w-full border border-slate-200 rounded-lg px-3 pr-7 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all font-sans"
+                        />
+                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none">%</span>
+                      </div>
+                      <Button size="sm" onClick={() => save(u.id)} disabled={saving[u.id]}
+                        className="bg-purple-600 hover:bg-purple-700 text-white text-xs h-8 px-3 shrink-0">
+                        {saving[u.id] ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Save'}
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {users.length === 0 && (
+                <tr><td colSpan={4} className="text-center text-slate-400 py-10 text-sm">No users found</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function AdminDashboard() {
   // Auth from shared AuthProvider - no extra round-trip, role available immediately
@@ -557,6 +671,7 @@ export default function AdminDashboard() {
               </span>
             )}
           </TabsTrigger>
+          <TabsTrigger value="markup">Rate Markup</TabsTrigger>
           <TabsTrigger value="review" onClick={fetchPendingQueue} className="relative">
             <ClipboardList className="w-4 h-4 mr-1" />
             Review Queue
@@ -1334,6 +1449,12 @@ export default function AdminDashboard() {
             </Card>
           )}
         </TabsContent>
+
+        {/* ── Markup Tab ───────────────────────────────────────────────────────────── */}
+        <TabsContent value="markup">
+          <MarkupPanel />
+        </TabsContent>
+
       </Tabs>
 
       {/* ─ Reject Reason Dialog ───────────────────────────────────────────────────── */}

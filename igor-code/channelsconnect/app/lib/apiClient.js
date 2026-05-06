@@ -343,6 +343,10 @@ export const api = {
     getConciergeQueue: () => apiClient.get('/admin/concierge'),
     /** Patch extracted data + approve a concierge listing */
     completeConciergeListing: (listingId, data) => apiClient.post(`/admin/concierge/${listingId}/complete`, data),
+
+  // ── Admin markup ──────────────────────────────────────────────────────────────────────
+  getMarkupSettings:  ()              => apiClient.get('/admin/markup'),
+  setUserMarkup:      (userId, markup) => apiClient.patch(`/admin/markup/${userId}`, { markup }),
   },
 
   /** Record ToS consent — called immediately after signup */

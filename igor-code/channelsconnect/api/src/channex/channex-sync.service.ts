@@ -400,6 +400,25 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
     jobs: any[],
     apiKey: string,
   ) {
+    // ── Resolve admin markup for each listing's owner ──────────────────────
+    // adminMarkup is stored on the User row (admin-only field, default 0).
+    // We fetch it once per unique listingId in this batch to avoid N+1.
+    const markupCache = new Map<number, number>(); // listingId → markup %
+    for (const u of updates) {
+      if (u.price !== undefined && !markupCache.has(u.listingId)) {
+        try {
+          const listing = await this.prisma.listing.findUnique({
+            where: { id: u.listingId },
+            select: { user: { select: { adminMarkup: true } } },
+          });
+          const pct = parseFloat(String(listing?.user?.adminMarkup ?? 0)) || 0;
+          markupCache.set(u.listingId, pct);
+        } catch {
+          markupCache.set(u.listingId, 0);
+        }
+      }
+    }
+
     // Build separate payloads for availability and rates
     const availValues: object[] = [];
     const rateValues: object[] = [];
@@ -429,7 +448,13 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
           ...(u.channexRatePlanId ? { rate_plan_id: u.channexRatePlanId } : {}),
           date_from:    u.date,
           date_to:      u.date,
-          ...(u.price !== undefined    ? { rate: Math.round(u.price * 100) }                   : {}),
+          ...(u.price !== undefined    ? (() => {
+              const markup = markupCache.get(u.listingId) ?? 0;
+              const markedUpPrice = markup !== 0
+                ? u.price! * (1 + markup / 100)
+                : u.price!;
+              return { rate: Math.round(markedUpPrice * 100) };
+            })()                                                                                 : {}),
           min_stay_arrival:    u.minStay ?? 1,
           ...(u.maxStay !== undefined          ? { max_stay:          u.maxStay }              : {}),
           ...(u.stopSell !== undefined         ? { stop_sell:         u.stopSell }             : {}),
