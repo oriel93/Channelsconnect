@@ -194,14 +194,14 @@ function ActionModal({ open, onClose, listingId, listingTitle, startDate, endDat
             <div className="space-y-1.5">
               <Label className="text-slate-600 text-sm">Nightly Rate (USD)</Label>
               <div className="relative">
-                <DollarSign className="absolute left-2.5 top-2.5 w-4 h-4 text-slate-400" />
+                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                 <Input
                   type="number"
                   min="0"
                   step="0.01"
                   value={price}
                   onChange={e => setPrice(e.target.value)}
-                  className="pl-8"
+                  className="pl-10"
                   placeholder="e.g. 175.00"
                   autoFocus
                 />

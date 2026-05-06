@@ -199,3 +199,72 @@ input[type='number'] {
   -moz-appearance: textfield;
   appearance: textfield;
 }
+
+/* ── Global overflow / text containment ─────────────────────────────────────
+   Prevents long strings (IDs, URLs, API keys) from breaking layouts.
+   Rules:
+   - All flex children get min-width:0 so they can shrink below content size
+   - Table cells word-break so long tokens wrap instead of overflowing
+   - max-width:100% + box-sizing on every element by default
+   - .log-block / .code-block: scrollable pre-wrap code viewer
+─────────────────────────────────────────────────────────────────────────── */
+
+/* Flex children must be allowed to shrink — this is the #1 cause of
+   buttons/actions being pushed off-screen by long sibling text. */
+.flex > *,
+.flex-1 {
+  min-width: 0;
+}
+
+/* Every element respects its parent's box */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+/* Table cells: long IDs/URLs wrap rather than overflow */
+td,
+th {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 0; /* makes table-layout:auto cells honour their min/max correctly */
+}
+
+/* Card bodies and general data containers */
+[class*='CardContent'],
+[class*='card-body'],
+.data-cell {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Log / API response blocks */
+.log-block,
+.code-block,
+pre.log,
+pre.api-response {
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 400px;
+  font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+}
+
+/* ── Icon-input pattern ──────────────────────────────────────────────────────
+   Standard: wrapper is relative flex items-center.
+   Icon: absolute left-3, pointer-events-none.
+   Input gets pl-10 to clear a 16px icon at left-3 with comfortable margin.
+─────────────────────────────────────────────────────────────────────────── */
+.input-with-icon-left {
+  padding-left: 2.5rem; /* 40px — safely clears icon at left-3 for any font size */
+}

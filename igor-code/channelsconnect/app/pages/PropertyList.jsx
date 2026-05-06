@@ -249,13 +249,13 @@ function RateEditDialog({ open, onClose, onSave, listingId, date, existing }) {
               <div>
                 <Label className="text-xs text-slate-600 mb-1 block">Nightly Rate</Label>
                 <div className="relative">
-                  <DollarSign className="absolute left-3 top-3 w-4 h-4 text-slate-400 pointer-events-none" />
+                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                   <Input
                     type="number"
                     min="0"
                     value={rate}
                     onChange={(e) => setRate(e.target.value)}
-                    className="pl-9"
+                    className="pl-10"
                     placeholder="0.00"
                     autoFocus
                   />
@@ -579,7 +579,7 @@ function PropertySettingsDrawer({ listing, onClose, onRefresh }) {
               </p>
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
-                  <Percent className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                  <Percent className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                   <Input
                     type="number"
                     min="-100"
@@ -587,7 +587,7 @@ function PropertySettingsDrawer({ listing, onClose, onRefresh }) {
                     step="0.5"
                     value={markup}
                     onChange={(e) => setMarkup(e.target.value)}
-                    className="pl-8"
+                    className="pl-10"
                     placeholder="0 = no markup"
                   />
                 </div>
@@ -623,10 +623,10 @@ function PropertySettingsDrawer({ listing, onClose, onRefresh }) {
                 Set a fallback nightly rate used when PriceLabs hasn't pushed a price for a date.
               </p>
               <div className="relative">
-                <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                 <Input
                   type="number"
-                  className="pl-8"
+                  className="pl-10"
                   placeholder={listing.basePrice ? String(Number(listing.basePrice)) : '0.00'}
                   disabled
                 />

@@ -18,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Table,
@@ -573,15 +574,13 @@ export default function AdminDashboard() {
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span>All Platform Users</span>
-                <div className="relative w-64">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none z-10" />
-                  <Input
-                    className="!pl-9"
-                    placeholder="Search by name or email..."
+                <SearchInput
+                    className="w-64"
+                    placeholder="Search by name or email…"
                     value={userSearch}
                     onChange={(e) => setUserSearch(e.target.value)}
+                    onClear={() => setUserSearch('')}
                   />
-                </div>
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -594,15 +593,15 @@ export default function AdminDashboard() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Role</TableHead>
-                        <TableHead className="text-right">Listings</TableHead>
-                        <TableHead className="text-right">Bookings</TableHead>
-                        <TableHead>Sync Status</TableHead>
-                        <TableHead>Joined</TableHead>
-                        <TableHead title="Terms of Service consent">ToS</TableHead>
-                        <TableHead>Actions</TableHead>
+                        <TableHead className="w-32">Name</TableHead>
+                        <TableHead className="w-48">Email</TableHead>
+                        <TableHead className="w-28">Role</TableHead>
+                        <TableHead className="text-right w-16">Listings</TableHead>
+                        <TableHead className="text-right w-16">Bookings</TableHead>
+                        <TableHead className="w-24">Sync Status</TableHead>
+                        <TableHead className="w-24">Joined</TableHead>
+                        <TableHead className="w-10" title="Terms of Service consent">ToS</TableHead>
+                        <TableHead className="w-24 text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -615,8 +614,8 @@ export default function AdminDashboard() {
                       ) : (
                         filteredUsers.map((u) => (
                           <TableRow key={u.id}>
-                            <TableCell className="font-medium">{u.name || '-'}</TableCell>
-                            <TableCell className="text-slate-600">{u.email}</TableCell>
+                            <TableCell className="font-medium max-w-[128px]"><span className="block truncate" title={u.name || ''}>{u.name || '-'}</span></TableCell>
+                            <TableCell className="text-slate-600 max-w-[192px]"><span className="block truncate" title={u.email || ''}>{u.email}</span></TableCell>
                             <TableCell>
                               {/* Role selector — locked for super-admin */}
                               {u.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase() ? (
@@ -775,15 +774,13 @@ export default function AdminDashboard() {
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span>All Platform Listings</span>
-                <div className="relative w-64">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none z-10" />
-                  <Input
-                    className="!pl-9"
-                    placeholder="Title, city, or owner email..."
+                <SearchInput
+                    className="w-64"
+                    placeholder="Title, city, or owner email…"
                     value={listingSearch}
                     onChange={(e) => setListingSearch(e.target.value)}
+                    onClear={() => setListingSearch('')}
                   />
-                </div>
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -796,17 +793,17 @@ export default function AdminDashboard() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>ID</TableHead>
-                        <TableHead>Title</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>City</TableHead>
-                        <TableHead>Owner</TableHead>
-                        <TableHead>Source</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Photos</TableHead>
-                        <TableHead>Created</TableHead>
-                        <TableHead>Actions</TableHead>
-                        <TableHead>Distribution</TableHead>
+                        <TableHead className="w-12">ID</TableHead>
+                        <TableHead className="w-44">Title</TableHead>
+                        <TableHead className="w-24">Type</TableHead>
+                        <TableHead className="w-24">City</TableHead>
+                        <TableHead className="w-40">Owner</TableHead>
+                        <TableHead className="w-20">Source</TableHead>
+                        <TableHead className="w-20">Status</TableHead>
+                        <TableHead className="text-right w-16">Photos</TableHead>
+                        <TableHead className="w-24">Created</TableHead>
+                        <TableHead className="w-24 text-right">Actions</TableHead>
+                        <TableHead className="w-24">Distribution</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -820,12 +817,10 @@ export default function AdminDashboard() {
                         filteredListings.map((l) => (
                           <TableRow key={l.id}>
                             <TableCell className="font-mono text-xs text-slate-400">{l.id}</TableCell>
-                            <TableCell className="font-medium max-w-[180px] truncate">{l.title}</TableCell>
-                            <TableCell className="text-slate-600 capitalize">{l.propertyType || '-'}</TableCell>
-                            <TableCell className="text-slate-600">{l.city || '-'}</TableCell>
-                            <TableCell className="text-slate-600 text-sm max-w-[140px] truncate">
-                              {l.user?.email || '-'}
-                            </TableCell>
+                            <TableCell className="font-medium max-w-[176px]"><span className="block truncate" title={l.title || ''}>{l.title}</span></TableCell>
+                            <TableCell className="text-slate-600 capitalize max-w-[96px]"><span className="block truncate">{l.propertyType || '-'}</span></TableCell>
+                            <TableCell className="text-slate-600 max-w-[96px]"><span className="block truncate">{l.city || '-'}</span></TableCell>
+                            <TableCell className="text-slate-600 text-sm max-w-[160px]"><span className="block truncate" title={l.user?.email || ''}>{l.user?.email || '-'}</span></TableCell>
                             <TableCell>
                               <Badge variant="outline" className="capitalize">{l.source || '-'}</Badge>
                             </TableCell>
