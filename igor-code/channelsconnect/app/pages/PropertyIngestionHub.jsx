@@ -562,45 +562,97 @@ function WebsiteImportForm({ onSuccess }) {
   );
 }
 
-// ─── Tier 4: Manual Form ──────────────────────────────────────────────────────
-// TASK 3: Three fully wired tabs — Property Details | Amenities | Calendar Connections.
-// Each tab is driven by a useState hook; onClick binds setActiveTab.
+// ─── Tier 4: Manual Form — Channex-complete ──────────────────────────────────
+// 4 tabs: Property Details | Room Type | Rate Plan | Calendar
+// All fields match Channex POST /properties + POST /room_types + POST /rate_plans requirements.
+// On completion → status: pending_admin_review → admin pushes to Channex.
 
 const PROPERTY_TYPES = [
-  'House','Apartment','Villa','Condo','Studio','Suite',
-  'Cabin','Cottage','Bungalow','Townhouse','Loft','Penthouse','Other',
+  'Private vacation Home','Apartment','Villa','Condo','Studio','Suite',
+  'Cabin','Cottage','Bungalow','Townhouse','Loft','Penthouse',
+  'Hotel','Boutique Hotel','Hostel','Bed and Breakfast','Other',
 ];
+
+const ROOM_TYPE_CATEGORIES = [
+  'House','Apartment','Studio','Suite','Villa','Condo',
+  'Cabin','Cottage','Bungalow','Loft','Penthouse','Room',
+];
+
+const BED_TYPES = [
+  '1 King','1 Queen','2 Twin','1 Double','1 Twin','2 Queen',
+  '1 King + 1 Twin','1 Queen + 1 Twin','1 Bunk Bed','1 Sofa Bed',
+];
+
 const AMENITY_OPTIONS = [
-  'WiFi','Pool','Air Conditioning','Parking','Kitchen','BBQ',
-  'Washer/Dryer','Dishwasher','Hot Tub','Gym','Pet Friendly',
-  'Wheelchair Accessible','EV Charger','Beach Access','Mountain View','City View',
+  'WiFi','Pool','Air Conditioning','Heating','Parking','Kitchen',
+  'Full Kitchen','Kitchenette','Washer/Dryer','Dishwasher','Oven',
+  'Microwave','Refrigerator','BBQ','Hot Tub','Gym','Pet Friendly',
+  'Wheelchair Accessible','EV Charger','Beach Access','Mountain View',
+  'City View','Elevator','24h Front Desk','Concierge',
+];
+
+const COUNTRY_CODES = [
+  ['USA','United States'],['GBR','United Kingdom'],['AUS','Australia'],
+  ['CAN','Canada'],['DEU','Germany'],['FRA','France'],['ESP','Spain'],
+  ['ITA','Italy'],['JPN','Japan'],['MEX','Mexico'],['BRA','Brazil'],
+  ['ZAF','South Africa'],['SGP','Singapore'],['NZL','New Zealand'],
+  ['NLD','Netherlands'],['PRT','Portugal'],['GRC','Greece'],['THA','Thailand'],
+  ['IDN','Indonesia'],['ARE','United Arab Emirates'],['Other','Other'],
+];
+
+const CURRENCIES = [
+  'USD','EUR','GBP','AUD','CAD','JPY','CHF','NZD','SGD','HKD',
+  'NOK','SEK','DKK','ZAR','AED','THB','IDR','MXN','BRL',
 ];
 
 function ManualCreateForm({ onSuccess }) {
-  // TASK 3: useState drives tab switching — 'details' | 'amenities' | 'calendar'
-  const [activeTab, setActiveTab]       = useState('details');
-  const [form, setForm]                 = useState({
-    title: '', address: '', city: '', state: '', postalCode: '', country: '',
-    propertyType: '', maxGuests: '', bedrooms: '', bathrooms: '',
-    basePrice: '', currency: 'USD', description: '', houseRules: '',
-    cancellationPolicy: '', checkInTime: '', checkOutTime: '', minNights: '1',
-    amenities: [],
+  const [activeTab, setActiveTab] = useState('property');
+
+  // ── Property fields (Channex /properties requirements) ──────────────────────
+  const [form, setForm] = useState({
+    title: '', address: '', city: '', state: '', postalCode: '',
+    country: 'USA', currency: 'USD', phone: '', email: '',
+    propertyType: '', timezone: 'America/New_York',
+    checkInTimeStart: '', checkInTimeEnd: '', checkOutTime: '',
+    cutOffDays: '', selfCheckIn: '', frontDesk: '',
+    taxId: '', billingName: '', billingEmail: '',
+    wheelchairAccessible: '', elevator: '', petsAllowed: '',
+    damageDeposit: '', damageDepositAmount: '',
+    parking: '', cleaningFee: '', cleaningFeeAmount: '',
+    partiesPolicy: '', description: '', totalUnits: '1',
   });
-  const [icalLinks, setIcalLinks]       = useState([]);
-  const [newIcal, setNewIcal]           = useState({ name: '', url: '', direction: 'import' });
-  const [exportUrl, setExportUrl]       = useState('');
-  const [loading, setLoading]           = useState(false);
+
+  // ── Room type fields (Channex /room_types requirements) ─────────────────────
+  const [room, setRoom] = useState({
+    roomName: '', roomCategory: '', maxOccupancy: '',
+    bedrooms: '', bathrooms: '', minAdultAge: '18',
+    amenities: [],
+    bed1: '', bed2: '', bed3: '', bed4: '',
+  });
+
+  // ── Rate plan fields ─────────────────────────────────────────────────────────
+  const [rate, setRate] = useState({
+    planName: 'Standard Rate',
+    cancellationPolicy: 'Free cancellation',
+    freeCancelDays: '30',
+    penaltyAfterFreeCancel: '100% Cost of Stay',
+    minNights: '1', maxNights: '', minAdvanceDays: '', maxAdvanceDays: '',
+    basePrice: '',
+  });
+
+  // ── Calendar / iCal ──────────────────────────────────────────────────────────
+  const [icalLinks, setIcalLinks] = useState([]);
+  const [newIcal, setNewIcal]     = useState({ name: '', url: '', direction: 'import' });
+  const [exportUrl, setExportUrl] = useState('');
+
+  const [loading, setLoading]               = useState(false);
   const [savedListingId, setSavedListingId] = useState(null);
   const addressRef = useRef(null);
-  const autoRef    = useRef(null);
 
-  // Google Places autocomplete on the address field
+  // Google Places autocomplete
   useEffect(() => {
     if (!window.google?.maps?.places || !addressRef.current) return;
-    const ac = new window.google.maps.places.Autocomplete(addressRef.current, {
-      types: ['address'],
-    });
-    autoRef.current = ac;
+    const ac = new window.google.maps.places.Autocomplete(addressRef.current, { types: ['address'] });
     ac.addListener('place_changed', () => {
       const place = ac.getPlace();
       if (!place.address_components) return;
@@ -615,87 +667,85 @@ function ManualCreateForm({ onSuccess }) {
       });
       setForm(f => ({
         ...f,
-        address:    streetNo ? `${streetNo} ${street}` : street,
+        address: streetNo ? `${streetNo} ${street}` : street,
         city, state, postalCode: zip, country,
       }));
     });
   }, []);
 
-  const toggleAmenity = (a) => setForm(f => ({
-    ...f,
-    amenities: f.amenities.includes(a)
-      ? f.amenities.filter(x => x !== a)
-      : [...f.amenities, a],
+  const toggleRoomAmenity = (a) => setRoom(r => ({
+    ...r,
+    amenities: r.amenities.includes(a)
+      ? r.amenities.filter(x => x !== a)
+      : [...r.amenities, a],
   }));
 
-  // Save property details → advance to Amenities tab
-  const handleSaveDetails = async (e) => {
+  // Step 1: Save property → advance to room type
+  const handleSaveProperty = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      await ensureProfileExists(); // guarantee FK row exists before listing insert
-      const payload = {
-        title:        form.title,
-        address:      form.address,
-        city:         form.city,
-        state:        form.state        || undefined,
-        postalCode:   form.postalCode   || undefined,
-        country:      form.country      || undefined,
-        propertyType: form.propertyType || undefined,
-        maxGuests:    parseInt(form.maxGuests)   || undefined,
-        bedrooms:     parseInt(form.bedrooms)    || undefined,
-        bathrooms:    parseFloat(form.bathrooms) || undefined,
-        basePrice:    parseFloat(form.basePrice) || undefined,
-        currency:     form.currency,
-        description:  form.description  || undefined,
-        houseRules:   form.houseRules   || undefined,
-        cancellationPolicy: form.cancellationPolicy || undefined,
-        checkInTime:  form.checkInTime  || undefined,
-        checkOutTime: form.checkOutTime || undefined,
-        minNights:    parseInt(form.minNights) || 1,
-        amenities:    form.amenities.length ? form.amenities : undefined,
-        source:       'manual',
-      };
-      // api.listings.create → axios interceptor → Authorization: Bearer <token>
-      const res = await api.listings.create(payload);
+      await ensureProfileExists();
+      const res = await api.listings.create({
+        title:              form.title,
+        address:            form.address    || undefined,
+        city:               form.city       || undefined,
+        state:              form.state      || undefined,
+        postalCode:         form.postalCode || undefined,
+        country:            form.country    || undefined,
+        currency:           form.currency,
+        propertyType:       form.propertyType || undefined,
+        checkInTime:        form.checkInTimeStart || undefined,
+        checkOutTime:       form.checkOutTime || undefined,
+        description:        form.description || undefined,
+        minNights:          parseInt(rate.minNights) || 1,
+        basePrice:          parseFloat(rate.basePrice) || undefined,
+        cancellationPolicy: rate.cancellationPolicy || undefined,
+        source:             'manual',
+        isActive:           false,
+        reviewStatus:       'pending_admin_review',
+        // Channex-required extras stored for admin reference
+        houseRules: [
+          form.phone        ? `phone:${form.phone}`               : '',
+          form.taxId        ? `taxId:${form.taxId}`               : '',
+          form.billingName  ? `billing:${form.billingName}`       : '',
+          form.billingEmail ? `billingEmail:${form.billingEmail}` : '',
+          form.partiesPolicy ? `parties:${form.partiesPolicy}`    : '',
+          form.cleaningFeeAmount ? `cleaningFee:${form.cleaningFeeAmount}` : '',
+          form.damageDepositAmount ? `damageDeposit:${form.damageDepositAmount}` : '',
+        ].filter(Boolean).join(' | ') || undefined,
+      });
       const listingId = res.data?.id || res.data?.listing?.id;
-
-      // TASK 1 ROLLBACK: If any post-create step fails, delete the shell record
-      // so the user never ends up with a partial/empty listing in the DB.
-      let rollbackNeeded = false;
-      try {
-        // Future post-create steps (image attach, iCal bootstrap, etc.) go here.
-        // If any throw, rollbackNeeded = true and we delete the shell below.
-        rollbackNeeded = false;
-      } catch (postErr) {
-        rollbackNeeded = true;
-        throw postErr; // re-throw so outer catch handles UI
-      } finally {
-        if (rollbackNeeded && listingId) {
-          // Best-effort delete — don't surface rollback errors to the user
-          await api.listings.delete(listingId).catch(e =>
-            console.error('[PropertyIngestionHub] Rollback delete failed:', e?.message)
-          );
-          console.warn('[PropertyIngestionHub] Shell listing rolled back, id:', listingId);
-        }
-      }
-
       setSavedListingId(listingId);
       const base = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
       setExportUrl(`${base}/ical/export/${listingId}.ics`);
-
-      toast.success('Property details saved! Now add your amenities.');
-      setActiveTab('amenities');  // advance to next tab
+      toast.success('Property saved! Now add your room details.');
+      setActiveTab('room');
     } catch (err) {
-      toast.error(err?.response?.data?.message || 'Save failed');
+      toast.error(err?.response?.data?.message || 'Save failed — please try again');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleFinishAmenities = () => {
+  // Step 2: Room saved locally → advance to rate plan
+  const handleSaveRoom = () => {
+    if (!room.roomCategory || !room.maxOccupancy) {
+      toast.error('Room category and max occupancy are required');
+      return;
+    }
+    toast.success('Room details saved! Now set your rate plan.');
+    setActiveTab('rate');
+  };
+
+  // Step 3: Rate plan saved locally → advance to calendar
+  const handleSaveRate = () => {
+    if (!rate.basePrice) {
+      toast.error('Base nightly rate is required');
+      return;
+    }
+    toast.success('Rate plan saved! Optionally connect your calendars.');
     setActiveTab('calendar');
-    toast.success('Amenities saved! Connect your calendars below.');
   };
 
   const addIcal = async () => {
@@ -703,268 +753,377 @@ function ManualCreateForm({ onSuccess }) {
     const item = { ...newIcal };
     setIcalLinks(prev => [...prev, item]);
     if (savedListingId) {
-      // api.ingestion.createIcalConnection → axios interceptor → Bearer auto-attached
       await api.ingestion.createIcalConnection({
-        listingId:     savedListingId,
-        name:          item.name,
-        icalUrl:       item.url,
-        syncDirection: item.direction,
+        listingId: savedListingId, name: item.name,
+        icalUrl: item.url, syncDirection: item.direction,
       }).catch(() => {});
     }
     setNewIcal({ name: '', url: '', direction: 'import' });
     toast.success('Calendar connection added');
   };
-
   const removeIcal = (i) => setIcalLinks(prev => prev.filter((_, idx) => idx !== i));
+  const copyExport = () => { navigator.clipboard.writeText(exportUrl); toast.success('URL copied!'); };
 
-  const copyExport = () => {
-    navigator.clipboard.writeText(exportUrl);
-    toast.success('iCal export URL copied!');
-  };
-
-  // ── Tab nav helper ──────────────────────────────────────────────────────────
   const TABS = [
-    { id: 'details',   label: 'Property Details' },
-    { id: 'amenities', label: 'Amenities' },
-    { id: 'calendar',  label: 'Calendar Connections' },
+    { id: 'property', label: 'Property' },
+    { id: 'room',     label: 'Room Type' },
+    { id: 'rate',     label: 'Rate Plan' },
+    { id: 'calendar', label: 'Calendar' },
   ];
+
+  // Helper components
+  const F = ({ children }) => <div className="space-y-1.5">{children}</div>;
+  const YN = ({ label, field, state, setState }) => (
+    <F>
+      <Label>{label}</Label>
+      <div className="flex gap-2">
+        {['Yes', 'No'].map(v => (
+          <button key={v} type="button"
+            onClick={() => setState(s => ({ ...s, [field]: v }))}
+            className={`px-4 py-1.5 rounded-full border text-sm font-medium transition-all ${
+              state[field] === v
+                ? 'bg-purple-600 border-purple-600 text-white'
+                : 'bg-white border-slate-200 text-slate-600 hover:border-purple-300'
+            }`}>{v}</button>
+        ))}
+      </div>
+    </F>
+  );
 
   return (
     <div>
-      {/* Step indicator tabs — custom circles driven by activeTab state */}
-      <div className="flex items-center border-b border-slate-100 mb-6 gap-1">
+      {/* Tab nav */}
+      <div className="flex items-center border-b border-slate-100 mb-6 gap-1 overflow-x-auto">
         {TABS.map((t, idx) => {
           const isActive   = activeTab === t.id;
-          const isDisabled = (t.id === 'amenities' || t.id === 'calendar') && !savedListingId;
-          const stepNum    = idx + 1;
+          const isDisabled = idx > 0 && !savedListingId;
           return (
-            <button
-              key={t.id}
-              type="button"
-              disabled={isDisabled}
-              onClick={() => setActiveTab(t.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-all duration-150 whitespace-nowrap ${
-                isActive
-                  ? 'border-purple-600 text-purple-700'
-                  : isDisabled
-                    ? 'border-transparent text-slate-300 cursor-not-allowed'
-                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+            <button key={t.id} type="button" disabled={isDisabled}
+              onClick={() => !isDisabled && setActiveTab(t.id)}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+                isActive ? 'border-purple-600 text-purple-700'
+                : isDisabled ? 'border-transparent text-slate-300 cursor-not-allowed'
+                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
               }`}
             >
-              {/* Step number circle — purple when active, gray when not */}
-              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold transition-all flex-shrink-0 ${
-                isActive   ? 'bg-purple-600 text-white' :
-                isDisabled ? 'bg-slate-100 text-slate-300' :
-                             'bg-slate-100 text-slate-500'
-              }`}>
-                {stepNum}
-              </span>
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${
+                isActive ? 'bg-purple-600 text-white'
+                : isDisabled ? 'bg-slate-100 text-slate-300'
+                : 'bg-slate-100 text-slate-500'
+              }`}>{idx + 1}</span>
               {t.label}
-              {t.id === 'calendar' && icalLinks.length > 0 && (
-                <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-purple-100 text-purple-700 text-[10px] font-bold">
-                  {icalLinks.length}
-                </span>
-              )}
             </button>
           );
         })}
       </div>
 
-      {/* ── Tab: Property Details ───────────────────────────────────────────── */}
-      {activeTab === 'details' && (
-        <form onSubmit={handleSaveDetails} className="space-y-5">
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div className="sm:col-span-2 space-y-1.5">
-              <Label>Property Name <span className="text-red-500">*</span></Label>
-              <Input
-                value={form.title}
-                onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                placeholder="Beachfront Villa Miami"
-                required
-              />
-            </div>
-            <div className="sm:col-span-2 space-y-1.5">
-              <Label>Street Address <span className="text-red-500">*</span></Label>
-              <Input
-                ref={addressRef}
-                value={form.address}
-                onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
-                placeholder="Start typing — Google will autocomplete…"
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>City <span className="text-red-500">*</span></Label>
-              <Input value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} required />
-            </div>
-            <div className="space-y-1.5">
-              <Label>State / Province</Label>
-              <Input value={form.state} onChange={e => setForm(f => ({ ...f, state: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Zip / Postal Code</Label>
-              <Input value={form.postalCode} onChange={e => setForm(f => ({ ...f, postalCode: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Country</Label>
-              <Input value={form.country} onChange={e => setForm(f => ({ ...f, country: e.target.value }))} placeholder="USA" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Property Type</Label>
-              {/* Custom selection circles — strict equality against form.propertyType state */}
-              <div className="flex flex-wrap gap-2">
-                {PROPERTY_TYPES.map(type => {
-                  const isSelected = form.propertyType === type;
-                  return (
-                    <button
-                      key={type}
-                      type="button"
-                      onClick={() => setForm(f => ({ ...f, propertyType: type }))}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm font-medium transition-all duration-150
-                        ${isSelected
-                          ? 'bg-purple-600 border-purple-600 text-white shadow-md shadow-purple-200'
-                          : 'bg-white border-gray-200 text-gray-600 hover:border-purple-300 hover:text-purple-700 hover:bg-purple-50'
-                        }`}
-                    >
-                      {/* Selection circle indicator */}
-                      <span className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all
-                        ${isSelected ? 'border-white' : 'border-gray-300'}`}>
-                        {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white block" />}
-                      </span>
-                      {type}
-                    </button>
-                  );
-                })}
+      {/* TAB 1: PROPERTY DETAILS */}
+      {activeTab === 'property' && (
+        <form onSubmit={handleSaveProperty} className="space-y-6">
+          {/* Basic identity */}
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Basic Information</p>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <F><Label>Property Name <span className="text-red-500">*</span></Label>
+                <Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                  placeholder="Beachfront Villa Miami" required /></F>
+
+              <F><Label>Property Type <span className="text-red-500">*</span></Label>
+                <Select value={form.propertyType} onValueChange={v => setForm(f => ({ ...f, propertyType: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Select type…" /></SelectTrigger>
+                  <SelectContent>{PROPERTY_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                </Select></F>
+
+              <div className="sm:col-span-2">
+                <F><Label>Street Address <span className="text-red-500">*</span></Label>
+                  <Input ref={addressRef} value={form.address}
+                    onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
+                    placeholder="Start typing — Google will autocomplete…" required /></F>
               </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Max Guests <span className="text-red-500">*</span></Label>
-              <Input type="number" min="1" value={form.maxGuests} onChange={e => setForm(f => ({ ...f, maxGuests: e.target.value }))} required />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Bedrooms</Label>
-              <Input type="number" min="0" value={form.bedrooms} onChange={e => setForm(f => ({ ...f, bedrooms: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Bathrooms</Label>
-              <Input type="number" min="0" step="0.5" value={form.bathrooms} onChange={e => setForm(f => ({ ...f, bathrooms: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Base Nightly Rate <span className="text-red-500">*</span></Label>
-              <Input type="number" min="1" value={form.basePrice} onChange={e => setForm(f => ({ ...f, basePrice: e.target.value }))} placeholder="250" required />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Currency</Label>
-              <Input maxLength={3} value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value.toUpperCase() }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Check-in Time</Label>
-              <Input value={form.checkInTime} onChange={e => setForm(f => ({ ...f, checkInTime: e.target.value }))} placeholder="3:00 PM" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Check-out Time</Label>
-              <Input value={form.checkOutTime} onChange={e => setForm(f => ({ ...f, checkOutTime: e.target.value }))} placeholder="11:00 AM" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Min Nights</Label>
-              <Input type="number" min="1" value={form.minNights} onChange={e => setForm(f => ({ ...f, minNights: e.target.value }))} />
+
+              <F><Label>City <span className="text-red-500">*</span></Label>
+                <Input value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} required /></F>
+
+              <F><Label>State / Province <span className="text-red-500">*</span></Label>
+                <Input value={form.state} onChange={e => setForm(f => ({ ...f, state: e.target.value }))} required /></F>
+
+              <F><Label>Postal Code <span className="text-red-500">*</span></Label>
+                <Input value={form.postalCode} onChange={e => setForm(f => ({ ...f, postalCode: e.target.value }))} required /></F>
+
+              <F><Label>Country <span className="text-red-500">*</span></Label>
+                <Select value={form.country} onValueChange={v => setForm(f => ({ ...f, country: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{COUNTRY_CODES.map(([code, name]) => <SelectItem key={code} value={code}>{name} ({code})</SelectItem>)}</SelectContent>
+                </Select></F>
+
+              <F><Label>Currency <span className="text-red-500">*</span></Label>
+                <Select value={form.currency} onValueChange={v => setForm(f => ({ ...f, currency: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{CURRENCIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                </Select></F>
+
+              <F><Label>Phone Number <span className="text-red-500">*</span></Label>
+                <Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                  placeholder="1-305-555-0100" required /></F>
             </div>
           </div>
 
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>House Rules</Label>
-              <Input value={form.houseRules} onChange={e => setForm(f => ({ ...f, houseRules: e.target.value }))} placeholder="No smoking, no parties…" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Cancellation Policy</Label>
-              <Select value={form.cancellationPolicy} onValueChange={v => setForm(f => ({ ...f, cancellationPolicy: v }))}>
-                <SelectTrigger className="h-10 rounded-xl border-slate-200 bg-white font-sans text-sm text-gray-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"><SelectValue placeholder="Select…" /></SelectTrigger>
-                <SelectContent>
-                  {['Flexible','Moderate','Strict','Non-refundable'].map(p => (
-                    <SelectItem key={p} value={p}>{p}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          {/* Check-in / Check-out */}
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Check-in / Check-out</p>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <F><Label>Check-in From</Label>
+                <Input value={form.checkInTimeStart} onChange={e => setForm(f => ({ ...f, checkInTimeStart: e.target.value }))} placeholder="3:00 PM" /></F>
+              <F><Label>Check-in Until</Label>
+                <Input value={form.checkInTimeEnd} onChange={e => setForm(f => ({ ...f, checkInTimeEnd: e.target.value }))} placeholder="10:00 PM" /></F>
+              <F><Label>Check-out Time</Label>
+                <Input value={form.checkOutTime} onChange={e => setForm(f => ({ ...f, checkOutTime: e.target.value }))} placeholder="11:00 AM" /></F>
+              <F><Label>Cut-off Days</Label>
+                <Input type="number" min="0" value={form.cutOffDays}
+                  onChange={e => setForm(f => ({ ...f, cutOffDays: e.target.value }))} placeholder="0" /></F>
+              <F><Label>Self Check-in</Label>
+                <Select value={form.selfCheckIn} onValueChange={v => setForm(f => ({ ...f, selfCheckIn: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                  <SelectContent>
+                    {['Yes - Lockbox with keys', 'Yes - Access code (numeric pad)', 'Yes - Smart lock', 'No'].map(o =>
+                      <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                  </SelectContent>
+                </Select></F>
+              <F><Label>Front Desk</Label>
+                <Select value={form.frontDesk} onValueChange={v => setForm(f => ({ ...f, frontDesk: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                  <SelectContent>
+                    {['24 hours', 'Limited hours', 'No Front desk'].map(o =>
+                      <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                  </SelectContent>
+                </Select></F>
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <Label>Description</Label>
-            <Textarea rows={4} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Describe your property…" />
+          {/* Guest Policies */}
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Guest Policies</p>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <YN label="Wheelchair Accessible" field="wheelchairAccessible" state={form} setState={setForm} />
+              <YN label="Elevator" field="elevator" state={form} setState={setForm} />
+              <YN label="Pets Allowed" field="petsAllowed" state={form} setState={setForm} />
+              <F><Label>Parties / Events</Label>
+                <Select value={form.partiesPolicy} onValueChange={v => setForm(f => ({ ...f, partiesPolicy: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                  <SelectContent>
+                    {['Parties/events allowed', 'Parties/events not allowed'].map(o =>
+                      <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                  </SelectContent>
+                </Select></F>
+              <YN label="Damage Deposit Required" field="damageDeposit" state={form} setState={setForm} />
+              {form.damageDeposit === 'Yes' && (
+                <F><Label>Damage Deposit Amount</Label>
+                  <Input type="number" min="0" value={form.damageDepositAmount}
+                    onChange={e => setForm(f => ({ ...f, damageDepositAmount: e.target.value }))} placeholder="500" /></F>
+              )}
+            </div>
           </div>
 
-          <Button type="submit" disabled={loading} className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white transition-all shadow-md hover:shadow-lg">
+          {/* Fees & Parking */}
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Fees &amp; Parking</p>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <F><Label>Parking</Label>
+                <Select value={form.parking} onValueChange={v => setForm(f => ({ ...f, parking: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                  <SelectContent>{['Free', 'Paid', 'Not available'].map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                </Select></F>
+              <YN label="Cleaning Fee" field="cleaningFee" state={form} setState={setForm} />
+              {form.cleaningFee === 'Yes' && (
+                <F><Label>Cleaning Fee Amount</Label>
+                  <Input type="number" min="0" value={form.cleaningFeeAmount}
+                    onChange={e => setForm(f => ({ ...f, cleaningFeeAmount: e.target.value }))} placeholder="75" /></F>
+              )}
+              <F><Label>Total Units / Rooms</Label>
+                <Input type="number" min="1" value={form.totalUnits}
+                  onChange={e => setForm(f => ({ ...f, totalUnits: e.target.value }))} /></F>
+            </div>
+          </div>
+
+          {/* Billing & Tax */}
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Billing &amp; Tax (Admin Use)</p>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <F><Label>Tax ID Number</Label>
+                <Input value={form.taxId} onChange={e => setForm(f => ({ ...f, taxId: e.target.value }))} placeholder="12-3456789" /></F>
+              <F><Label>Billing Contact Name</Label>
+                <Input value={form.billingName} onChange={e => setForm(f => ({ ...f, billingName: e.target.value }))} /></F>
+              <F><Label>Billing Contact Email</Label>
+                <Input type="email" value={form.billingEmail} onChange={e => setForm(f => ({ ...f, billingEmail: e.target.value }))} /></F>
+            </div>
+          </div>
+
+          {/* Description */}
+          <F><Label>Property Description</Label>
+            <Textarea rows={3} value={form.description}
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              placeholder="Describe your property for guests…" /></F>
+
+          <Button type="submit" disabled={loading}
+            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white transition-all shadow-md">
             {loading
               ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Saving…</>
-              : <>Save & Continue to Amenities <ArrowRight className="w-4 h-4 ml-2" /></>}
+              : <>Save Property &amp; Continue <ArrowRight className="w-4 h-4 ml-2" /></>}
           </Button>
         </form>
       )}
 
-      {/* ── Tab: Amenities ──────────────────────────────────────────────────── */}
-      {activeTab === 'amenities' && (
-        <div className="space-y-5">
-          <p className="text-sm text-slate-600">Select all the amenities your property offers.</p>
-          <div className="flex flex-wrap gap-2">
-            {AMENITY_OPTIONS.map(a => (
-              <button
-                key={a}
-                type="button"
-                onClick={() => toggleAmenity(a)}
-                className={`text-sm px-4 py-2 rounded-full border transition-all font-medium ${
-                  form.amenities.includes(a)
-                    ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white border-purple-600 shadow-sm'
-                    : 'bg-white border-slate-200 text-gray-600 hover:border-purple-300 hover:text-purple-700'
-                }`}
-              >
-                {form.amenities.includes(a) ? '✓ ' : ''}{a}
-              </button>
-            ))}
+      {/* TAB 2: ROOM TYPE */}
+      {activeTab === 'room' && (
+        <div className="space-y-6">
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Room Identity</p>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <F><Label>Room Type Name</Label>
+                <Input value={room.roomName}
+                  onChange={e => setRoom(r => ({ ...r, roomName: e.target.value }))}
+                  placeholder="Beachfront King Suite" /></F>
+
+              <F><Label>Room Category <span className="text-red-500">*</span></Label>
+                <Select value={room.roomCategory} onValueChange={v => setRoom(r => ({ ...r, roomCategory: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                  <SelectContent>{ROOM_TYPE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                </Select></F>
+
+              <F><Label>Max Occupancy <span className="text-red-500">*</span></Label>
+                <Input type="number" min="1" value={room.maxOccupancy}
+                  onChange={e => setRoom(r => ({ ...r, maxOccupancy: e.target.value }))} /></F>
+
+              <F><Label>Bedrooms</Label>
+                <Input type="number" min="0" value={room.bedrooms}
+                  onChange={e => setRoom(r => ({ ...r, bedrooms: e.target.value }))} /></F>
+
+              <F><Label>Bathrooms</Label>
+                <Input type="number" min="0" step="0.5" value={room.bathrooms}
+                  onChange={e => setRoom(r => ({ ...r, bathrooms: e.target.value }))} /></F>
+
+              <F><Label>Min Adult Age</Label>
+                <Input type="number" min="0" value={room.minAdultAge}
+                  onChange={e => setRoom(r => ({ ...r, minAdultAge: e.target.value }))} /></F>
+            </div>
           </div>
 
-          {form.amenities.length > 0 && (
-            <p className="text-xs text-slate-500">
-              {form.amenities.length} amenit{form.amenities.length === 1 ? 'y' : 'ies'} selected
-            </p>
-          )}
+          {/* Bed configuration */}
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Bed Configuration</p>
+            <div className="grid sm:grid-cols-2 gap-4">
+              {['bed1', 'bed2', 'bed3', 'bed4'].map((k, i) => (
+                <F key={k}><Label>Bedroom {i + 1}</Label>
+                  <Select value={room[k]} onValueChange={v => setRoom(r => ({ ...r, [k]: v }))}>
+                    <SelectTrigger><SelectValue placeholder="Select bed type…" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">None / Not used</SelectItem>
+                      {BED_TYPES.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+                    </SelectContent>
+                  </Select></F>
+              ))}
+            </div>
+          </div>
 
-          <Button
-            type="button"
-            onClick={handleFinishAmenities}
-            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white transition-all shadow-md hover:shadow-lg"
-          >
-            Continue to Calendar Connections <ArrowRight className="w-4 h-4 ml-2" />
+          {/* Room amenities */}
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Room Amenities</p>
+            <div className="flex flex-wrap gap-2">
+              {AMENITY_OPTIONS.map(a => (
+                <button key={a} type="button" onClick={() => toggleRoomAmenity(a)}
+                  className={`text-sm px-3 py-1.5 rounded-full border font-medium transition-all ${
+                    room.amenities.includes(a)
+                      ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white border-purple-600'
+                      : 'bg-white border-slate-200 text-slate-600 hover:border-purple-300'
+                  }`}>
+                  {room.amenities.includes(a) ? '✓ ' : ''}{a}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <Button type="button" onClick={handleSaveRoom}
+            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-md">
+            Save Room Type &amp; Continue <ArrowRight className="w-4 h-4 ml-2" />
           </Button>
         </div>
       )}
 
-      {/* ── Tab: Calendar Connections ───────────────────────────────────────── */}
+      {/* TAB 3: RATE PLAN */}
+      {activeTab === 'rate' && (
+        <div className="space-y-5">
+          <div className="grid sm:grid-cols-2 gap-4">
+            <F><Label>Rate Plan Name <span className="text-red-500">*</span></Label>
+              <Input value={rate.planName}
+                onChange={e => setRate(r => ({ ...r, planName: e.target.value }))}
+                placeholder="Standard Rate" required /></F>
+
+            <F><Label>Base Nightly Rate <span className="text-red-500">*</span></Label>
+              <Input type="number" min="1" value={rate.basePrice}
+                onChange={e => setRate(r => ({ ...r, basePrice: e.target.value }))}
+                placeholder="150" /></F>
+
+            <F><Label>Cancellation Policy</Label>
+              <Select value={rate.cancellationPolicy} onValueChange={v => setRate(r => ({ ...r, cancellationPolicy: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {['Free cancellation', 'Non-refundable', 'Partial penalty'].map(o =>
+                    <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                </SelectContent>
+              </Select></F>
+
+            {rate.cancellationPolicy === 'Free cancellation' && (
+              <F><Label>Free Cancel Until (days before arrival)</Label>
+                <Input type="number" min="0" value={rate.freeCancelDays}
+                  onChange={e => setRate(r => ({ ...r, freeCancelDays: e.target.value }))} /></F>
+            )}
+
+            <F><Label>Min Length of Stay (nights)</Label>
+              <Input type="number" min="1" value={rate.minNights}
+                onChange={e => setRate(r => ({ ...r, minNights: e.target.value }))} /></F>
+
+            <F><Label>Max Length of Stay (nights)</Label>
+              <Input type="number" min="0" value={rate.maxNights}
+                onChange={e => setRate(r => ({ ...r, maxNights: e.target.value }))} placeholder="Optional" /></F>
+
+            <F><Label>Min Advance Booking Days</Label>
+              <Input type="number" min="0" value={rate.minAdvanceDays}
+                onChange={e => setRate(r => ({ ...r, minAdvanceDays: e.target.value }))} placeholder="Optional" /></F>
+
+            <F><Label>Max Advance Booking Days</Label>
+              <Input type="number" min="0" value={rate.maxAdvanceDays}
+                onChange={e => setRate(r => ({ ...r, maxAdvanceDays: e.target.value }))} placeholder="Optional" /></F>
+          </div>
+
+          <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-sm text-blue-800 flex gap-3">
+            <Sparkles className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>Our team will review your rate plan and configure it across your connected channels.</span>
+          </div>
+
+          <Button type="button" onClick={handleSaveRate}
+            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-md">
+            Save Rate Plan &amp; Continue <ArrowRight className="w-4 h-4 ml-2" />
+          </Button>
+        </div>
+      )}
+
+      {/* TAB 4: CALENDAR CONNECTIONS */}
       {activeTab === 'calendar' && (
         <div className="space-y-6">
-          {/* Add new iCal connection */}
           <div className="space-y-3">
             <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
-              <CalendarDays className="w-4 h-4 text-blue-600" />Import Calendar (Inbound)
+              <CalendarDays className="w-4 h-4 text-blue-600" />Connect a Calendar (Optional)
             </h3>
             <p className="text-xs text-slate-500">
-              Paste iCal links from Airbnb, VRBO, Booking.com, or any calendar app to sync availability into your property.
+              Paste iCal links to sync availability automatically.
             </p>
-
             <div className="grid sm:grid-cols-3 gap-3">
-              <Input
-                placeholder="Label (e.g. Airbnb Calendar)"
-                value={newIcal.name}
-                onChange={e => setNewIcal(n => ({ ...n, name: e.target.value }))}
-              />
-              <Input
-                placeholder="https://…/calendar.ics"
-                value={newIcal.url}
-                onChange={e => setNewIcal(n => ({ ...n, url: e.target.value }))}
-                className="sm:col-span-2"
-              />
+              <Input placeholder="Label (e.g. My Calendar)"
+                value={newIcal.name} onChange={e => setNewIcal(n => ({ ...n, name: e.target.value }))} />
+              <Input placeholder="https://…/calendar.ics"
+                value={newIcal.url} onChange={e => setNewIcal(n => ({ ...n, url: e.target.value }))}
+                className="sm:col-span-2" />
             </div>
-
             <div className="flex items-center gap-3">
               <Select value={newIcal.direction} onValueChange={v => setNewIcal(n => ({ ...n, direction: v }))}>
                 <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
@@ -973,16 +1132,11 @@ function ManualCreateForm({ onSuccess }) {
                   <SelectItem value="export">Export (outbound)</SelectItem>
                 </SelectContent>
               </Select>
-              <Button
-                type="button"
-                onClick={addIcal}
-                disabled={!newIcal.url.trim() || !newIcal.name.trim()}
-                size="sm"
-              >
-                Add Connection
+              <Button type="button" onClick={addIcal}
+                disabled={!newIcal.url.trim() || !newIcal.name.trim()} size="sm">
+                Add
               </Button>
             </div>
-
             {icalLinks.length > 0 && (
               <div className="space-y-2">
                 {icalLinks.map((link, i) => (
@@ -999,33 +1153,23 @@ function ManualCreateForm({ onSuccess }) {
             )}
           </div>
 
-          {/* Export URL */}
           {exportUrl && (
-            <div className="space-y-3 pt-4 border-t border-slate-100">
+            <div className="space-y-2 pt-4 border-t border-slate-100">
               <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
-                <ExternalLink className="w-4 h-4 text-blue-600" />Export Your Calendar (Outbound)
+                <ExternalLink className="w-4 h-4 text-blue-600" />Your Calendar Export URL
               </h3>
-              <p className="text-xs text-slate-500">
-                Share this link with Airbnb, VRBO, or any calendar app so they can subscribe to your availability.
-              </p>
               <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                 <code className="text-xs text-slate-700 truncate flex-1">{exportUrl}</code>
                 <Button size="sm" variant="ghost" onClick={copyExport} className="shrink-0">
                   <Copy className="w-4 h-4 mr-1" />Copy
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => window.open(exportUrl, '_blank')} className="shrink-0">
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </Button>
               </div>
             </div>
           )}
 
-          <Button
-            type="button"
-            onClick={() => onSuccess({ listingId: savedListingId })}
-            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white transition-all shadow-md hover:shadow-lg"
-          >
-            <CheckCircle2 className="w-4 h-4 mr-2" />Done — View My Listings
+          <Button type="button" onClick={() => onSuccess({ listingId: savedListingId })}
+            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-md">
+            <CheckCircle2 className="w-4 h-4 mr-2" />Submit My Property
           </Button>
         </div>
       )}
