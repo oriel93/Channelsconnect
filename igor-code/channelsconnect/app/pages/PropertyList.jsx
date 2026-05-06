@@ -184,13 +184,13 @@ export default function PropertyList() {
           <div className="flex items-center gap-2 flex-shrink-0">
             {/* Search */}
             <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none z-10" />
               <Input
                 type="text"
                 placeholder="Search properties…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                className="pl-8 h-9 w-48 sm:w-56 text-sm"
+                className="!pl-9 h-9 w-48 sm:w-56 text-sm"
               />
             </div>
 

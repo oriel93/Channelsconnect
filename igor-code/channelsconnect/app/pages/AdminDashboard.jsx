@@ -574,9 +574,9 @@ export default function AdminDashboard() {
               <CardTitle className="flex items-center justify-between">
                 <span>All Platform Users</span>
                 <div className="relative w-64">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none z-10" />
                   <Input
-                    className="pl-9"
+                    className="!pl-9"
                     placeholder="Search by name or email..."
                     value={userSearch}
                     onChange={(e) => setUserSearch(e.target.value)}
@@ -776,9 +776,9 @@ export default function AdminDashboard() {
               <CardTitle className="flex items-center justify-between">
                 <span>All Platform Listings</span>
                 <div className="relative w-64">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none z-10" />
                   <Input
-                    className="pl-9"
+                    className="!pl-9"
                     placeholder="Title, city, or owner email..."
                     value={listingSearch}
                     onChange={(e) => setListingSearch(e.target.value)}
