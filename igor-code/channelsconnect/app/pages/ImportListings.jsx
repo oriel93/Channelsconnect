@@ -135,7 +135,7 @@ function AuthCard({ onAuthenticated }) {
             <div>
               <Label htmlFor="fullName">Full Name</Label>
               <Input id="fullName" value={form.fullName} className="mt-1" placeholder="Jane Smith" required
-                onChange={(e) => setForm({ ...form, fullName: e.target.value })} />
+                onChange={(e) => { const v = e.target.value; setForm(f => ({ ...f, fullName: v })); }} />
             </div>
           )}
           <div>
@@ -143,7 +143,7 @@ function AuthCard({ onAuthenticated }) {
             <div className="relative mt-1">
               <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
               <Input id="email" type="email" value={form.email} className="pl-10" placeholder="you@example.com" required
-                onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                onChange={(e) => { const v = e.target.value; setForm(f => ({ ...f, email: v })); }} />
             </div>
           </div>
           <div>
@@ -151,7 +151,7 @@ function AuthCard({ onAuthenticated }) {
             <div className="relative mt-1">
               <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
               <Input id="password" type="password" value={form.password} className="pl-10" placeholder="••••••••" required minLength={6}
-                onChange={(e) => setForm({ ...form, password: e.target.value })} />
+                onChange={(e) => { const v = e.target.value; setForm(f => ({ ...f, password: v })); }} />
             </div>
           </div>
           <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 h-11" disabled={loading}>
@@ -318,7 +318,7 @@ function SetupStep({ user, onComplete }) {
           <div>
             <Label htmlFor="title">Property Name *</Label>
             <Input id="title" value={form.title} required className="mt-1" placeholder="e.g. Beachfront Villa"
-              onChange={(e) => setForm({ ...form, title: e.target.value })} />
+              onChange={(e) => { const v = e.target.value; setForm(f => ({ ...f, title: v })); }} />
           </div>
 
           <div>
@@ -334,12 +334,12 @@ function SetupStep({ user, onComplete }) {
             <div>
               <Label htmlFor="city">City</Label>
               <Input id="city" value={form.city} className="mt-1" placeholder="Miami"
-                onChange={(e) => setForm({ ...form, city: e.target.value })} />
+                onChange={(e) => { const v = e.target.value; setForm(f => ({ ...f, city: v })); }} />
             </div>
             <div>
               <Label htmlFor="country">Country</Label>
               <Input id="country" value={form.country} className="mt-1" placeholder="US" maxLength={2}
-                onChange={(e) => setForm({ ...form, country: e.target.value.toUpperCase() })} />
+                onChange={(e) => { const v = e.target.value.toUpperCase(); setForm(f => ({ ...f, country: v })); }} />
             </div>
           </div>
 
@@ -347,7 +347,7 @@ function SetupStep({ user, onComplete }) {
             <div>
               <Label htmlFor="currency">Currency</Label>
               <Input id="currency" value={form.currency} className="mt-1" placeholder="USD" maxLength={3}
-                onChange={(e) => setForm({ ...form, currency: e.target.value.toUpperCase() })} />
+                onChange={(e) => { const v = e.target.value.toUpperCase(); setForm(f => ({ ...f, currency: v })); }} />
             </div>
           </div>
 
