@@ -1207,40 +1207,41 @@ function PropertyIngestionHubContent() {
 
       {/* Tier selection grid */}
       {!activeTier && (
-        <div className="grid sm:grid-cols-2 gap-4 auto-rows-fr">
+        <div className="grid sm:grid-cols-2 gap-4">
           {TIERS.map((tier) => {
             const Icon = tier.icon;
             const c    = colorMap[tier.color];
             return (
-              <button
-                key={tier.id}
-                onClick={() => setActiveTier(tier.id)}
-                className={`relative text-left p-5 bg-white border border-slate-200 rounded-2xl shadow-sm
-                  h-full flex flex-col
-                  hover:shadow-lg hover:border-purple-300 hover:-translate-y-0.5
-                  active:translate-y-0 active:shadow-sm
-                  transition-all duration-200 group focus:outline-none focus:ring-2 focus:ring-purple-400`}
-              >
-                {/* Top row: icon + badge */}
-                <div className="flex items-center justify-between mb-4">
-                  <div className={`w-11 h-11 flex items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 shadow-md group-hover:shadow-lg transition-shadow`}>
-                    <Icon className="w-5 h-5 text-white" />
+              <div key={tier.id} className="flex">
+                <button
+                  onClick={() => setActiveTier(tier.id)}
+                  className={`relative text-left p-5 bg-white border border-slate-200 rounded-2xl shadow-sm
+                    w-full flex flex-col
+                    hover:shadow-lg hover:border-purple-300 hover:-translate-y-0.5
+                    active:translate-y-0 active:shadow-sm
+                    transition-all duration-200 group focus:outline-none focus:ring-2 focus:ring-purple-400`}
+                >
+                  {/* Top row: icon + badge */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div className={`w-11 h-11 flex items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 shadow-md group-hover:shadow-lg transition-shadow shrink-0`}>
+                      <Icon className="w-5 h-5 text-white" />
+                    </div>
+                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${c.badge} border tracking-wide uppercase`}>
+                      {tier.badge}
+                    </span>
                   </div>
-                  <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${c.badge} border tracking-wide uppercase`}>
-                    {tier.badge}
-                  </span>
-                </div>
-                {/* Text */}
-                <p className="font-bold text-slate-900 text-[15px] leading-tight">{tier.label}</p>
-                <p className="text-[11px] text-slate-400 font-medium mt-0.5">{tier.sub}</p>
-                <p className="text-[13px] text-slate-500 mt-2 leading-relaxed flex-1">{tier.desc}</p>
-                {/* CTA arrow */}
-                <div className="flex items-center gap-1 mt-4 text-[11px] font-bold text-purple-600 opacity-0 group-hover:opacity-100 transition-all duration-200 translate-x-0 group-hover:translate-x-1">
-                  Get started <ArrowRight className="w-3 h-3" />
-                </div>
-                {/* Bottom gradient bar */}
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 to-purple-600 rounded-b-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-              </button>
+                  {/* Text */}
+                  <p className="font-bold text-slate-900 text-[15px] leading-tight">{tier.label}</p>
+                  <p className="text-[11px] text-slate-400 font-medium mt-0.5">{tier.sub}</p>
+                  <p className="text-[13px] text-slate-500 mt-2 leading-relaxed flex-1">{tier.desc}</p>
+                  {/* CTA arrow */}
+                  <div className="flex items-center gap-1 mt-4 text-[11px] font-bold text-purple-600 opacity-0 group-hover:opacity-100 transition-all duration-200 translate-x-0 group-hover:translate-x-1">
+                    Get started <ArrowRight className="w-3 h-3" />
+                  </div>
+                  {/* Bottom gradient bar */}
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 to-purple-600 rounded-b-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                </button>
+              </div>
             );
           })}
         </div>
