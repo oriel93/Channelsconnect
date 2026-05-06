@@ -119,13 +119,22 @@ export class AdminService {
       'Bedrooms',
       'Bathrooms',
       'Max Guests',
+      'Address',
       'City',
+      'State',
       'Country',
+      'Postal Code',
       'Amenities',
       'Source',
+      'Review Status',
       'Active',
       'Base Price',
       'Currency',
+      'Check-In Time',
+      'Check-Out Time',
+      'Min Nights',
+      'Channex Property ID',
+      'Channex Sync Status',
       'Owner Email',
       'Owner Name',
       'Created At',
@@ -150,24 +159,45 @@ export class AdminService {
       }
     };
 
-    const rows = listings.map((l) => [
-      l.id,
-      l.title,
-      l.propertyType || '',
-      l.bedrooms ?? '',
-      l.bathrooms ?? '',
-      l.maxGuests ?? '',
-      l.city || '',
-      l.country || '',
-      parseAmenities(l.amenities),
-      l.source || '',
-      l.isActive ? 'Yes' : 'No',
-      l.basePrice ?? '',
-      l.currency,
-      l.user?.email || '',
-      l.user?.name || '',
-      l.createdAt.toISOString(),
-    ]);
+    // Also load channex mappings for sync status
+    const mappings = await this.prisma.channexMapping.findMany({
+      where: { syncStatus: { not: 'archived' } },
+      select: { listingId: true, channexPropertyId: true, syncStatus: true },
+    });
+    const mappingByListing = new Map(
+      mappings.map(m => [m.listingId, m]),
+    );
+
+    const rows = listings.map((l) => {
+      const mapping = mappingByListing.get(l.id);
+      return [
+        l.id,
+        l.title,
+        (l as any).propertyType || '',
+        (l as any).bedrooms ?? '',
+        (l as any).bathrooms ?? '',
+        (l as any).maxGuests ?? '',
+        (l as any).address || '',
+        l.city || '',
+        (l as any).state || '',
+        l.country || '',
+        (l as any).postalCode || '',
+        parseAmenities(l.amenities),
+        l.source || '',
+        l.reviewStatus || '',
+        l.isActive ? 'Yes' : 'No',
+        l.basePrice ?? '',
+        l.currency,
+        (l as any).checkInTime || '',
+        (l as any).checkOutTime || '',
+        (l as any).minNights ?? '',
+        mapping?.channexPropertyId || '',
+        mapping?.syncStatus || 'not_synced',
+        l.user?.email || '',
+        l.user?.name || '',
+        l.createdAt.toISOString(),
+      ];
+    });
 
     const lines = [headers.join(','), ...rows.map((r) => r.map(escape).join(','))];
     return lines.join('\n');
@@ -365,7 +395,7 @@ export class AdminService {
   async getConciergeQueue() {
     return this.prisma.listing.findMany({
       where: {
-        reviewStatus: { in: ['pending_ota_scrape', 'pending_website_extract'] },
+        reviewStatus: { in: ['pending_ota_scrape', 'pending_website_extract', 'pending_airbnb_connect'] },
       },
       orderBy: { createdAt: 'desc' },
       include: {

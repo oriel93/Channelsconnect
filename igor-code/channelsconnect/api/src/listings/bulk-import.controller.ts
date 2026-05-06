@@ -100,10 +100,17 @@ type ValidRow = z.infer<typeof ExcelRowSchema>;
 
 // ─── OTA URL schema ──────────────────────────────────────────────────────────
 
+// Airbnb-only — the iFrame flow handles the real connection;
+// this endpoint is kept as a lightweight webhook/fallback capture.
 const OtaUrlSchema = z.object({
-  otaUrl:   z.string().url('Must be a valid Airbnb or VRBO URL'),
-  icalUrl:  z.string().url('Must be a valid iCal URL').optional().or(z.literal('')),
-  title:    z.string().optional().default(''),
+  otaUrl: z
+    .string()
+    .url('Must be a valid URL')
+    .refine(
+      (u) => u.includes('airbnb.com'),
+      'Only Airbnb listings are supported through this option. For other platforms, use Excel or Manual import.',
+    ),
+  title: z.string().optional().default(''),
 });
 
 // ─── Website import schema ───────────────────────────────────────────────────
@@ -138,131 +145,299 @@ export class BulkImportController {
     if (!parsed.success) {
       throw new BadRequestException(parsed.error.issues.map(i => i.message).join('; '));
     }
-    const { otaUrl, icalUrl, title } = parsed.data;
+    const { otaUrl, title } = parsed.data;
 
-    // Detect OTA source
-    const source = otaUrl.includes('airbnb') ? 'airbnb_url'
-                 : otaUrl.includes('vrbo') || otaUrl.includes('homeaway') ? 'vrbo_url'
-                 : 'ota_url';
+    // Airbnb-only at this point (schema already validated)
+    const source = 'airbnb_url';
 
-    // Create listing placeholder
+    // Create listing placeholder — full connection happens via /connect/airbnb/init
     const listing = await this.prisma.listing.create({
       data: {
         userId:       user.id,
-        title:        title || `Importing from ${source.replace('_', ' ')}…`,
+        title:        title || 'Airbnb Import — pending',
         source,
         isActive:     false,
-        reviewStatus: 'pending_ota_scrape',
+        reviewStatus: 'pending_airbnb_connect',
         captureUrl:   otaUrl,
         currency:     'USD',
         minNights:    1,
       },
     });
 
-    // If iCal URL provided, save it immediately for calendar sync
-    if (icalUrl) {
-      await this.prisma.icalConnection.create({
-        data: {
-          userId:        user.id,
-          listingId:     listing.id,
-          name:          'OTA Calendar',
-          icalUrl,
-          syncDirection: 'import',
-          syncEnabled:   true,
-        },
-      }).catch(() => {}); // non-fatal
-    }
-
-    this.logger.log(`[Ingest] OTA URL submitted by ${user.id} → listingId=${listing.id} source=${source}`);
+    this.logger.log(`[Ingest] Airbnb URL captured by ${user.id} → listingId=${listing.id}`);
 
     return {
       listingId: listing.id,
-      status:    'pending_ota_scrape',
-      message:   'We are extracting your photos and descriptions. We will notify you when your listing is ready for review.',
+      status:    'pending_airbnb_connect',
+      message:   'Your Airbnb listing has been noted. Use the Connect Airbnb flow to link your account.',
     };
   }
 
   // ── Tier 2: Excel Template Download ──────────────────────────────────────
 
   @Get('bulk-import/template')
-  @Public()  // No auth needed — static template file, no user data
-  @ApiOperation({ summary: 'Download the Excel import template (.xlsx)' })
+  @Public()
+  @ApiOperation({ summary: 'Download the Channels Connect Excel import template (.xlsx)' })
   downloadTemplate(@Res() res: Response) {
-    const headers = [
-      'Title', 'Address', 'City', 'State', 'Zip', 'Country',
-      'PropertyType', 'MaxGuests', 'Bedrooms', 'Bathrooms', 'Beds',
-      'BaseRate', 'MinRate', 'MaxRate', 'Currency',
-      'Amenities', 'Description', 'CheckInTime', 'CheckOutTime',
-      'MinNights', 'HouseRules', 'CancellationPolicy',
-    ];
+    const wb = XLSX.utils.book_new();
 
-    const exampleRow = [
-      'Beachfront Villa', '123 Ocean Drive', 'Miami Beach', 'FL', '33139', 'USA',
-      'House', '6', '3', '2', '1 King, 2 Queen, 1 Twin',
-      '350', '200', '600', 'USD',
-      'WiFi, Pool, Air Conditioning, Parking, Kitchen, BBQ',
-      'Stunning ocean views, 3-min walk to beach.',
-      '3:00 PM', '11:00 AM',
-      '2', 'No smoking, No parties', 'Strict',
-    ];
-
-    const notesRow = [
-      '* Required', '* Required', '* Required', 'Optional', 'Optional', 'Optional (e.g. USA)',
-      'e.g. House/Apartment/Villa', '* Required integer', 'Integer ≥ 0', 'Number ≥ 0', 'e.g. 1 King, 2 Queen',
-      '* Required (USD)', 'Optional', 'Optional', '3-letter code',
-      'Comma-separated list', 'Free text', '12/24hr format', '12/24hr format',
-      'Integer ≥ 1', 'Free text', 'e.g. Strict/Moderate/Flexible',
-    ];
-
-    const wb  = XLSX.utils.book_new();
-    const ws  = XLSX.utils.aoa_to_sheet([headers, exampleRow, notesRow]);
-
-    // Column widths
-    ws['!cols'] = headers.map((h) => ({
-      wch: Math.max(h.length + 4, 18),
-    }));
-
-    // Style header row bold (xlsx lite — just set the value objects)
-    headers.forEach((_, ci) => {
-      const addr = XLSX.utils.encode_cell({ r: 0, c: ci });
-      if (ws[addr]) ws[addr].s = { font: { bold: true } };
-    });
-
-    XLSX.utils.book_append_sheet(wb, ws, 'Properties');
-
-    // Legend sheet
-    const legend = XLSX.utils.aoa_to_sheet([
-      ['Field', 'Required?', 'Notes'],
-      ['Title', 'Yes', 'Full property name'],
-      ['Address', 'Yes', 'Street address only — do NOT include city/state here'],
-      ['City', 'Yes', ''],
-      ['State', 'No', 'State or province'],
-      ['Zip', 'No', 'Postal / ZIP code'],
-      ['Country', 'No', 'Full name or 2/3-letter code (e.g. USA, UK, DE)'],
-      ['PropertyType', 'No', 'House, Apartment, Villa, Condo, Studio, Suite, etc.'],
-      ['MaxGuests', 'Yes', 'Total person capacity'],
-      ['Bedrooms', 'No', 'Integer'],
-      ['Bathrooms', 'No', 'Decimals OK (e.g. 1.5)'],
-      ['Beds', 'No', 'e.g. "1 King, 2 Queen, 1 Twin"'],
-      ['BaseRate', 'Yes', 'Default nightly rate in Currency'],
-      ['MinRate', 'No', 'Minimum dynamic price floor'],
-      ['MaxRate', 'No', 'Maximum dynamic price ceiling'],
-      ['Currency', 'No', 'ISO 4217 — defaults to USD'],
-      ['Amenities', 'No', 'Comma-separated: WiFi, Pool, Kitchen, Parking, etc.'],
-      ['Description', 'No', 'Property description for OTAs'],
-      ['CheckInTime', 'No', 'e.g. 3:00 PM or 15:00'],
-      ['CheckOutTime', 'No', 'e.g. 11:00 AM or 11:00'],
-      ['MinNights', 'No', 'Minimum booking length (default 1)'],
-      ['HouseRules', 'No', 'Free text — No smoking, No parties, etc.'],
-      ['CancellationPolicy', 'No', 'Strict / Moderate / Flexible / Non-refundable'],
+    // ── Sheet 1: Instructions ─────────────────────────────────────────────
+    const instructions = XLSX.utils.aoa_to_sheet([
+      ['Channels Connect — Property Import Template'],
+      [''],
+      ['HOW TO USE THIS FILE'],
+      ['1. Read these instructions carefully before filling in any data.'],
+      ['2. Fill in the "Properties" sheet — one row per property. Required fields are marked *.'],
+      ['3. Fill in the "Room_Types" sheet — one row per room type. Link to the property by name.'],
+      ['4. Fill in the "Rate_Plans" sheet — define your rate plans (optional but recommended).'],
+      ['5. Save the file and upload it in the Channels Connect dashboard.'],
+      ['6. Our team will review your data and publish your properties within 1–2 business days.'],
+      [''],
+      ['IMPORTANT NOTES'],
+      ['• Do NOT change sheet names or column headers — they are read automatically.'],
+      ['• Property Name must match exactly between the Properties and Room_Types sheets.'],
+      ['• Country codes must be ISO 3-letter codes (e.g. USA, GBR, AUS, DEU, CAN).'],
+      ['• Currency codes must be ISO 4217 (e.g. USD, EUR, GBP, AUD).'],
+      ['• Phone numbers: include country code + area code (e.g. 1-305-555-0100).'],
+      ['• Addresses must be in English characters only.'],
+      ['• Do NOT include city, state, or country in the "Street Address" column.'],
+      ['• For questions: support@channelsconnect.com'],
+      [''],
+      ['CHANNEL CODES (for reference)'],
+      ['Booking.com', 'BDC'],
+      ['Airbnb', 'ABB'],
+      ['Expedia', 'EXP'],
+      ['VRBO', 'VRB'],
+      ['Agoda', 'AGO'],
     ]);
-    legend['!cols'] = [{ wch: 22 }, { wch: 12 }, { wch: 55 }];
-    XLSX.utils.book_append_sheet(wb, legend, 'Field Guide');
+    instructions['!cols'] = [{ wch: 80 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, instructions, 'Instructions');
+
+    // ── Sheet 2: Properties ───────────────────────────────────────────────
+    const propHeaders = [
+      'Property Name *',
+      'Type of Unit *',
+      'Number of Room Types *',
+      'Provider Code',
+      'Street Address *',
+      'City *',
+      'State / Province *',
+      'Postal Code *',
+      'Country Code *',
+      'Phone Number *',
+      'Currency *',
+      'Property Type *',
+      'Cancellation Time',
+      'Cut Off Days',
+      'Tax ID Number',
+      'Billing Contact Name',
+      'Billing Contact Email',
+      'Wheelchair Accessible',
+      'Elevators',
+      'Pets Allowed',
+      'Front Desk',
+      'Front Desk Hours Start',
+      'Front Desk Hours End',
+      'Self Check-in',
+      'Check-in Time Start',
+      'Check-in Time End',
+      'Check-out Time',
+      'Email Check-in Instructions',
+      'Advance Notice Required',
+      'Damage Deposit',
+      'Damage Deposit Amount',
+      'Check-in at Different Location',
+      'Alternative Check-in Address',
+      'Parking',
+      'Cleaning Fees',
+      'Cleaning Fee Amount',
+      'WiFi',
+      'Pool',
+      'Total Rooms / Units',
+      'Parties / Events Policy',
+    ];
+
+    const propNotes = [
+      '* Required. Full property name as it should appear on booking sites.',
+      '* Single Unit or Multi Unit',
+      '* Integer: number of distinct room types to create',
+      'Your internal property code (optional)',
+      '* Street only — no city/state/country here',
+      '* Required',
+      '* Required',
+      '* Required',
+      '* 3-letter ISO code: USA, GBR, AUS, DEU, CAN, etc.',
+      '* Country code + number. E.g. 1-305-555-0100',
+      '* 3-letter ISO 4217: USD, EUR, GBP, AUD',
+      '* Private vacation Home, Apartment, Condo, Villa, etc.',
+      'e.g. 2:00 PM',
+      'Days before arrival that booking is cut off. 0 = same day.',
+      'Tax ID / EIN / VAT number',
+      'Full name of billing contact',
+      'Email for billing/invoices',
+      'Yes / No',
+      'Yes / No',
+      'Yes / No',
+      '24 hours / Limited hours / No Front desk',
+      'If limited hours: start time (e.g. 9:00 AM)',
+      'If limited hours: end time (e.g. 5:00 PM)',
+      'Yes - Lockbox / Yes - Access code / Yes - Smart lock / No',
+      'e.g. 3:00 PM',
+      'e.g. 10:00 PM',
+      'e.g. 11:00 AM',
+      'Yes / No',
+      'Yes / No',
+      'Yes / No',
+      'If yes, amount in property currency',
+      'Yes / No',
+      'Full address if different from property',
+      'Free / Paid / Not available',
+      'Yes / No',
+      'If yes, amount per stay in property currency',
+      'Free / Paid / Not available',
+      'Indoor / Outdoor / Not available',
+      'Total number of units / rooms',
+      'Parties/events allowed / Parties/events not allowed',
+    ];
+
+    const propExample = [
+      'Beachfront Villa Miami', 'Single Unit', 1, 'BEACHVILLA01',
+      '123 Ocean Drive', 'Miami Beach', 'FL', '33139', 'USA',
+      '1-305-555-0100', 'USD', 'Private vacation Home',
+      '2:00 PM', 1, '12-345-6789', 'Finance Department', 'billing@example.com',
+      'Yes', 'No', 'Yes', '24 hours', '', '', 'Yes - Lockbox',
+      '3:00 PM', '10:00 PM', '11:00 AM', 'Yes', 'No',
+      'Yes', 500, 'No', '', 'Free', 'Yes', 150, 'Free', 'Outdoor', 1,
+      'Parties/events not allowed',
+    ];
+
+    const propWs = XLSX.utils.aoa_to_sheet([propHeaders, propNotes, propExample]);
+    propWs['!cols'] = propHeaders.map(() => ({ wch: 28 }));
+    XLSX.utils.book_append_sheet(wb, propWs, 'Properties');
+
+    // ── Sheet 3: Room_Types ───────────────────────────────────────────────
+    const roomHeaders = [
+      'Property Name *',
+      'Provider Code',
+      'Type of Unit *',
+      'Room Code',
+      'Registry Number',
+      'Room Type Category *',
+      'Custom Label',
+      'Private Pool',
+      'In-room Laundry',
+      'Air Conditioning',
+      'Fan',
+      'Heating',
+      'Kitchen',
+      'Cookware & Utensils',
+      'Refrigerator',
+      'Stovetop',
+      'Dishwasher',
+      'Oven',
+      'Microwave',
+      'Private Bathroom',
+      'Bath Configuration',
+      'Towels Provided',
+      'Full Bathrooms',
+      'Bedrooms',
+      'Max Occupancy *',
+      'Min Adult Age',
+      'Sofa Beds',
+      'Bedroom 1 Bed Type',
+      'Bedroom 2 Bed Type',
+      'Bedroom 3 Bed Type',
+      'Bedroom 4 Bed Type',
+    ];
+
+    const roomNotes = [
+      '* Must match exactly the Property Name in the Properties sheet',
+      'Your internal code (optional)',
+      '* Single Unit or Multi Unit',
+      'Your room code (optional)',
+      'Short-term rental permit / registry number if required by local law',
+      '* House, Apartment, Studio, Suite, Villa, Condo, Cabin, Cottage, etc.',
+      'Custom display name for this room type (optional)',
+      'Yes / No',
+      'All-in-one washer/dryer / Washing machine / No',
+      'Yes / No',
+      'Yes / No',
+      'Yes / No',
+      'Full Kitchen / Kitchenette / No',
+      'Yes / No',
+      'Full-sized / Compact / Mini / No',
+      'Yes / No',
+      'Yes / No',
+      'Yes / No',
+      'Yes / No',
+      'Yes / No',
+      'Shower only / Bathtub only / Shower/tub combination / Separate bathtub and shower',
+      'Yes / No',
+      'Integer 0–20',
+      'Integer 0–20 (0 for studio)',
+      '* Total guests allowed',
+      'Minimum age considered adult (default 18)',
+      'Number of sofa beds in common areas (free text)',
+      '1 King / 1 Queen / 2 Twin / 1 Double / 1 Bunk Bed',
+      '1 King / 1 Queen / 2 Twin / 1 Double / 1 Bunk Bed',
+      '1 King / 1 Queen / 2 Twin / 1 Double / 1 Bunk Bed',
+      '1 King / 1 Queen / 2 Twin / 1 Double / 1 Bunk Bed',
+    ];
+
+    const roomExample = [
+      'Beachfront Villa Miami', 'BEACHVILLA01', 'Single Unit', '', '',
+      'House', '', 'No', 'All-in-one washer/dryer', 'Yes', 'No', 'Yes',
+      'Full Kitchen', 'Yes', 'Full-sized', 'Yes', 'Yes', 'Yes', 'Yes', 'Yes',
+      'Separate bathtub and shower', 'Yes', 2, 3, 6, 18,
+      'No', '1 King', '1 Queen', '2 Twin', '',
+    ];
+
+    const roomWs = XLSX.utils.aoa_to_sheet([roomHeaders, roomNotes, roomExample]);
+    roomWs['!cols'] = roomHeaders.map(() => ({ wch: 26 }));
+    XLSX.utils.book_append_sheet(wb, roomWs, 'Room_Types');
+
+    // ── Sheet 4: Rate_Plans ───────────────────────────────────────────────
+    const rateHeaders = [
+      'Rate Plan Name *',
+      'Cancellation Policy *',
+      'Free Cancel Until (days before arrival)',
+      'Penalty After Free Cancel',
+      'Second Cutoff (days before arrival)',
+      'Final Penalty',
+      'Min Advance Booking Days',
+      'Max Advance Booking Days',
+      'Min Length of Stay',
+      'Max Length of Stay',
+    ];
+
+    const rateNotes = [
+      '* e.g. Standard Rate, Weekly Rate, Non-refundable',
+      '* Free cancellation / Non-refundable / Partial penalty',
+      'Days before arrival until which free cancellation applies',
+      'e.g. 1 Night Room & Tax / 50% Cost of Stay / 100% Cost of Stay',
+      'If 3-tier policy: second cutoff in days',
+      'e.g. 100% Cost of Stay',
+      'Minimum days in advance a booking must be made',
+      'Maximum days in advance a booking can be made',
+      'Minimum nights per stay',
+      'Maximum nights per stay',
+    ];
+
+    const rateExample1 = ['Standard Rate', 'Free cancellation', 30, '1 Night Room & Tax', 7, '100% Cost of Stay', '', '', 2, ''];
+    const rateExample2 = ['Weekly Rate', 'Free cancellation', 45, '50% Cost of Stay', '', '', '', '', 7, ''];
+    const rateExample3 = ['Non-refundable', 'Non-refundable', '', '', '', '100% Cost of Stay', '', '', 1, ''];
+
+    const rateWs = XLSX.utils.aoa_to_sheet([rateHeaders, rateNotes, rateExample1, rateExample2, rateExample3]);
+    rateWs['!cols'] = rateHeaders.map(() => ({ wch: 32 }));
+    XLSX.utils.book_append_sheet(wb, rateWs, 'Rate_Plans');
 
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename="channels_connect_import_template.xlsx"');
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="channels_connect_property_import.xlsx"',
+    );
     res.setHeader('Cache-Control', 'no-cache');
     res.send(buf);
   }

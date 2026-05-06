@@ -227,7 +227,23 @@ export const api = {
     /** Step 1: Create the user's property. Body: { title, city, country, currency, address } */
     onboard: (data) => apiClient.post('/connect/onboard', data),
 
-    /** Step 2: Get a branded OTA OAuth URL to open in a modal. channel = 'airbnb' | 'booking_com' */
+    /**
+     * Airbnb connect — Step 1:
+     * Creates a Channex property + pending listing, returns iframeUrl.
+     * The iFrame is headless (no Channex branding) and filtered to Airbnb only.
+     */
+    airbnbInit: () => apiClient.post('/connect/airbnb/init', {}),
+
+    /**
+     * Airbnb connect — Step 2:
+     * Called after user completes Airbnb OAuth in the iFrame.
+     * Harvests real listing data (title, rooms, photos) from Channex and
+     * updates our DB. Sets status to pending_admin_review.
+     */
+    airbnbHarvest: (listingId, channexPropertyId) =>
+      apiClient.post('/connect/airbnb/harvest', { listingId, channexPropertyId }),
+
+    /** Legacy: Get a branded OTA OAuth URL to open in a modal. channel = 'airbnb' | 'booking_com' */
     getOAuthLink: (channel = 'airbnb') => apiClient.get(`/connect/oauth-link?channel=${channel}`),
 
     /** Step 3: Start full deep sync (property details, photos, 500-day ARI). Returns { syncLogId } */

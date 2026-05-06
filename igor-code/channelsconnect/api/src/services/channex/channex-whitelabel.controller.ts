@@ -96,7 +96,191 @@ export class ChannexWhitelabelController {
     return { success: true, data: status };
   }
 
-  // ── OTA OAuth Bridge ──────────────────────────────────────────────────
+  // ── Airbnb iFrame Connect ──────────────────────────────────────────────
+
+  /**
+   * POST /connect/airbnb/init
+   * Step 1 of Airbnb connect:
+   *   1. Create a blank Channex property (Airbnb will overwrite the name after OAuth)
+   *   2. Generate a one_time_token scoped to that property
+   *   3. Return the iFrame URL (filtered to ABB only, headless — no Channex branding)
+   */
+  @Post('airbnb/init')
+  @HttpCode(HttpStatus.OK)
+  async airbnbInit(@CurrentUser() user: any) {
+    const email = user?.email || `user+${user?.id}@channelsconnect.com`;
+
+    // 1. Create a blank Channex property — Airbnb will populate the real name after OAuth
+    let channexPropertyId: string;
+    try {
+      const propRes = await this.http.post<any>('/properties', this.masterKey, {
+        property: {
+          title:    'New Property',
+          currency: 'USD',
+          email,
+          country:  'US',
+          timezone: 'America/New_York',
+        },
+      });
+      channexPropertyId = propRes?.data?.id;
+      if (!channexPropertyId) throw new Error('No property ID returned');
+    } catch (err: any) {
+      this.logger.error(`[Airbnb/init] Property create failed: ${err.message}`);
+      throw err;
+    }
+
+    // 2. Save a pending listing in our DB so we can track it
+    const listing = await this.prisma.listing.create({
+      data: {
+        userId:       user.id,
+        title:        'Airbnb Import — pending',
+        source:       'airbnb_oauth',
+        isActive:     false,
+        reviewStatus: 'pending_airbnb_connect',
+        currency:     'USD',
+        minNights:    1,
+      },
+    });
+
+    // 3. Save the channexPropertyId mapping immediately (partial — harvest fills the rest)
+    await this.prisma.channexMapping.create({
+      data: {
+        userId:            user.id,
+        listingId:         listing.id,
+        channexPropertyId,
+        syncStatus:        'pending_airbnb_connect',
+      },
+    });
+
+    // 4. Generate one_time_token for the Channex iFrame
+    const tokenRes = await this.http.post<any>('/auth/one_time_token', this.masterKey, {
+      one_time_token: {
+        property_id: channexPropertyId,
+        group_id:    process.env.CHANNEX_GROUP_ID || undefined,
+        username:    email,
+      },
+    });
+    const oneTimeToken = tokenRes?.data?.token;
+    if (!oneTimeToken) throw new Error('Failed to generate one-time token');
+
+    // 5. Build the iFrame URL — headless, ABB-only filter, no Channex branding shown
+    const channexBase = process.env.CHANNEX_BASE_URL || 'https://app.channex.io';
+    const iframeUrl =
+      `${channexBase}/auth/exchange` +
+      `?oauth_session_key=${oneTimeToken}` +
+      `&app_mode=headless` +
+      `&redirect_to=/channels` +
+      `&property_id=${channexPropertyId}` +
+      `&channels=ABB`;
+
+    this.logger.log(
+      `[Airbnb/init] user=${user.id} listingId=${listing.id} propertyId=${channexPropertyId}`,
+    );
+
+    return {
+      success: true,
+      data: { listingId: listing.id, channexPropertyId, iframeUrl },
+    };
+  }
+
+  /**
+   * POST /connect/airbnb/harvest
+   * Step 2 — called after the user completes Airbnb OAuth in the iFrame.
+   * Reads back property + room type + photo data that Airbnb pushed to Channex,
+   * then overwrites our DB listing with the real Airbnb content.
+   * Sets status to pending_admin_review so admin can push to other channels.
+   */
+  @Post('airbnb/harvest')
+  @HttpCode(HttpStatus.OK)
+  async airbnbHarvest(
+    @CurrentUser() user: any,
+    @Body() body: { listingId: number; channexPropertyId: string },
+  ) {
+    const { listingId, channexPropertyId } = body;
+    if (!listingId || !channexPropertyId) {
+      return { success: false, message: 'listingId and channexPropertyId are required' };
+    }
+
+    // 1. Fetch property data Airbnb has now populated in Channex
+    let propData: any = {};
+    try {
+      const propRes = await this.http.get<any>(`/properties/${channexPropertyId}`, this.masterKey);
+      propData = propRes?.data?.attributes || propRes?.data || {};
+    } catch (err: any) {
+      this.logger.warn(`[Airbnb/harvest] Property fetch failed: ${err.message}`);
+    }
+
+    // 2. Fetch room types
+    let roomTypes: any[] = [];
+    try {
+      const rtRes = await this.http.get<any>(
+        `/room_types?filter[property_id]=${channexPropertyId}`,
+        this.masterKey,
+      );
+      roomTypes = rtRes?.data || [];
+    } catch (err: any) {
+      this.logger.warn(`[Airbnb/harvest] Room types fetch failed: ${err.message}`);
+    }
+
+    // 3. Fetch photos Channex got from Airbnb
+    let photos: string[] = [];
+    try {
+      const photoRes = await this.http.get<any>(
+        `/photos?filter[property_id]=${channexPropertyId}`,
+        this.masterKey,
+      );
+      photos = (photoRes?.data || [])
+        .map((p: any) => p?.attributes?.url || p?.url)
+        .filter(Boolean);
+    } catch (err: any) {
+      this.logger.warn(`[Airbnb/harvest] Photos fetch failed: ${err.message}`);
+    }
+
+    // 4. Build update from harvested Airbnb data
+    const firstRoom = roomTypes[0]?.attributes || {};
+    const updateData: Record<string, any> = {
+      title:        propData.title     || 'Airbnb Property',
+      address:      propData.address   || null,
+      city:         propData.city      || null,
+      country:      propData.country   || null,
+      postalCode:   propData.zip_code  || null,
+      latitude:     propData.latitude  ? parseFloat(propData.latitude)  : null,
+      longitude:    propData.longitude ? parseFloat(propData.longitude) : null,
+      currency:     propData.currency  || 'USD',
+      description:  propData.content?.description || null,
+      maxGuests:    firstRoom.occ_adults || firstRoom.default_occupancy || null,
+      bedrooms:     firstRoom.count_of_rooms || null,
+      reviewStatus: 'pending_admin_review',
+      isActive:     false,
+    };
+
+    await this.prisma.listing.update({ where: { id: Number(listingId) }, data: updateData });
+
+    // 5. Update mapping status
+    await this.prisma.channexMapping.updateMany({
+      where: { listingId: Number(listingId), channexPropertyId },
+      data:  { syncStatus: 'pending_admin_review', lastSyncAt: new Date() },
+    });
+
+    this.logger.log(
+      `[Airbnb/harvest] listingId=${listingId} title="${updateData.title}" ` +
+      `rooms=${roomTypes.length} photos=${photos.length}`,
+    );
+
+    return {
+      success: true,
+      message: 'Your Airbnb listing has been imported successfully.',
+      data: {
+        listingId,
+        title:   updateData.title,
+        rooms:   roomTypes.length,
+        photos:  photos.length,
+        status:  'pending_admin_review',
+      },
+    };
+  }
+
+  // ── OTA OAuth Bridge (legacy) ──────────────────────────────────────────
 
   @Get('oauth-link')
   async getOAuthLink(
