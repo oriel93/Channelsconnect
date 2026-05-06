@@ -12,7 +12,7 @@
  * download also carries the token (window.open() would bypass the interceptor).
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import NewLoginRequired from '../components/auth/NewLoginRequired';
 import AppLayout from '../components/app/AppLayout';
@@ -28,7 +28,7 @@ import {
   Link2, FileSpreadsheet, Globe, PlusCircle,
   Upload, Download, CheckCircle2, Loader2, ExternalLink,
   CalendarDays, Trash2, Copy, AlertCircle,
-  Sparkles, ArrowRight, X,
+  Sparkles, ArrowRight, X, Wifi,
 } from 'lucide-react';
 import { api } from '@/lib/apiClient';
 import { supabase } from '@/lib/supabase';
@@ -53,12 +53,12 @@ async function ensureProfileExists() {
 
 const TIERS = [
   {
-    id:    'ota',
+    id:    'airbnb',
     icon:  Link2,
     color: 'blue',
-    label: 'Import from OTA',
-    sub:   'Airbnb · VRBO · Booking.com',
-    desc:  'Paste your Airbnb or VRBO URL. We extract photos, descriptions and rooms.',
+    label: 'Connect Airbnb',
+    sub:   'Link your Airbnb account',
+    desc:  'Connect your Airbnb account and we\'ll import your listing details, photos, and rooms automatically.',
     badge: 'Fastest',
   },
   {
@@ -67,7 +67,7 @@ const TIERS = [
     color: 'purple',
     label: 'Import via Excel',
     sub:   'Bulk upload — up to 200 properties',
-    desc:  'Download our template, fill in details, upload. Addresses geocoded auto.',
+    desc:  'Download our template, fill in your property details, and upload. Our team handles the rest.',
     badge: 'Best for bulk',
   },
   {
@@ -76,7 +76,7 @@ const TIERS = [
     color: 'violet',
     label: 'Import from Website',
     sub:   'Your own property website',
-    desc:  'Give us your site URL. Our team extracts and maps your content for you.',
+    desc:  'Give us your website URL. Our team extracts and sets up your listing for you.',
     badge: 'White-glove',
   },
   {
@@ -84,8 +84,8 @@ const TIERS = [
     icon:  PlusCircle,
     color: 'indigo',
     label: 'Create Manually',
-    sub:   'Form + Google Maps + iCal',
-    desc:  'Enter details with Google Maps autocomplete and connect iCal feeds.',
+    sub:   'Build your listing step by step',
+    desc:  'Enter your property details manually with address autocomplete and calendar connections.',
     badge: 'Full control',
   },
 ];
@@ -121,96 +121,201 @@ function SuccessOverlay({ title, message, onClose, onViewListings }) {
   );
 }
 
-// ─── Tier 1: OTA URL ─────────────────────────────────────────────────────────
-// All calls go through api.ingestion.* → axios interceptor → Authorization header
-// automatically injected by apiClient.js interceptor.
+// ─── Tier 1: Airbnb Connect (iFrame OAuth flow) ───────────────────────────────
+//
+// Flow:
+//   1. User clicks "Connect My Airbnb"
+//   2. Backend: POST /connect/airbnb/init
+//      → creates blank Channex property + pending listing
+//      → generates one_time_token
+//      → returns iframeUrl (headless, ABB-only, no Channex branding)
+//   3. Frontend: renders the iFrame in a modal
+//   4. User completes Airbnb OAuth inside the iFrame
+//   5. On iFrame load event / postMessage → backend harvest called
+//      POST /connect/airbnb/harvest → reads real listing data back from Channex
+//   6. DB updated with real Airbnb title/rooms/photos → pending_admin_review
+//   7. Success overlay shown to user
 
-function OtaImportForm({ onSuccess }) {
-  const [otaUrl, setOtaUrl]   = useState('');
-  const [icalUrl, setIcalUrl] = useState('');
-  const [loading, setLoading] = useState(false);
+function AirbnbConnectForm({ onSuccess }) {
+  const [phase, setPhase]     = useState('idle'); // idle | loading | iframe | harvesting | done
+  const [iframeUrl, setIframeUrl]           = useState('');
+  const [listingId, setListingId]           = useState(null);
+  const [channexPropertyId, setChannexPropertyId] = useState(null);
+  const iframeRef = useRef(null);
 
-  const detect = (url) => {
-    if (url.includes('airbnb'))   return 'Airbnb';
-    if (url.includes('vrbo') || url.includes('homeaway')) return 'VRBO';
-    if (url.includes('booking.com')) return 'Booking.com';
-    return null;
-  };
-  const detected = detect(otaUrl);
+  // Listen for postMessage from the Channex iFrame (headless mode sends window.parent.postMessage)
+  const handleMessage = useCallback(async (event) => {
+    // Accept messages from Channex domains
+    const trusted = ['channex.io', 'app.channex.io', 'staging.channex.io'];
+    const fromTrusted = trusted.some(d => event.origin.includes(d));
+    if (!fromTrusted) return;
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!otaUrl.trim()) return;
-    setLoading(true);
+    // Channex headless mode sends { type: 'channel_connected' } or similar
+    const isConnected =
+      event.data?.type === 'channel_connected' ||
+      event.data?.type === 'oauth_success' ||
+      event.data?.connected === true;
+
+    if (isConnected && listingId && channexPropertyId) {
+      await runHarvest();
+    }
+  }, [listingId, channexPropertyId]); // eslint-disable-line
+
+  useEffect(() => {
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [handleMessage]);
+
+  const handleInit = async () => {
+    setPhase('loading');
     try {
-      await ensureProfileExists(); // guarantee FK row exists before listing insert
-      const res = await api.ingestion.ingestOtaUrl({
-        otaUrl:  otaUrl.trim(),
-        icalUrl: icalUrl.trim() || undefined,
-      });
-      onSuccess(res.data);
+      await ensureProfileExists();
+      const res = await api.connect.airbnbInit();
+      const { iframeUrl: url, listingId: lid, channexPropertyId: pid } = res.data?.data || res.data || {};
+      if (!url) throw new Error('Could not generate connection link. Please try again.');
+      setIframeUrl(url);
+      setListingId(lid);
+      setChannexPropertyId(pid);
+      setPhase('iframe');
     } catch (err) {
-      const msg =
-        err?.response?.data?.message ||
-        (err?.code === 'ECONNABORTED' ? 'Request timed out — please try again' : null) ||
-        err?.message ||
-        'Submission failed — please try again';
+      const msg = err?.response?.data?.message || err?.message || 'Connection failed — please try again';
       toast.error(msg);
-      console.error('[OtaImport] submit error:', err?.response?.data ?? err?.message);
-    } finally {
-      setLoading(false);
+      setPhase('idle');
     }
   };
 
-  return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      <div className="space-y-2">
-        <Label htmlFor="otaUrl">Airbnb or VRBO listing URL <span className="text-red-500">*</span></Label>
-        <div className="relative">
-          <Input
-            id="otaUrl"
-            type="url"
-            value={otaUrl}
-            onChange={(e) => setOtaUrl(e.target.value)}
-            placeholder="https://www.airbnb.com/rooms/12345678"
-            required
-            className="pr-28"
-          />
-          {detected && (
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-200">
-              ✓ {detected}
-            </span>
-          )}
+  const runHarvest = async () => {
+    if (!listingId || !channexPropertyId) return;
+    setPhase('harvesting');
+    try {
+      const res = await api.connect.airbnbHarvest(listingId, channexPropertyId);
+      const data = res.data?.data || res.data || {};
+      onSuccess({
+        listingId,
+        title: data.title || 'Airbnb Property',
+        message: 'Your Airbnb listing has been connected to Channels Connect. Our team will review and activate it shortly.',
+      });
+    } catch (err) {
+      toast.error('Could not retrieve your listing data — please contact support.');
+      console.error('[AirbnbConnect] harvest error:', err?.response?.data ?? err?.message);
+      setPhase('iframe'); // let user try again
+    }
+  };
+
+  // Idle state — call-to-action
+  if (phase === 'idle') {
+    return (
+      <div className="space-y-6">
+        <div className="rounded-xl bg-gradient-to-br from-blue-50 to-purple-50 border border-blue-100 p-6 text-center space-y-4">
+          <div className="w-16 h-16 bg-white rounded-2xl shadow-md flex items-center justify-center mx-auto border border-blue-100">
+            <svg className="w-9 h-9" viewBox="0 0 32 32" fill="none">
+              <path d="M16 2C8.268 2 2 8.268 2 16s6.268 14 14 14 14-6.268 14-14S23.732 2 16 2z" fill="#FF5A5F"/>
+              <path d="M16 8c-1.5 0-2.7 1.2-2.7 2.7 0 1 .56 1.88 1.4 2.34L11 20h10l-3.7-6.96c.84-.46 1.4-1.34 1.4-2.34C18.7 9.2 17.5 8 16 8z" fill="white"/>
+            </svg>
+          </div>
+          <div>
+            <h3 className="font-bold text-slate-900 text-lg">Connect Your Airbnb Account</h3>
+            <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+              We'll securely link your Airbnb account and automatically import your
+              listing details, photos, and room configuration.
+            </p>
+          </div>
+          <div className="grid grid-cols-3 gap-3 text-xs text-slate-600">
+            {['Photos imported', 'Rooms configured', 'Live in minutes'].map(f => (
+              <div key={f} className="bg-white rounded-lg p-3 border border-blue-100 font-medium">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 mx-auto mb-1" />
+                {f}
+              </div>
+            ))}
+          </div>
         </div>
-        <p className="text-xs text-slate-500">Airbnb, VRBO, HomeAway, and Booking.com URLs are supported.</p>
-      </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="icalUrl">
-          iCal / Calendar URL <span className="text-slate-400 text-xs">(optional)</span>
-        </Label>
-        <Input
-          id="icalUrl"
-          type="url"
-          value={icalUrl}
-          onChange={(e) => setIcalUrl(e.target.value)}
-          placeholder="https://www.airbnb.com/calendar/ical/12345678.ics"
-        />
-        <p className="text-xs text-slate-500">Paste your OTA calendar link to sync availability automatically.</p>
-      </div>
+        <div className="bg-amber-50 border border-amber-100 rounded-lg p-4 text-sm text-amber-800 flex gap-3">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>
+            You'll be asked to log into your Airbnb account to authorise the connection.
+            Make sure you're logged into the correct account before proceeding.
+          </span>
+        </div>
 
-      <div className="bg-purple-50 border border-purple-100 rounded-lg p-4 text-sm text-purple-800 flex gap-3">
-        <Sparkles className="w-4 h-4 shrink-0 mt-0.5" />
-        <span>Our team will extract your photos, descriptions, room configuration, and amenities. You'll be notified once it's ready.</span>
+        <Button
+          onClick={handleInit}
+          className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white transition-all shadow-md hover:shadow-lg"
+        >
+          Connect My Airbnb <ArrowRight className="w-4 h-4 ml-2" />
+        </Button>
       </div>
+    );
+  }
 
-      <Button type="submit" disabled={loading || !otaUrl.trim()} className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white transition-all shadow-md hover:shadow-lg">
-        {loading
-          ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Submitting…</>
-          : <>Submit for Extraction <ArrowRight className="w-4 h-4 ml-2" /></>}
-      </Button>
-    </form>
-  );
+  // Loading — creating property + token
+  if (phase === 'loading') {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 space-y-4">
+        <Loader2 className="w-10 h-10 animate-spin text-purple-500" />
+        <p className="text-slate-600 text-sm">Setting up your connection…</p>
+      </div>
+    );
+  }
+
+  // iFrame phase — user completes Airbnb OAuth
+  if (phase === 'iframe') {
+    return (
+      <div className="space-y-4">
+        <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 flex items-center justify-between">
+          <p className="text-sm text-blue-800 font-medium">
+            Log into your Airbnb account below to authorise the connection.
+          </p>
+          <button
+            type="button"
+            onClick={() => setPhase('idle')}
+            className="text-slate-400 hover:text-slate-700 ml-4"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* The Channex iFrame — headless mode hides all Channex branding */}
+        <div className="rounded-xl border border-slate-200 overflow-hidden shadow-sm" style={{ height: 560 }}>
+          <iframe
+            ref={iframeRef}
+            src={iframeUrl}
+            title="Connect Airbnb"
+            className="w-full h-full border-0"
+            allow="same-origin"
+          />
+        </div>
+
+        {/* Manual trigger after user completes OAuth */}
+        <div className="text-center space-y-2">
+          <p className="text-xs text-slate-500">
+            Once you've connected your Airbnb account above, click the button below.
+          </p>
+          <Button
+            onClick={runHarvest}
+            variant="outline"
+            className="border-purple-300 text-purple-700 hover:bg-purple-50"
+          >
+            <CheckCircle2 className="w-4 h-4 mr-2" />
+            I've Connected My Airbnb
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Harvesting — reading data back
+  if (phase === 'harvesting') {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 space-y-4">
+        <Loader2 className="w-10 h-10 animate-spin text-purple-500" />
+        <p className="text-slate-600 text-sm">Importing your listing details…</p>
+        <p className="text-xs text-slate-400">This usually takes just a few seconds.</p>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 // ─── Tier 2: Excel Import ─────────────────────────────────────────────────────
@@ -278,7 +383,7 @@ function ExcelImportForm({ onSuccess }) {
           onClick={handleDownload}
           className="border-emerald-300 text-emerald-700 hover:bg-emerald-100"
         >
-          <Download className="w-4 h-4 mr-2" />Download .xlsx Template
+          <Download className="w-4 h-4 mr-2" />Download Channels Connect Template
         </Button>
       </div>
 
@@ -1022,10 +1127,10 @@ function PropertyIngestionHubContent() {
                 </div>
               </CardHeader>
               <CardContent className="pt-6">
-                {activeTier === 'ota'     && <OtaImportForm     onSuccess={handleSuccess} />}
-                {activeTier === 'excel'   && <ExcelImportForm   onSuccess={handleSuccess} />}
-                {activeTier === 'website' && <WebsiteImportForm onSuccess={handleSuccess} />}
-                {activeTier === 'manual'  && <ManualCreateForm  onSuccess={handleSuccess} />}
+                {activeTier === 'airbnb'  && <AirbnbConnectForm  onSuccess={handleSuccess} />}
+                {activeTier === 'excel'   && <ExcelImportForm    onSuccess={handleSuccess} />}
+                {activeTier === 'website' && <WebsiteImportForm  onSuccess={handleSuccess} />}
+                {activeTier === 'manual'  && <ManualCreateForm   onSuccess={handleSuccess} />}
               </CardContent>
             </Card>
           </div>
@@ -1035,10 +1140,10 @@ function PropertyIngestionHubContent() {
       {/* Success overlay */}
       {success && (
         <SuccessOverlay
-          title="You're all set!"
+          title="🎉 You're connected!"
           message={
             success.message ||
-            "Your property has been submitted. Our team will notify you when it's ready."
+            'Your property has been submitted to Channels Connect. Our team will review and activate it within 1 business day.'
           }
           onClose={() => setSuccess(null)}
           onViewListings={handleViewListings}
