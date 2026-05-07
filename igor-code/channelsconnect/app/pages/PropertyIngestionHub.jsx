@@ -562,6 +562,34 @@ function WebsiteImportForm({ onSuccess }) {
   );
 }
 
+// ─── Tier 4 helpers — defined at module scope so their identity is stable ───────
+// IMPORTANT: do NOT move these back inside ManualCreateForm. Defining component
+// functions inside a render function gives them a new identity on every render,
+// which causes React to unmount+remount the DOM node for every child on each
+// state update — making inputs lose focus and caret position after one character.
+function FieldWrapper({ children }) {
+  return <div className="space-y-1.5">{children}</div>;
+}
+
+function YesNoToggle({ label, field, state, setState }) {
+  return (
+    <FieldWrapper>
+      <Label>{label}</Label>
+      <div className="flex gap-2">
+        {['Yes', 'No'].map(v => (
+          <button key={v} type="button"
+            onClick={() => setState(s => ({ ...s, [field]: v }))}
+            className={`px-4 py-1.5 rounded-full border text-sm font-medium transition-all ${
+              state[field] === v
+                ? 'bg-purple-600 border-purple-600 text-white'
+                : 'bg-white border-slate-200 text-slate-600 hover:border-purple-300'
+            }`}>{v}</button>
+        ))}
+      </div>
+    </FieldWrapper>
+  );
+}
+
 // ─── Tier 4: Manual Form — Channex-complete ──────────────────────────────────
 // 4 tabs: Property Details | Room Type | Rate Plan | Calendar
 // All fields match Channex POST /properties + POST /room_types + POST /rate_plans requirements.
@@ -771,24 +799,10 @@ function ManualCreateForm({ onSuccess }) {
     { id: 'calendar', label: 'Calendar' },
   ];
 
-  // Helper components
-  const F = ({ children }) => <div className="space-y-1.5">{children}</div>;
-  const YN = ({ label, field, state, setState }) => (
-    <F>
-      <Label>{label}</Label>
-      <div className="flex gap-2">
-        {['Yes', 'No'].map(v => (
-          <button key={v} type="button"
-            onClick={() => setState(s => ({ ...s, [field]: v }))}
-            className={`px-4 py-1.5 rounded-full border text-sm font-medium transition-all ${
-              state[field] === v
-                ? 'bg-purple-600 border-purple-600 text-white'
-                : 'bg-white border-slate-200 text-slate-600 hover:border-purple-300'
-            }`}>{v}</button>
-        ))}
-      </div>
-    </F>
-  );
+  // F and YN are now FieldWrapper / YesNoToggle at module scope (see above).
+  // Aliases kept here only so the JSX below needs zero changes.
+  const F  = FieldWrapper;
+  const YN = YesNoToggle;
 
   return (
     <div>
