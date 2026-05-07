@@ -216,6 +216,154 @@ function ContactFAB() {
   );
 }
 
+// ─── Chat overlay helpers — defined at module scope so their identity is stable ──
+// IMPORTANT: do NOT move these back inside Layout. Defining component functions
+// inside a render body gives them a new identity on every render, causing React
+// to unmount+remount DOM nodes (including <input>s) on every state update —
+// making inputs lose focus and caret position after one character is typed.
+function LiveChatOffer({ onAccept, onDismiss }) {
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg, #10b981, #059669)',
+      color: 'white',
+      padding: '16px',
+      borderRadius: '12px',
+      margin: '12px 0',
+      textAlign: 'center',
+      boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
+      animation: 'slideIn 0.3s ease-out'
+    }}>
+      <div style={{ fontSize: '16px', fontWeight: '600', marginBottom: '8px' }}>
+        🎯 Ready to speak with a specialist?
+      </div>
+      <div style={{ fontSize: '13px', marginBottom: '12px', opacity: '0.9' }}>
+        Get personalized help with your PMS integration and see exactly how much you'll save
+      </div>
+      <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+        <button
+          onClick={onAccept}
+          style={{
+            background: 'white',
+            color: '#059669',
+            border: 'none',
+            borderRadius: '8px',
+            padding: '8px 16px',
+            fontSize: '13px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease'
+          }}
+          onMouseOver={(e) => e.target.style.transform = 'scale(1.05)'}
+          onMouseOut={(e) => e.target.style.transform = 'scale(1)'}
+        >
+          Connect Now! 📞
+        </button>
+        <button
+          onClick={onDismiss}
+          style={{
+            background: 'rgba(255,255,255,0.2)',
+            color: 'white',
+            border: '1px solid rgba(255,255,255,0.3)',
+            borderRadius: '8px',
+            padding: '8px 16px',
+            fontSize: '13px',
+            cursor: 'pointer'
+          }}
+        >
+          Continue with Assistant
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function QuickContactForm({ contactInfo, setContactInfo, onSubmit, isSubmitting }) {
+  return (
+    <div style={{ 
+      padding: '16px', 
+      background: '#f8fafc', 
+      borderRadius: '12px', 
+      margin: '12px 0',
+      border: '1px solid #e2e8f0'
+    }}>
+      <div style={{ fontSize: '14px', fontWeight: '600', marginBottom: '12px', color: '#1e293b' }}>
+        🚀 Connect with our team instantly
+      </div>
+      <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <input
+          type="text"
+          placeholder="Your Name"
+          value={contactInfo.name}
+          onChange={(e) => setContactInfo(prev => ({ ...prev, name: e.target.value }))}
+          style={{ 
+            padding: '10px', 
+            borderRadius: '6px', 
+            border: '1px solid #cbd5e1',
+            fontSize: '14px'
+          }}
+          required
+        />
+        <input
+          type="email"
+          placeholder="Email Address"
+          value={contactInfo.email}
+          onChange={(e) => setContactInfo(prev => ({ ...prev, email: e.target.value }))}
+          style={{ 
+            padding: '10px', 
+            borderRadius: '6px', 
+            border: '1px solid #cbd5e1',
+            fontSize: '14px'
+          }}
+          required
+        />
+        <input
+          type="tel"
+          placeholder="Phone Number (for immediate callback)"
+          value={contactInfo.phone}
+          onChange={(e) => setContactInfo(prev => ({ ...prev, phone: e.target.value }))}
+          style={{ 
+            padding: '10px', 
+            borderRadius: '6px', 
+            border: '1px solid #cbd5e1',
+            fontSize: '14px'
+          }}
+        />
+        <select
+          value={contactInfo.urgency}
+          onChange={(e) => setContactInfo(prev => ({ ...prev, urgency: e.target.value }))}
+          style={{ 
+            padding: '10px',
+            borderRadius: '6px', 
+            border: '1px solid #cbd5e1',
+            fontSize: '14px'
+          }}
+        >
+          <option value="normal">Normal Priority</option>
+          <option value="high">High Priority - Call ASAP</option>
+          <option value="demo">Schedule Demo</option>
+        </select>
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          style={{
+            background: isSubmitting ? '#94a3b8' : 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            padding: '12px',
+            fontSize: '14px',
+            fontWeight: '600',
+            cursor: isSubmitting ? 'not-allowed' : 'pointer',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          {isSubmitting ? 'Connecting...' : 'Connect Me Now! 🚀'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 export default function Layout({ children, currentPageName }) {
   const location = useLocation();
 
@@ -847,146 +995,9 @@ export default function Layout({ children, currentPageName }) {
     window.open('#contact-form', '_self');
   };
 
-  // Live Chat Offer Component
-  const LiveChatOffer = () => (
-    <div style={{
-      background: 'linear-gradient(135deg, #10b981, #059669)',
-      color: 'white',
-      padding: '16px',
-      borderRadius: '12px',
-      margin: '12px 0',
-      textAlign: 'center',
-      boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
-      animation: 'slideIn 0.3s ease-out'
-    }}>
-      <div style={{ fontSize: '16px', fontWeight: '600', marginBottom: '8px' }}>
-        🎯 Ready to speak with a specialist?
-      </div>
-      <div style={{ fontSize: '13px', marginBottom: '12px', opacity: '0.9' }}>
-        Get personalized help with your PMS integration and see exactly how much you'll save
-      </div>
-      <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-        <button
-          onClick={handleLiveChatRequest}
-          style={{
-            background: 'white',
-            color: '#059669',
-            border: 'none',
-            borderRadius: '8px',
-            padding: '8px 16px',
-            fontSize: '13px',
-            fontWeight: '600',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease'
-          }}
-          onMouseOver={(e) => e.target.style.transform = 'scale(1.05)'}
-          onMouseOut={(e) => e.target.style.transform = 'scale(1)'}
-        >
-          Connect Now! 📞
-        </button>
-        <button
-          onClick={() => setShowLiveChatOption(false)}
-          style={{
-            background: 'rgba(255,255,255,0.2)',
-            color: 'white',
-            border: '1px solid rgba(255,255,255,0.3)',
-            borderRadius: '8px',
-            padding: '8px 16px',
-            fontSize: '13px',
-            cursor: 'pointer'
-          }}
-        >
-          Continue with Assistant
-        </button>
-      </div>
-    </div>
-  );
-
-  // Quick Contact Form Component
-  const QuickContactForm = () => (
-    <div style={{ 
-      padding: '16px', 
-      background: '#f8fafc', 
-      borderRadius: '12px', 
-      margin: '12px 0',
-      border: '1px solid #e2e8f0'
-    }}>
-      <div style={{ fontSize: '14px', fontWeight: '600', marginBottom: '12px', color: '#1e293b' }}>
-        🚀 Connect with our team instantly
-      </div>
-      <form onSubmit={handleContactSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <input
-          type="text"
-          placeholder="Your Name"
-          value={contactInfo.name}
-          onChange={(e) => setContactInfo(prev => ({ ...prev, name: e.target.value }))}
-          style={{ 
-            padding: '10px', 
-            borderRadius: '6px', 
-            border: '1px solid #cbd5e1',
-            fontSize: '14px'
-          }}
-          required
-        />
-        <input
-          type="email"
-          placeholder="Email Address"
-          value={contactInfo.email}
-          onChange={(e) => setContactInfo(prev => ({ ...prev, email: e.target.value }))}
-          style={{ 
-            padding: '10px', 
-            borderRadius: '6px', 
-            border: '1px solid #cbd5e1',
-            fontSize: '14px'
-          }}
-          required
-        />
-        <input
-          type="tel"
-          placeholder="Phone Number (for immediate callback)"
-          value={contactInfo.phone}
-          onChange={(e) => setContactInfo(prev => ({ ...prev, phone: e.target.value }))}
-          style={{ 
-            padding: '10px', 
-            borderRadius: '6px', 
-            border: '1px solid #cbd5e1',
-            fontSize: '14px'
-          }}
-        />
-        <select
-          value={contactInfo.urgency}
-          onChange={(e) => setContactInfo(prev => ({ ...prev, urgency: e.target.value }))}
-          style={{ 
-            padding: '10px', 
-            borderRadius: '6px', 
-            border: '1px solid #cbd5e1',
-            fontSize: '14px'
-          }}
-        >
-          <option value="normal">Normal Priority</option>
-          <option value="high">High Priority - Call ASAP</option>
-          <option value="demo">Schedule Demo</option>
-        </select>
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          style={{
-            background: isSubmitting ? '#94a3b8' : 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            padding: '12px',
-            fontSize: '14px',
-            fontWeight: '600',
-            cursor: isSubmitting ? 'not-allowed' : 'pointer',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          {isSubmitting ? 'Connecting...' : 'Connect Me Now! 🚀'}
-        </button>
-      </form>
-    </div>
-  );
+  // LiveChatOffer and QuickContactForm are now module-scope functions (see above).
+  // They accept explicit props instead of closing over Layout state — this gives
+  // them a stable identity across renders and prevents input remounting.
 
   // Enhanced Quick Actions Component
   const ConversionQuickActions = () => {
@@ -1676,10 +1687,22 @@ export default function Layout({ children, currentPageName }) {
           ))}
           
           {/* Smart live chat offer */}
-          {showLiveChatOption && !liveChatRequested && <LiveChatOffer />}
+          {showLiveChatOption && !liveChatRequested && (
+            <LiveChatOffer
+              onAccept={handleLiveChatRequest}
+              onDismiss={() => setShowLiveChatOption(false)}
+            />
+          )}
           
           {/* Contact form when live chat is requested */}
-          {liveChatRequested && <QuickContactForm />}
+          {liveChatRequested && (
+            <QuickContactForm
+              contactInfo={contactInfo}
+              setContactInfo={setContactInfo}
+              onSubmit={handleContactSubmit}
+              isSubmitting={isSubmitting}
+            />
+          )}
           
           {isTyping && (
             <div className="message-row bot-row">
