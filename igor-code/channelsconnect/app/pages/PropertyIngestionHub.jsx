@@ -12,7 +12,7 @@
  * download also carries the token (window.open() would bypass the interceptor).
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import NewLoginRequired from '../components/auth/NewLoginRequired';
 import AppLayout from '../components/app/AppLayout';
@@ -633,7 +633,7 @@ const CURRENCIES = [
   'NOK','SEK','DKK','ZAR','AED','THB','IDR','MXN','BRL',
 ];
 
-function ManualCreateForm({ onSuccess }) {
+const ManualCreateForm = memo(function ManualCreateForm({ onSuccess }) {
   const [activeTab, setActiveTab] = useState('property');
 
   // ── Property fields (Channex /properties requirements) ──────────────────────
@@ -1189,7 +1189,7 @@ function ManualCreateForm({ onSuccess }) {
       )}
     </div>
   );
-}
+}); // end memo(ManualCreateForm)
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
@@ -1198,16 +1198,16 @@ function PropertyIngestionHubContent() {
   const [activeTier, setActiveTier]     = useState(null);
   const [success, setSuccess]           = useState(null);
 
-  const handleSuccess = (data, showOverlay = true) => {
+  const handleSuccess = useCallback((data, showOverlay = true) => {
     if (!showOverlay) return; // Excel shows inline result instead
     setSuccess(data);
     setActiveTier(null);
-  };
+  }, []);
 
-  const handleViewListings = () => {
+  const handleViewListings = useCallback(() => {
     setSuccess(null);
     navigate(createPageUrl('Listings'));
-  };
+  }, [navigate]);
 
   return (
     <div className="max-w-5xl mx-auto space-y-8">

@@ -18,7 +18,7 @@
  * SAFE: Zero dependency on channex-sync, webhook, or ARI logic.
  */
 
-import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { supabase, authHelpers } from './supabase';
 import { api, setAuthToken } from './apiClient';
@@ -209,7 +209,20 @@ export function AuthProvider({ children }) {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const value = {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const signOut = useCallback(async () => {
+    setAuthToken(null);
+    await authHelpers.signOut();
+    dispatch({ type: 'SIGNED_OUT' });
+  }, []);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const refreshProfile = useCallback(async () => {
+    if (!auth.session) return;
+    await resolveSession(auth.session);
+  }, [auth.session, resolveSession]);
+
+  const value = useMemo(() => ({
     // Raw state machine state — use for precise guards
     authState: auth.state,
 
@@ -222,17 +235,10 @@ export function AuthProvider({ children }) {
     isAdmin:         auth.dbUser?.role?.toLowerCase() === 'admin',
     isSystemReady:   auth.state === AUTH_STATE.SYSTEM_READY,
 
-    signOut: async () => {
-      setAuthToken(null); // clear cached token immediately
-      await authHelpers.signOut();
-      dispatch({ type: 'SIGNED_OUT' });
-    },
-
-    refreshProfile: async () => {
-      if (!auth.session) return;
-      await resolveSession(auth.session);
-    },
-  };
+    signOut,
+    refreshProfile,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [auth.state, auth.session, auth.dbUser, signOut, refreshProfile]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -1023,7 +1023,7 @@ export default function Layout({ children, currentPageName }) {
     );
   };
 
-  const isAppPage = ['Dashboard', 'ImportListings', 'Listings', 'ImageManager', 'ListingDetail', 'SelectPMSListings', 'ChannelsDashboard', 'Agent', 'Settings', "FinancialReports"].includes(currentPageName);
+  const isAppPage = ['Dashboard', 'ImportListings', 'Listings', 'ImageManager', 'ListingDetail', 'SelectPMSListings', 'ChannelsDashboard', 'Agent', 'Settings', 'FinancialReports', 'PropertyIngestionHub', 'PropertyList', 'AdminDashboard'].includes(currentPageName);
   
   // Auth pages should render without Layout wrapper (no header/footer)
   const isAuthPage = ['Login', 'ForgotPassword', 'ResetPassword', 'VerifyEmail'].includes(currentPageName);
