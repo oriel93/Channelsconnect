@@ -24,6 +24,7 @@ export default $config({
         const dbUrl = new sst.Secret("DATABASE_URL");
         const channexKey = new sst.Secret("CHANNEX_API_KEY");
         const channexWebhookSecret = new sst.Secret("CHANNEX_WEBHOOK_SECRET");
+        const openaiApiKey = new sst.Secret("OPENAI_API_KEY");  // for chatbot InvokeLLM
 
         const vpc = new sst.aws.Vpc("Vpc");
         const cluster = new sst.aws.Cluster("Cluster", { vpc });
@@ -72,7 +73,7 @@ export default $config({
         // 3. Frontend
         const frontend = new sst.aws.StaticSite("Frontend", {
             path: "app",
-            link: [supabaseUrl, supabaseKey],
+            link: [supabaseUrl, supabaseKey, openaiApiKey],
             build: {
                 command: "npm run build",
                 output: "dist",
@@ -81,6 +82,7 @@ export default $config({
                 VITE_API_URL: api.url,
                 VITE_SUPABASE_URL: supabaseUrl.value,
                 VITE_SUPABASE_ANON_KEY: supabaseKey.value,
+                VITE_OPENAI_API_KEY: openaiApiKey.value,
             },
             dev: {
                 command: "npm run dev",
