@@ -827,20 +827,18 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
           channel_type: params.channelType || 'direct',
           property_id:  ids.channexPropertyId,
           room_type_id: ids.channexRoomTypeId,
-          rate_plan_id: ids.channexRatePlanId || undefined,
+          ...(ids.channexRatePlanId ? { rate_plan_id: ids.channexRatePlanId } : {}),
           check_in:     checkInIso,
           check_out:    checkOutIso,
           total_amount: params.totalPrice,
           currency:     'USD',
           guest_details: {
-            guest_name:  params.guestName,
-            adults:      params.numGuests,
-            children:    0,
+            guest_name: params.guestName,
+            adults:     params.numGuests,
+            children:   0,
           },
-          // status: 'accepted' means confirmed, not pending
-          status:        'confirmed',
-          // source: 'Channels Connect PMS'
-          source:        'Channels Connect PMS',
+          status: 'confirmed',
+          source: 'Channels Connect PMS',
           ...(params.externalId ? { external_id: params.externalId } : {}),
           ...(params.notes      ? { notes:      params.notes      } : {}),
         },
@@ -859,15 +857,18 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
       const taskId:   string | undefined = res?.meta?.task_id;
 
       this.logger.log(
-        `[Booking] Created Channex booking id=${bookingId ?? 'n/a'} task=${taskId ?? 'n/a'}` +
-        ` listing=${params.listingId}`,
+        `[Booking] Created Channex booking id=${bookingId ?? 'n/a'} task=${taskId ?? 'n/a'} listing=${params.listingId}`,
       );
 
       return { channexBookingId: bookingId, taskId };
     } catch (err: any) {
-      const msg = err?.response?.data?.errors?.title || err.message;
+      const axiosErr = err as any;
+      const status   = axiosErr.response?.status;
+      const body     = axiosErr.response?.data;
+      const detail   = body?.errors?.detail || body?.errors?.title || body?.message || JSON.stringify(body);
       this.logger.error(
-        `[Booking] Failed to create Channex booking for listing=${params.listingId}: ${msg}`,
+        `[Booking] Failed to create Channex booking for listing=${params.listingId}: ` +
+        `HTTP ${status} — ${detail} | payload=${JSON.stringify(payload)}`,
       );
       // Non-fatal: inventory already blocked, booking still exists locally
       return {};
