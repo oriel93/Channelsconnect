@@ -164,10 +164,10 @@ function BookingFormDialog({ open, onClose, onSaved, editBooking, listingId }) {
         totalPrice: parseFloat(form.totalPrice) || 0,
       };
       if (editBooking) {
-        await api.patch(`/bookings/${editBooking.id}`, payload);
+        await api.bookings.update(editBooking.id, payload);
         toast.success('Booking updated — syncing availability to channels…');
       } else {
-        await api.post('/bookings', payload);
+        await api.bookings.create(payload);
         toast.success('Booking created — syncing availability to channels…');
       }
       onSaved();
@@ -325,7 +325,7 @@ function CancelDialog({ open, booking, onClose, onCancelled }) {
   const handleCancel = async () => {
     setLoading(true);
     try {
-      await api.patch(`/bookings/${booking.id}/cancel`);
+      await api.bookings.cancel(booking.id);
       toast.success('Booking cancelled — dates re-opened in channels…');
       onCancelled();
       onClose();
