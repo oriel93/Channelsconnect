@@ -275,7 +275,7 @@ function AirbnbConnectForm({ onSuccess }) {
           </button>
         </div>
 
-        {/* The Channex iFrame — headless mode hides all Channex branding */}
+        {/* The channel connection iFrame — headless mode hides all channel branding */}
         <div className="rounded-xl border border-slate-200 overflow-hidden shadow-sm" style={{ height: 560 }}>
           <iframe
             ref={iframeRef}

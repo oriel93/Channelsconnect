@@ -457,7 +457,7 @@ export default function AdminDashboard() {
     }
   }, []);
 
-  /** Intelligent sync: POST if new, PUT if exists. Surfaces Channex errors verbatim. */
+  /** Intelligent sync: POST if new, PUT if exists. Surfaces channel errors verbatim. */
   const handleSyncToChannex = async (listingId, listingTitle) => {
     if (syncingListingId === listingId) return;
     setSyncingListingId(listingId);

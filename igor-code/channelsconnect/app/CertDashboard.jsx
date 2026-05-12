@@ -1,10 +1,10 @@
 /**
  * CertDashboard.jsx
- * Standalone Channex PMS Certification Test Dashboard.
+ * Standalone PMS Certification Test Dashboard.
  *
  * - No login required — hits the API directly with no auth header.
  * - Fetches listings, creates a "Cert Villa", triggers price syncs,
- *   and displays the Channex Task ID prominently for copy-paste into
+ *   and displays the Task ID prominently for copy-paste into
  *   the certification form at https://forms.gle/xA8F3eSYBPBd8apYA
  *
  * USAGE: temporarily imported by App.jsx. Remove after certification.
@@ -242,7 +242,7 @@ export default function CertDashboard() {
     try {
       const data = await apiFetch('/listings/manual', {
         method: 'POST',
-        body: JSON.stringify({ title: 'Channex Cert Villa' }),
+        body: JSON.stringify({ title: 'Channels Connect Cert Villa' }),
       });
       const newListing = data?.data || data;
       setListings(prev => [newListing, ...prev]);
@@ -328,7 +328,7 @@ export default function CertDashboard() {
                 fontSize: 15,
               }}
             >
-              {creatingVilla ? 'Creating…' : '+ Create "Channex Cert Villa"'}
+              {creatingVilla ? 'Creating…' : '+ Create "Channels Connect Cert Villa"'}
             </button>
             <button
               onClick={loadListings}

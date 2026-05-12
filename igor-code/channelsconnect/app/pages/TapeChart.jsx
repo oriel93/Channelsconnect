@@ -139,7 +139,7 @@ function ActionModal({ open, onClose, listingId, listingTitle, startDate, endDat
       }
       await Promise.all(updates.map(u => api.channexSync.applyChange(u)));
       onSave({ mode, price: Number(price), minStay: Number(minStay), toggle: isBlocked });
-      toast.success(`${dayCount} day${dayCount > 1 ? 's' : ''} updated and queued for Channex sync`);
+      toast.success(`${dayCount} day${dayCount > 1 ? 's' : ''} updated and queued for channel sync`);
       onClose();
     } catch (err) {
       toast.error('Failed: ' + (err?.response?.data?.message || err?.message));
