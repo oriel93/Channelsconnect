@@ -384,7 +384,7 @@ export default function BookingsManager({ listingId }) {
     setError(null);
     try {
       const params = listingId ? `?listingId=${listingId}` : '';
-      const { data } = await api.get(`/bookings${params}`);
+      const { data } = await api.bookings.getAll(listingId);
       const sorted = (data || []).sort(
         (a, b) => new Date(b.checkIn || 0) - new Date(a.checkIn || 0),
       );
@@ -407,7 +407,7 @@ export default function BookingsManager({ listingId }) {
     setFullSyncing(true);
     setFullSyncResult(null);
     try {
-      const { data } = await api.post('/connect/sync');
+      const { data } = await api.connect.startSync();
       setFullSyncResult({ ok: true, syncLogId: data?.data?.syncLogId });
       toast.success('Full sync started — updating all channels with ARI data.');
     } catch (err) {
