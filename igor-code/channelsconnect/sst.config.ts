@@ -57,7 +57,8 @@ export default $config({
                 retries: 3,
             },
             environment: {
-                DATABASE_URL: dbUrl.value,
+                // connection_limit=1 prevents Prisma from exhausting the Supabase pooler session limit
+                DATABASE_URL: dbUrl.value + '?connection_limit=1',
                 SUPABASE_URL: supabaseUrl.value,
                 SUPABASE_ANON_KEY: supabaseKey.value,
                 CHANNEX_API_KEY: channexKey.value,
