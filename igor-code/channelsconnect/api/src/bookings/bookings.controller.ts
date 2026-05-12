@@ -18,6 +18,7 @@ import {
 import { BookingsService } from './bookings.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
+import { CreateManualBookingDto } from './dto/create-manual-booking.dto';
 import { BookingEntity } from './entities/booking.entity';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
 
@@ -34,6 +35,22 @@ export class BookingsController {
     @Body() createBookingDto: CreateBookingDto,
   ) {
     return this.bookingsService.create(user.id, createBookingDto);
+  }
+
+  /**
+   * TASK 2 — Manual Direct Booking (Channex Test 11 - Create)
+   *
+   * - Inserts the booking record into the local DB.
+   * - Deducts inventory (+1 blocked night) via applyChange → event-driven push to Channex.
+   * - Returns the created booking so the UI can display success + task IDs.
+   */
+  @Post('manual')
+  @ApiCreatedResponse({ type: BookingEntity })
+  createManual(
+    @CurrentUser() user: CurrentUserData,
+    @Body() dto: CreateManualBookingDto,
+  ) {
+    return this.bookingsService.createManual(user.id, dto);
   }
 
   @Get()
@@ -73,6 +90,15 @@ export class BookingsController {
     return this.bookingsService.findOne(id);
   }
 
+  /**
+   * TASK 3 — Modify Booking (Channex Test 11 - Modify)
+   *
+   * Updates checkIn/checkOut dates:
+   *   1. Restores inventory for the OLD date range.
+   *   2. Deducts inventory for the NEW date range.
+   *   3. Saves the booking.
+   *   4. applyChange() event emitter automatically pushes delta to Channex.
+   */
   @Patch(':id')
   @ApiOkResponse({ type: BookingEntity })
   update(
@@ -82,6 +108,13 @@ export class BookingsController {
     return this.bookingsService.update(id, updateBookingDto);
   }
 
+  /**
+   * TASK 3 — Cancel Booking (Channex Test 11 - Cancel)
+   *
+   * - Sets booking status to 'cancelled'.
+   * - Restores inventory for the booking's date range (+1 per night).
+   * - applyChange() event emitter automatically pushes restored availability to Channex.
+   */
   @Patch(':id/cancel')
   @ApiOkResponse({ type: BookingEntity })
   cancel(@Param('id', ParseIntPipe) id: number) {
@@ -94,4 +127,3 @@ export class BookingsController {
     return this.bookingsService.remove(id);
   }
 }
-
