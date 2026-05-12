@@ -202,6 +202,23 @@ export class BookingsService {
       this.deductInventory(booking.listingId, checkIn, checkOut),
     );
 
+    // ── 6. Push formal booking record to Channex (non-fatal) ───────────────
+    // This creates the booking in Channex's Bookings section, not just the
+    // inventory. If this fails, dates are still blocked so no double-booking.
+    setImmediate(() =>
+      this.channexSync.pushBookingToChannex({
+        listingId:   booking.listingId,
+        guestName:   booking.guestName,
+        checkIn:     checkIn,
+        checkOut:    checkOut,
+        numGuests:   booking.numGuests,
+        totalPrice:  parseFloat(String(booking.totalPrice)),
+        channelType: booking.bookingSource || 'direct',
+        externalId:  `cc_${booking.id}`,
+        notes:       booking.notes || undefined,
+      }),
+    );
+
     return booking;
   }
 

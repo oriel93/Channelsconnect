@@ -788,6 +788,92 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
     return taskId;
   }
 
+  /**
+   * pushBookingToChannex — creates a formal booking record in Channex.
+   *
+   * Called from bookings.service.ts whenever a booking is created locally.
+   * This pushes the guest details and payment status to Channex so the
+   * booking appears in the Channex Bookings section (not just inventory).
+   *
+   * If this fails, we log the error but don't throw — the inventory push
+   * (availability=0) has already blocked the dates, so double-booking is
+   * prevented even if the booking record creation fails.
+   */
+  async pushBookingToChannex(params: {
+    listingId: number;
+    guestName: string;
+    checkIn: Date;
+    checkOut: Date;
+    numGuests: number;
+    totalPrice: number;
+    channelType?: string;
+    externalId?: string;
+    notes?: string;
+  }): Promise<{ channexBookingId?: string; taskId?: string }> {
+    const apiKey = process.env.CHANNEX_API_KEY;
+    if (!apiKey) {
+      this.logger.warn('[Booking] CHANNEX_API_KEY not set — cannot create booking in Channex');
+      return {};
+    }
+
+    const ids = await this.resolveChannexIds(params.listingId);
+
+    const checkInIso  = params.checkIn.toISOString().split('T')[0];
+    const checkOutIso = params.checkOut.toISOString().split('T')[0];
+
+    const payload = {
+      data: {
+        attributes: {
+          channel_type: params.channelType || 'direct',
+          property_id:  ids.channexPropertyId,
+          room_type_id: ids.channexRoomTypeId,
+          rate_plan_id: ids.channexRatePlanId || undefined,
+          check_in:     checkInIso,
+          check_out:    checkOutIso,
+          total_amount: params.totalPrice,
+          currency:     'USD',
+          guest_details: {
+            guest_name:  params.guestName,
+            adults:      params.numGuests,
+            children:    0,
+          },
+          // status: 'accepted' means confirmed, not pending
+          status:        'confirmed',
+          // source: 'Channels Connect PMS'
+          source:        'Channels Connect PMS',
+          ...(params.externalId ? { external_id: params.externalId } : {}),
+          ...(params.notes      ? { notes:      params.notes      } : {}),
+        },
+      },
+    };
+
+    try {
+      this.logger.log(
+        `[Booking] Creating Channex booking listing=${params.listingId} ` +
+        `${params.guestName} ${checkInIso}→${checkOutIso} ` +
+        `prop=${ids.channexPropertyId.slice(0,8)} room=${ids.channexRoomTypeId.slice(0,8)}`,
+      );
+
+      const res = await this.http.post<any>('/bookings', apiKey, payload);
+      const bookingId: string | undefined = res?.data?.[0]?.id;
+      const taskId:   string | undefined = res?.meta?.task_id;
+
+      this.logger.log(
+        `[Booking] Created Channex booking id=${bookingId ?? 'n/a'} task=${taskId ?? 'n/a'}` +
+        ` listing=${params.listingId}`,
+      );
+
+      return { channexBookingId: bookingId, taskId };
+    } catch (err: any) {
+      const msg = err?.response?.data?.errors?.title || err.message;
+      this.logger.error(
+        `[Booking] Failed to create Channex booking for listing=${params.listingId}: ${msg}`,
+      );
+      // Non-fatal: inventory already blocked, booking still exists locally
+      return {};
+    }
+  }
+
   // -------------------------------------------------------------------------
   // 5. Parity check
   // -------------------------------------------------------------------------
