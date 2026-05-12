@@ -24,6 +24,7 @@ import {
   OnModuleDestroy,
 } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
+import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChannexHttpClient } from '../services/channex/channex-http.client';
 import { Prisma } from '@prisma/client';
@@ -852,9 +853,17 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
         `prop=${ids.channexPropertyId.slice(0,8)} room=${ids.channexRoomTypeId.slice(0,8)}`,
       );
 
-      const res = await this.http.post<any>('/bookings', apiKey, payload);
-      const bookingId: string | undefined = res?.data?.[0]?.id;
-      const taskId:   string | undefined = res?.meta?.task_id;
+      // Use direct axios (bypasses global interceptor) — bookings API requires user-api-key header
+      const res = await axios.post(
+        'https://staging.channex.io/api/v1/bookings',
+        payload,
+        {
+          headers: { 'Content-Type': 'application/json', 'user-api-key': apiKey },
+          timeout: 15000,
+        },
+      );
+      const bookingId: string | undefined = res.data?.data?.[0]?.id;
+      const taskId:   string | undefined = res.data?.meta?.task_id;
 
       this.logger.log(
         `[Booking] Created Channex booking id=${bookingId ?? 'n/a'} task=${taskId ?? 'n/a'} listing=${params.listingId}`,
