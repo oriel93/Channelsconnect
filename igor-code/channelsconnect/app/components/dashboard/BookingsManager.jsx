@@ -174,7 +174,13 @@ function BookingFormDialog({ open, onClose, onSaved, editBooking, listingId }) {
       onClose();
     } catch (err) {
       console.error(err);
-      toast.error(err?.response?.data?.message || 'Failed to save booking.');
+      const status = err?.response?.status;
+      if (status === 401) {
+        toast.error('Your session has expired. Please log in again.');
+        setTimeout(() => { window.location.href = '/Login'; }, 1500);
+      } else {
+        toast.error(err?.response?.data?.message || 'Failed to save booking.');
+      }
     } finally {
       setSaving(false);
     }

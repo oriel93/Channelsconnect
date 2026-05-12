@@ -115,7 +115,19 @@ export default function AddManualBookingModal({ open, onOpenChange, listingId: p
       onOpenChange(false);
       onSuccess?.();
     } catch (err) {
-      const msg = err?.response?.data?.message ?? err?.message ?? 'Failed to save booking.';
+      const status = err?.response?.status;
+      const data   = err?.response?.data;
+
+      // 401 = session expired — redirect to login instead of showing cryptic error
+      if (status === 401) {
+        toast.error('Your session has expired. Redirecting to login…');
+        setTimeout(() => { window.location.href = '/Login'; }, 1500);
+        setLoading(false);
+        return;
+      }
+
+      const apiMsg = typeof data === 'string' ? data : data?.message;
+      const msg = apiMsg ?? err?.message ?? 'Failed to save booking.';
       setApiError(msg);
       toast.error(msg);
     } finally {
