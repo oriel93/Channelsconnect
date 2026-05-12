@@ -77,12 +77,29 @@ export class BookingsService {
   // ─── Public methods ──────────────────────────────────────────────────────────
 
   async create(userId: string, createBookingDto: CreateBookingDto) {
-    const booking = await this.prisma.booking.create({
-      data: {
-        ...createBookingDto,
-        userId,
-      },
-    });
+    // ── Defensive: normalise required fields before Prisma ──────────────────
+    const price = parseFloat(String(createBookingDto.totalPrice ?? 0));
+    const totalPriceStr = isNaN(price) ? '0.00' : price.toFixed(2);
+
+    const createData: Prisma.BookingUncheckedCreateInput = {
+      userId,
+      listingId:     Number(createBookingDto.listingId),
+      guestName:     String(createBookingDto.guestName ?? '').trim(),
+      checkIn:       new Date(createBookingDto.checkIn),
+      checkOut:      new Date(createBookingDto.checkOut),
+      numGuests:     Number(createBookingDto.numGuests) || 1,
+      totalPrice:    totalPriceStr,
+      status:        String(createBookingDto.status ?? 'confirmed'),
+      bookingSource: createBookingDto.bookingSource
+                       ? String(createBookingDto.bookingSource)
+                       : 'direct',
+      ...(createBookingDto.guestEmail ? { guestEmail: createBookingDto.guestEmail.trim() } : {}),
+      ...(createBookingDto.guestPhone ? { guestPhone: createBookingDto.guestPhone.trim() } : {}),
+      ...(createBookingDto.externalId ? { externalId: createBookingDto.externalId } : {}),
+      ...(createBookingDto.notes ? { notes: createBookingDto.notes.trim() } : {}),
+    };
+
+    const booking = await this.prisma.booking.create({ data: createData });
 
     if (booking.checkIn && booking.checkOut && booking.listingId) {
       const isBlocking = booking.status !== 'cancelled';
