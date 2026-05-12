@@ -165,7 +165,7 @@ function ListingRow({ listing, onSynced }) {
               whiteSpace: 'nowrap',
             }}
           >
-            {loading ? 'Syncing…' : '⚡ Sync Price to Channex'}
+            {loading ? 'Syncing…' : '⚡ Sync Price to channels'}
           </button>
         </div>
       </div>
@@ -269,7 +269,7 @@ export default function CertDashboard() {
       <div style={{ maxWidth: 900, margin: '0 auto' }}>
         <div style={{ marginBottom: 32 }}>
           <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: '#f8fafc' }}>
-            🏨 Channex PMS Certification Dashboard
+            🏨 PMS Certification Dashboard
           </h1>
           <p style={{ margin: '8px 0 0', color: '#64748b', fontSize: 14 }}>
             API: <code style={{ color: '#38bdf8' }}>{API}</code> · No auth required
@@ -360,7 +360,7 @@ export default function CertDashboard() {
         {/* Listings */}
         <div>
           <h2 style={{ margin: '0 0 16px', fontSize: 18, fontWeight: 700 }}>
-            Step 2: Sync Prices to Channex
+            Step 2: Sync Prices to channels
           </h2>
 
           {listingsError && (

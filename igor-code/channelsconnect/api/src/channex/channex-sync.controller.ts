@@ -19,15 +19,23 @@
  * GET  /channex-sync/refresh-mappings — re-fetch Channex IDs for a listing
  */
 
-import { Controller, Post, Get, Body, Query, Logger } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, Param, ParseIntPipe, Logger, NotFoundException } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/public.decorator';
 import { ChannexSyncService, ARIUpdate } from './channex-sync.service';
+import { ChannexDeepSyncService } from '../services/channex/channex-deep-sync.service';
+import { PrismaService } from '../prisma/prisma.service';
 
+@ApiTags('channex-sync')
 @Controller('channex-sync')
 export class ChannexSyncController {
   private readonly logger = new Logger(ChannexSyncController.name);
 
-  constructor(private readonly syncService: ChannexSyncService) {}
+  constructor(
+    private readonly syncService: ChannexSyncService,
+    private readonly deepSync: ChannexDeepSyncService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   /**
    * Called by the PMS UI whenever a user changes a price or availability.
@@ -84,5 +92,49 @@ export class ChannexSyncController {
     this.logger.log(`[Mapping] Refresh triggered for listing=${id}`);
     await this.syncService.refreshMappingsForListing(id);
     return { success: true };
+  }
+
+  /**
+   * Force a full 150-day ARI sync for a specific listing.
+   * Looks up the ChannexMapping and calls pushCertificationARI.
+   * The task IDs returned are displayed to the Channex auditor.
+   */
+  @ApiBearerAuth()
+  @Post('properties/:listingId/force-sync')
+  async forceSync(@Param('listingId', ParseIntPipe) listingId: number) {
+    this.logger.log(`[ForceSync] Triggered for listing=${listingId}`);
+
+    const mapping = await this.prisma.channexMapping.findFirst({
+      where: { listingId },
+    });
+
+    if (!mapping || !mapping.channexPropertyId) {
+      throw new NotFoundException(
+        `No Channex mapping found for listing ${listingId}. Please connect the property to Channex first.`,
+      );
+    }
+
+    const propId      = mapping.channexPropertyId;
+    const roomTypeId  = mapping.channexRoomTypeId ?? '';
+    const ratePlanId  = mapping.channexRatePlanId ?? '';
+
+    this.logger.log(
+      `[ForceSync] Calling pushCertificationARI — propId=${propId} roomTypeId=${roomTypeId} ratePlanId=${ratePlanId}`,
+    );
+
+    const taskIds = await this.deepSync.pushCertificationARI(
+      propId,
+      roomTypeId,
+      ratePlanId,
+      150,
+      1,
+      1,
+      listingId,
+    );
+
+    const message = `Force sync complete. Task IDs: ${taskIds.join(', ')}`;
+    this.logger.log(`[ForceSync] ${message}`);
+
+    return { success: true, taskIds, message };
   }
 }

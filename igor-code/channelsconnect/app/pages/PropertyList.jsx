@@ -241,7 +241,7 @@ function ActionModal({ open, onClose, onSave, listing, startDate, endDate }) {
                 <p className="text-sm font-medium text-amber-800">Block {nights} night{nights !== 1 ? 's' : ''}</p>
                 <p className="text-xs text-amber-700 mt-0.5">
                   These dates will be closed to new bookings across all connected channels.
-                  Your Channex queue handles the sync automatically.
+                  Your sync queue handles updates automatically.
                 </p>
               </div>
             </div>
@@ -276,7 +276,7 @@ function ActionModal({ open, onClose, onSave, listing, startDate, endDate }) {
                 />
               </div>
               <p className="text-xs text-slate-400">
-                Rate change queued through Channex rate-limiter — syncs to all connected channels automatically.
+                Rate change queued through the rate-limiter — syncs to all connected channels automatically.
               </p>
             </div>
           )}
@@ -884,7 +884,7 @@ export default function PropertyList() {
                         <div style={{
                           width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
                           background: hasChannex ? '#10b981' : '#f59e0b',
-                        }} title={hasChannex ? 'Connected to Channex' : 'Pending Channex mapping'} />
+                        }} title={hasChannex ? 'Connected to channels' : 'Pending channel mapping'} />
 
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <p style={{ fontSize: 11, fontWeight: 600, color: '#0f172a', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

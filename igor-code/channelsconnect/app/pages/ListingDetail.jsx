@@ -9,7 +9,7 @@
  *   - isActive shown as "Live" / "Pending" (not the boolean).
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import NewLoginRequired from '../components/auth/NewLoginRequired';
@@ -21,8 +21,12 @@ import { Button } from '@/components/ui/button';
 import { Listing } from '@/api/entities';
 import {
   Loader2, MapPin, Users, Bed, Bath, Calendar,
-  Settings, Home, ArrowLeft, ShieldCheck,
+  Settings, Home, ArrowLeft, ShieldCheck, Plus,
+  User, Clock, DollarSign, XCircle,
 } from 'lucide-react';
+import { api } from '@/lib/apiClient';
+import AddManualBookingModal from '@/components/dashboard/channels/AddManualBookingModal';
+import BookingDrawer from '@/components/dashboard/channels/BookingDrawer';
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
 
@@ -270,19 +274,11 @@ const ListingDetailContent = () => {
         )}
       </div>
 
-      {/* Description */}
-      {listing.description && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Description</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-slate-700 whitespace-pre-wrap text-sm leading-relaxed">
-              {listing.description}
-            </p>
-          </CardContent>
-        </Card>
-      )}
+      {/* ── Reservations Section ─────────────────────────────────────────────
+       * TASK 2 (Create) + TASK 3 (Modify / Cancel)
+       * Shows all bookings for this listing with create/modify/cancel controls.
+       */}
+      <ReservationsSection listingId={listing.id} />
 
       {/* Additional Info */}
       <Card>
@@ -329,6 +325,160 @@ const ListingDetailContent = () => {
     </div>
   );
 };
+
+// ─── Reservations Section ──────────────────────────────────────────────────
+/**
+ * TASK 2 (Create) + TASK 3 (Modify / Cancel)
+ * Displays all bookings for this listing with a
+ * "Create Direct Booking" button and an interactive BookingDrawer.
+ */
+function ReservationsSection({ listingId }) {
+  const [bookings, setBookings]           = useState([]);
+  const [loading,  setLoading]            = useState(true);
+  const [showCreate, setShowCreate]       = useState(false);
+  const [selectedBooking, setSelected]    = useState(null);
+  const [drawerOpen, setDrawerOpen]        = useState(false);
+
+  const fetchBookings = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.bookings.getByListingId(listingId);
+      setBookings(res.data ?? res ?? []);
+    } catch {
+      setBookings([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [listingId]);
+
+  useEffect(() => {
+    if (listingId) fetchBookings();
+  }, [listingId, fetchBookings]);
+
+  const openDrawer = (booking) => {
+    setSelected(booking);
+    setDrawerOpen(true);
+  };
+
+  const handleBookingUpdate = (updated) => {
+    setBookings(prev =>
+      prev.map(b => (b.id === updated.id ? updated : b)),
+    );
+    setSelected(updated);
+  };
+
+  const STATUS_COLORS = {
+    confirmed: 'bg-emerald-100 text-emerald-800',
+    cancelled: 'bg-red-100    text-red-800',
+    pending:   'bg-amber-100  text-amber-800',
+    completed: 'bg-slate-100  text-slate-600',
+  };
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <User className="w-4 h-4" />
+              Reservations
+            </CardTitle>
+            <Button
+              size="sm"
+              onClick={() => setShowCreate(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
+            >
+              <Plus className="w-4 h-4" />
+              Create Direct Booking
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+            </div>
+          ) : bookings.length === 0 ? (
+            <div className="text-center py-8 text-slate-500 text-sm">
+              <p>No reservations for this property yet.</p>
+              <p className="mt-1">Use "Create Direct Booking" above to add one.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {bookings.map(booking => (
+                <div
+                  key={booking.id}
+                  onClick={() => openDrawer(booking)}
+                  className="flex items-center gap-4 py-3.5 cursor-pointer hover:bg-slate-50 rounded-lg px-3 -mx-3 transition-colors"
+                >
+                  {/* Guest + status */}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-slate-900 text-sm truncate">
+                      {booking.guestName}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {booking.numGuests ?? 1} guest{booking.numGuests !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                  {/* Dates */}
+                  <div className="text-xs text-slate-600 min-w-0 hidden sm:block">
+                    <p className="truncate">
+                      {fmtDate(booking.checkIn)} → {fmtDate(booking.checkOut)}
+                    </p>
+                    <p className="text-slate-400 mt-0.5">
+                      {nightsCount(booking.checkIn, booking.checkOut)} nights
+                    </p>
+                  </div>
+                  {/* Price */}
+                  {booking.totalPrice && (
+                    <div className="text-sm font-semibold text-slate-700 hidden md:block">
+                      ${parseFloat(booking.totalPrice).toFixed(0)}
+                    </div>
+                  )}
+                  {/* Status badge */}
+                  <Badge
+                    className={`${STATUS_COLORS[booking.status] ?? 'bg-slate-100 text-slate-600'} text-xs shrink-0`}
+                  >
+                    {booking.status}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* TASK 2 — Create Manual Booking modal */}
+      <AddManualBookingModal
+        open={showCreate}
+        onOpenChange={setShowCreate}
+        listingId={listingId}
+        onSuccess={fetchBookings}
+      />
+
+      {/* TASK 3 — Modify / Cancel booking drawer */}
+      <BookingDrawer
+        booking={selectedBooking}
+        open={drawerOpen}
+        onOpenChange={(open) => {
+          setDrawerOpen(open);
+          if (!open) setSelected(null);
+        }}
+        onUpdate={handleBookingUpdate}
+      />
+    </>
+  );
+}
+
+function fmtDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function nightsCount(checkIn, checkOut) {
+  if (!checkIn || !checkOut) return 0;
+  return Math.round((new Date(checkOut) - new Date(checkIn)) / 86400000);
+}
 
 // ─── Page wrapper ─────────────────────────────────────────────────────────────
 

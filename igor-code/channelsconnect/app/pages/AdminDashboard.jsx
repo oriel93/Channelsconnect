@@ -89,7 +89,7 @@ const StatCard = ({ title, value, icon: Icon, color = 'blue', subtitle }) => (
 // ─── SyncButton — smart Publish vs Sync Updates ────────────────────────────────
 /**
  * Lazy-loads sync state on first render, then shows:
- *   - "Publish to Channex"  when no channex record exists
+ *   - "Publish to Channels"  when no channex record exists
  *   - "Sync Updates"        when one already exists
  *   - Loading spinner       while state is being fetched or sync running
  */
@@ -114,7 +114,7 @@ const SyncButton = ({ listingId, syncStates, syncingListingId, onSync, onLoadSta
 
   const label = loading || !state
     ? null
-    : isPublished ? 'Sync Updates' : 'Publish to Channex';
+    : isPublished ? 'Sync Updates' : 'Publish to Channels';
 
   const icon = isPublished ? <Zap className="w-3.5 h-3.5 mr-1" /> : <Sparkles className="w-3.5 h-3.5 mr-1" />;
 
@@ -184,13 +184,13 @@ function MarkupPanel() {
           💹 Rate Markup
         </CardTitle>
         <p className="text-xs text-slate-500 mt-1 max-w-2xl">
-          Set a percentage markup applied to <strong>all rates before they are pushed to Channex</strong>.
-          The rate stored in your database is never changed — only what Channex receives is adjusted.
+          Set a percentage markup applied to <strong>all rates before they are pushed to channels</strong>.
+          The rate stored in your database is never changed — only what connected channels receive is adjusted.
           Use this to bake your management fee into the channel price per client.
         </p>
         <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 max-w-2xl">
           <strong>⚠️ Admin only — users never see this.</strong> A markup of 10% means a stored $100 rate
-          is pushed to Channex as $110. A value of 0 means no change (pass-through).
+          is pushed to channels as $110. A value of 0 means no change (pass-through).
           Negative values are allowed for discounts.
         </div>
       </CardHeader>
@@ -469,7 +469,7 @@ export default function AdminDashboard() {
       if (result.outcome === 'synced') {
         const op = result.operation === 'created' ? 'Published' : 'Updated';
         toast.success(
-          `${op} "${listingTitle}" on Channex ✓ - ID: ${result.channexPropertyId}`
+          `${op} "${listingTitle}" on channels ✓ - ID: ${result.channexPropertyId}`
         );
         // Refresh sync state badge
         await loadSyncState(listingId);
@@ -480,7 +480,7 @@ export default function AdminDashboard() {
         await loadSyncState(listingId);
       } else {
         // outcome === 'error'
-        const msg = result.errorMessage || 'Channex sync failed';
+        const msg = result.errorMessage || 'Channel sync failed';
         setSyncError({ listingId, message: msg });
         toast.error(`Sync Failed: ${msg}`);
       }
@@ -499,12 +499,12 @@ export default function AdminDashboard() {
 
   /** Deactivate on Channex and archive locally */
   const handleDeactivate = async (listingId, listingTitle) => {
-    if (!confirm(`Deactivate "${listingTitle}" on Channex? This will set it inactive and archive it locally.`)) return;
+    if (!confirm(`Deactivate "${listingTitle}" on channels? This will set it inactive and archive it locally.`)) return;
     setDeactivatingId(listingId);
     setSyncError(null);
     try {
       await api.admin.deactivateListing(listingId);
-      toast.success(`"${listingTitle}" deactivated on Channex and archived locally.`);
+      toast.success(`"${listingTitle}" deactivated on channels and archived locally.`);
       await loadSyncState(listingId);
       fetchData();
       // Remove from review queue if present
@@ -523,7 +523,7 @@ export default function AdminDashboard() {
   const getSyncButtonLabel = (listingId) => {
     const state = syncStates[listingId];
     if (!state) return null; // not yet loaded
-    return state.hasChannexRecord ? 'Sync Updates' : 'Publish to Channex';
+    return state.hasChannexRecord ? 'Sync Updates' : 'Publish to Channels';
   };
 
   // ── Role management ─────────────────────────────────────────────────────────
@@ -1343,7 +1343,7 @@ export default function AdminDashboard() {
                   >
                     {deactivatingId === reviewListing.id
                       ? <><Loader2 className="w-4 h-4 animate-spin" />Deactivating…</>
-                      : <><Power className="w-4 h-4" />Deactivate on Channex</>}
+                      : <><Power className="w-4 h-4" />Deactivate on Channels</>}
                   </button>
                 )}
 

@@ -163,7 +163,7 @@ export default function BulkOperationsPanel({
       const ok = response?.data?.success ?? response?.success;
       if (!ok) throw new Error(response?.data?.message || 'Bulk update failed');
 
-      toast.success(`Updated ${selectedDates.length} date(s) — syncing to Channex…`);
+      toast.success(`Updated ${selectedDates.length} date(s) — syncing to channels…`);
       onBulkComplete();
       clearSelection();
     } catch (error) {

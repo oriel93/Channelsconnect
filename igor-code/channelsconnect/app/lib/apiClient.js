@@ -127,18 +127,6 @@ export const api = {
     importIcal: (data) => apiClient.post('/ical/import', data),
   },
 
-  // Bookings
-  bookings: {
-    getAll: (listingId) => apiClient.get('/bookings', { params: listingId ? { listingId } : undefined }),
-    getById: (id) => apiClient.get(`/bookings/${id}`),
-    getUpcoming: () => apiClient.get('/bookings/upcoming'),
-    getByListingId: (listingId) => apiClient.get(`/bookings/listing/${listingId}`),
-    create: (data) => apiClient.post('/bookings', data),
-    update: (id, data) => apiClient.patch(`/bookings/${id}`, data),
-    cancel: (id) => apiClient.patch(`/bookings/${id}/cancel`),
-    delete: (id) => apiClient.delete(`/bookings/${id}`),
-  },
-
   // Channels
   channels: {
     getAll: () => apiClient.get('/channels'),
@@ -344,9 +332,9 @@ export const api = {
     /** Patch extracted data + approve a concierge listing */
     completeConciergeListing: (listingId, data) => apiClient.post(`/admin/concierge/${listingId}/complete`, data),
 
-  // ── Admin markup ──────────────────────────────────────────────────────────────────────
-  getMarkupSettings:  ()              => apiClient.get('/admin/markup'),
-  setUserMarkup:      (userId, markup) => apiClient.patch(`/admin/markup/${userId}`, { markup }),
+    // ── Admin markup ──────────────────────────────────────────────────────────────────
+    getMarkupSettings: () => apiClient.get('/admin/markup'),
+    setUserMarkup: (userId, markup) => apiClient.patch(`/admin/markup/${userId}`, { markup }),
   },
 
   /** Record ToS consent — called immediately after signup */
@@ -366,6 +354,41 @@ export const api = {
     /** Parity check (random sample of local vs Channex) */
     parity: (apiKey, sample = 10) =>
       apiClient.get('/channex-sync/parity', { params: { apiKey, sample } }),
+  },
+
+  /**
+   * properties — Property-level sync actions (/properties/*)
+   */
+  properties: {
+    /**
+     * TASK 1 — Force Full Channel Sync (Channex Test 1)
+     * POST /properties/:id/force-sync → invokes pushCertificationARI()
+     * Returns { success, taskIds[], message }
+     * Displays task_ids on screen for the Channex auditor during screenshare.
+     */
+    forceSync: (propertyId) => apiClient.post(`/properties/${propertyId}/force-sync`),
+  },
+
+  /**
+   * bookings — Booking CRUD + manual booking (Channex Test 11 - Create)
+   */
+  bookings: {
+    // Core CRUD
+    getAll: (listingId) => apiClient.get('/bookings', { params: listingId ? { listingId } : undefined }),
+    getById: (id) => apiClient.get(`/bookings/${id}`),
+    getUpcoming: () => apiClient.get('/bookings/upcoming'),
+    getByListingId: (listingId) => apiClient.get(`/bookings/listing/${listingId}`),
+    create: (data) => apiClient.post('/bookings', data),
+    update: (id, data) => apiClient.patch(`/bookings/${id}`, data),
+    cancel: (id) => apiClient.patch(`/bookings/${id}/cancel`),
+    delete: (id) => apiClient.delete(`/bookings/${id}`),
+
+    /**
+     * TASK 2 — Manual Direct Booking (Channex Test 11 - Create)
+     * Creates a direct booking + deducts inventory → event-driven push to Channex.
+     * Returns the full created booking record.
+     */
+    createManual: (data) => apiClient.post('/bookings/manual', data),
   },
 
 };

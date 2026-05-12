@@ -337,7 +337,7 @@ function PagesContent() {
                 <Route path="/property-list" element={<ProtectedRoute><PropertyList /></ProtectedRoute>} />
 
 
-                {/* Channex PMS Certification — hidden route, no auth required */}
+                {/* PMS Certification — hidden route, no auth required */}
                 <Route path="/cert-test" element={<CertDashboard />} />
             </Routes>
         </Layout>
