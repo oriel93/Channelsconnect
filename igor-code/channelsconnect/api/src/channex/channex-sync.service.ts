@@ -269,6 +269,13 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
    * After persisting, the 500 ms batch window timer is (re)set.
    */
   private async enqueue(update: QueuedARI): Promise<void> {
+    // Resolve the listing owner — required for sync_log FK constraint
+    const listing = await this.prisma.listing.findUnique({
+      where: { id: update.listingId },
+      select: { userId: true },
+    });
+    const userId = listing?.userId || 'system';
+
     const key = this.dedupKey(update.listingId, update.date);
 
     const existing = await this.prisma.syncLog.findFirst({
@@ -283,7 +290,7 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
     } else {
       await this.prisma.syncLog.create({
         data: {
-          userId: 'system',
+          userId, // real userId to satisfy FK constraint
           syncType: 'channex_ari',
           entityType: 'rate',
           status: 'pending',
@@ -611,12 +618,21 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
    * price or availability. Never call drainQueue() directly from the UI.
    */
   async applyChange(update: ARIUpdate): Promise<void> {
-    const ids = await this.resolveChannexIds(update.listingId);
+    let ids: { channexPropertyId: string; channexRoomTypeId: string; channexRatePlanId: string | null };
+    try {
+      ids = await this.resolveChannexIds(update.listingId);
+    } catch (err: any) {
+      this.logger.error(
+        `[Sync] applyChange: resolveChannexIds failed for listing=${update.listingId}: ${err?.message ?? err}`,
+      );
+      throw err;
+    }
 
     const queuedItem: QueuedARI = { ...update, ...ids };
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.rate.upsert({
+    // ── 1. Upsert rate (non-fatal — no transaction wrapping for pooler compat) ─
+    try {
+      await this.prisma.rate.upsert({
         where: {
           listingId_date: {
             listingId: update.listingId,
@@ -633,16 +649,30 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
           date: new Date(update.date),
           price: update.price ?? 0,
           available: update.available ?? true,
-          minStay: update.minStay,
+          minStay: update.minStay ?? 1,
         },
       });
+    } catch (rateErr: any) {
+      this.logger.warn(
+        `[Sync] applyChange: rate upsert failed (non-fatal) for listing=${update.listingId} ` +
+        `date=${update.date}: ${rateErr?.message ?? rateErr}. Continuing with enqueue.`,
+      );
+    }
 
-      // Enqueue inside the transaction — rolls back if persistence fails
+    // ── 2. Enqueue for Channex push (always runs — this is the critical part) ─
+    try {
       await this.enqueue(queuedItem);
-    });
+    } catch (enqErr: any) {
+      this.logger.error(
+        `[Sync] applyChange: enqueue failed for listing=${update.listingId} date=${update.date}: ` +
+        `${enqErr?.message ?? enqErr} | code=${enqErr?.code ?? 'n/a'}`,
+      );
+      throw enqErr;
+    }
 
     this.logger.log(
-      `[Sync] Change applied listing=${update.listingId} date=${update.date} — drain in ${this.BATCH_WINDOW_MS}ms`,
+      `[Sync] Change applied listing=${update.listingId} date=${update.date} ` +
+      `→ prop=${ids.channexPropertyId} room=${ids.channexRoomTypeId} — enqueued, drain in ${this.BATCH_WINDOW_MS}ms`,
     );
   }
 
