@@ -53,7 +53,8 @@ export class BookingsService {
       }
     } catch (err: any) {
       this.logger.error(
-        `[BookingAvail] Failed for listing=${listingId}: ${err?.message}`,
+        `[BookingAvail] Failed for listing=${listingId}: ${err?.message ?? err} | ` +
+        `type=${err?.constructor?.name ?? typeof err} | stack=${err?.stack?.split('\n')[1]?.trim() ?? 'none'}`,
       );
     }
   }
@@ -251,9 +252,22 @@ export class BookingsService {
     const old = await this.prisma.booking.findUnique({ where: { id } });
     if (!old) throw new Error(`Booking ${id} not found.`);
 
+    // Build only the safe, updatable fields — no id/listingId/userId/User passthrough
+    const data: Prisma.BookingUpdateInput = {};
+    if (updateBookingDto.guestName    !== undefined) data.guestName    = updateBookingDto.guestName;
+    if (updateBookingDto.guestEmail   !== undefined) data.guestEmail   = updateBookingDto.guestEmail;
+    if (updateBookingDto.guestPhone   !== undefined) data.guestPhone   = updateBookingDto.guestPhone;
+    if (updateBookingDto.checkIn      !== undefined) data.checkIn      = new Date(updateBookingDto.checkIn);
+    if (updateBookingDto.checkOut     !== undefined) data.checkOut     = new Date(updateBookingDto.checkOut);
+    if (updateBookingDto.numGuests    !== undefined) data.numGuests    = updateBookingDto.numGuests;
+    if (updateBookingDto.totalPrice   !== undefined) data.totalPrice   = updateBookingDto.totalPrice;
+    if (updateBookingDto.status       !== undefined) data.status       = updateBookingDto.status;
+    if (updateBookingDto.bookingSource !== undefined) data.bookingSource = updateBookingDto.bookingSource;
+    if (updateBookingDto.notes        !== undefined) data.notes        = updateBookingDto.notes;
+
     const booking = await this.prisma.booking.update({
       where: { id },
-      data: updateBookingDto,
+      data,
     });
 
     const newCheckIn  = updateBookingDto.checkIn
