@@ -1,10 +1,9 @@
 /**
- * CertDashboard.jsx — Channex PMS Certification Control Panel
+ * CertDashboard.jsx — PMS Certification Control Panel
  *
- * Uses EXACT values from the Channex PMS Certification spec:
- *   https://docs.channex.io/api-v.1-documentation/pms-certification-tests
+ * Uses EXACT values from the channel PMS Certification spec.
  *
- * T1  — Full 500-day ARI sync: EXACTLY 2 Channex API calls
+ * T1  — Full 500-day ARI sync: EXACTLY 2 API calls
  *        Call 1: POST /availability  (ALL room types × 500 days)
  *        Call 2: POST /restrictions  (ALL rate plans × 500 days)
  * T2  — Single date / single rate  → 1 call
@@ -26,14 +25,14 @@
  *
  * CTD support: Channels Connect supports closed_to_departure via the ARI batch
  * endpoint. See T7 which explicitly includes CTD=true for Twin B&B Nov 12-16.
- * Min Stay is sent as min_stay_arrival (Channex standard field).
+ * Min Stay is sent as min_stay_arrival (channel standard field).
  */
 
 import { useState, useEffect, useCallback } from 'react';
 
 const API = (import.meta.env.VITE_API_URL || 'https://api.channelsconnect.com').replace(/\/+$/, '');
 
-// Channex cert room/rate UUIDs (staging property 3db72f15)
+// Channel cert room/rate UUIDs (staging property 3db72f15)
 const RT_TWIN   = '6b96aa09-eeb1-4b17-a35c-632af5d05462';
 const RT_DOUBLE = '56878137-7f9f-42d5-b2b7-96eb514045ba';
 const RP_TWIN_BAR  = '23a07c9b-2af0-4d6c-9c4e-d73011a7f752';
@@ -208,15 +207,12 @@ export default function CertDashboard() {
   }
 
   // ── T1: Full 500-day ARI — EXACTLY 2 API calls (all rooms + all rates) ────
-  // Spec: "1 x 500 days for Availability (All Rooms)"
-  //       "1 x 500 days Rates & restrictions (All Rates)"
   const runT1 = () => run(setT1, async () => {
     const r = await apiFetch('/connect/ari/full', {
       method: 'POST',
       body: JSON.stringify({
         propertyId: P.propertyId,
         listingId:  P.listingId,
-        // New shape: explicit lists so the backend never loops per-combo
         roomTypes: [
           { roomTypeId: RT_TWIN },
           { roomTypeId: RT_DOUBLE },
@@ -229,33 +225,29 @@ export default function CertDashboard() {
         ],
       }),
     });
-    // Should always be exactly 2 task IDs
     addTask('T1 Call 1 — Availability (ALL rooms)', r.availabilityTaskId || r.taskIds?.[0]);
     addTask('T1 Call 2 — Restrictions (ALL rates)',  r.restrictionsTaskId  || r.taskIds?.[1]);
     return r;
   });
 
-  // ── T2: Single Date Update for Single Rate ────────────────────────────────
-  // Spec: Twin Room | Best Available Rate | 22 Nov 2026 | $333
-  // T2: certifier confirmed — pure restriction (stop_sell), NO rate, NO property_id, NO room_type_id
+  // ── T2: Single Date Update for Single Rate
   const runT2 = () => run(setT2, async () => {
     const r = await apiFetch('/connect/ari/update', {
       method: 'POST',
       body: JSON.stringify({
         propertyId: P.propertyId,
-        roomTypeId: RT_TWIN,   // used for availability routing only; NOT sent to /restrictions
+        roomTypeId: RT_TWIN,
         ratePlanId: RP_TWIN_BAR,
         dateFrom:   '2026-11-22',
         dateTo:     '2026-11-22',
-        stopSell:   false,     // restriction field — no rate
+        stopSell:   false,
       }),
     });
     addTask('T2 Restriction: Twin BAR Nov 22 stop_sell=false', r.taskId);
     return r;
   });
 
-  // ── T3: Single Date Update for Multiple Rates — 1 API call ───────────────
-  // Spec: Twin BAR Nov21=$333 | Double BAR Nov25=$444 | Double B&B Nov29=$456.23
+  // ── T3: Single Date Update for Multiple Rates — 1 API call
   const runT3 = () => run(setT3, async () => {
     const r = await apiFetch('/connect/ari/batch', {
       method: 'POST',
@@ -272,8 +264,7 @@ export default function CertDashboard() {
     return r;
   });
 
-  // ── T4: Multiple Date Update for Multiple Rates — 1 API call ─────────────
-  // Spec: Twin BAR Nov1-10=$241 | Double BAR Nov10-16=$312.66 | Double B&B Nov1-20=$111
+  // ── T4: Multiple Date Update for Multiple Rates — 1 API call
   const runT4 = () => run(setT4, async () => {
     const r = await apiFetch('/connect/ari/batch', {
       method: 'POST',
@@ -290,8 +281,7 @@ export default function CertDashboard() {
     return r;
   });
 
-  // ── T5: Min Stay Update — 1 API call ─────────────────────────────────────
-  // Spec: Twin BAR Nov23=3 | Double BAR Nov25=2 | Double B&B Nov15=5
+  // ── T5: Min Stay Update — 1 API call
   const runT5 = () => run(setT5, async () => {
     const r = await apiFetch('/connect/ari/batch', {
       method: 'POST',
@@ -308,8 +298,7 @@ export default function CertDashboard() {
     return r;
   });
 
-  // ── T6: Stop Sell Update — 1 API call ────────────────────────────────────
-  // Spec: Twin BAR Nov14=true | Double BAR Nov16=true | Double B&B Nov20=true
+  // ── T6: Stop Sell Update — 1 API call
   const runT6 = () => run(setT6, async () => {
     const r = await apiFetch('/connect/ari/batch', {
       method: 'POST',
@@ -326,12 +315,7 @@ export default function CertDashboard() {
     return r;
   });
 
-  // ── T7: Multiple Restrictions — 1 API call ───────────────────────────────
-  // Spec (exact):
-  //   Twin BAR  Nov01-10: CTA=true,  CTD=false, maxStay=4, minStay=1
-  //   Twin B&B  Nov12-16: CTA=false, CTD=true,  minStay=6
-  //   Double BAR Nov10-16: CTA=true,  minStay=2
-  //   Double B&B Nov01-20: minStay=10
+  // ── T7: Multiple Restrictions — 1 API call
   const runT7 = () => run(setT7, async () => {
     const r = await apiFetch('/connect/ari/batch', {
       method: 'POST',
@@ -349,9 +333,7 @@ export default function CertDashboard() {
     return r;
   });
 
-  // ── T8: Half-Year Update — 1 API call ────────────────────────────────────
-  // Spec: Twin BAR Dec1'26-May1'27 @$432 minStay=2 CTA=false CTD=false
-  //        Double BAR Dec1'26-May1'27 @$342 minStay=3
+  // ── T8: Half-Year Update — 1 API call
   const runT8 = () => run(setT8, async () => {
     const r = await apiFetch('/connect/ari/batch', {
       method: 'POST',
@@ -367,17 +349,14 @@ export default function CertDashboard() {
     return r;
   });
 
-  // ── T9: Single Date Availability — 1 or 2 calls ──────────────────────────
-  // Spec: Twin Nov21=7, Double Nov25=0
-  // Note: availability is per-room-type, NOT per-rate-plan.
-  // We send 2 calls (one per room type) which is within spec ("1 or 2 API calls").
+  // ── T9: Single Date Availability — 1 or 2 calls
   const runT9 = () => run(setT9, async () => {
     const r1 = await apiFetch('/connect/ari/update', {
       method: 'POST',
       body: JSON.stringify({
         propertyId: P.propertyId,
         roomTypeId: RT_TWIN,
-        ratePlanId: RP_TWIN_BAR, // rate plan needed for endpoint routing; availability uses room type
+        ratePlanId: RP_TWIN_BAR,
         dateFrom: '2026-11-21', dateTo: '2026-11-21',
         availability: 7,
       }),
@@ -397,8 +376,7 @@ export default function CertDashboard() {
     return { taskId: r1.taskId, taskId2: r2.taskId };
   });
 
-  // ── T10: Multi-Date Availability — 1 or 2 calls ──────────────────────────
-  // Spec: Twin Nov10-16=3, Double Nov17-24=4
+  // ── T10: Multi-Date Availability — 1 or 2 calls
   const runT10 = () => run(setT10, async () => {
     const r1 = await apiFetch('/connect/ari/update', {
       method: 'POST',
@@ -425,15 +403,10 @@ export default function CertDashboard() {
     return { taskId: r1.taskId, taskId2: r2.taskId };
   });
 
-  // ── T11–T14: Booking events (webhook auto-handles these) ─────────────────
-  // Booking.com fires webhooks → our endpoint at /connect/webhook/booking-revision
-  // always responds { ack: true }. T11=new, T12=modify, T13/T14=cancel.
-  // To get the task ID for the form, enter the Channex booking ID here.
+  // ── T11–T14: Booking events (webhook auto-handles these)
   const runT11 = () => run(setT11, async () => {
-    // Channex requires ACK on booking_revision UUID (NOT the booking UUID).
-    // Find the revision ID in: staging.channex.io → Logs → booking_revision event → id field
     const revId = t11.revisionId?.trim() || t11.bookingId?.trim();
-    if (!revId) throw new Error('Enter the Channex booking_revision ID (from staging.channex.io Logs)');
+    if (!revId) throw new Error('Enter the channel booking_revision ID (from channel staging logs)');
     const r = await apiFetch(`/connect/booking/${revId}/ack`, { method: 'POST' });
     addTask('T11-T14 Booking Revision ACK', revId);
     return r;
@@ -444,7 +417,7 @@ export default function CertDashboard() {
   return (
     <div style={{
       minHeight: '100vh', background: '#0f172a', color: '#f1f5f9',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
       padding: '28px 20px',
     }}>
       <div style={{ maxWidth: 960, margin: '0 auto' }}>
@@ -452,11 +425,11 @@ export default function CertDashboard() {
         {/* Header */}
         <div style={{ marginBottom: 20 }}>
           <h1 style={{ margin: '0 0 4px', fontSize: 24, fontWeight: 800 }}>
-            🏨 Channex PMS Certification — Tests T1–T14
+            🏨 PMS Certification — Tests T1–T14
           </h1>
           <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>
             API: <code style={{ color: '#38bdf8' }}>{API}</code>
-            {' · '}Exact values from <a href="https://docs.channex.io/api-v.1-documentation/pms-certification-tests" target="_blank" rel="noreferrer" style={{ color: '#38bdf8' }}>Channex cert spec</a>
+            {' · '}Channel integration active
           </p>
         </div>
 
@@ -478,20 +451,20 @@ export default function CertDashboard() {
 
         {/* T1 ── Full 500-day ARI (EXACTLY 2 API calls) */}
         <Section
-          title="T1 — Full 500-Day ARI Sync"
-          badge="EXACTLY 2 API CALLS"
-          desc="Spec: '1 × 500 days for Availability (All Rooms)' + '1 × 500 days Rates & restrictions (All Rates)'. Data is realistic (varied by season, day-of-week, listing seed). Never flat uniform values."
+          title='T1 — Full 500-Day ARI Sync'
+          badge='EXACTLY 2 API CALLS'
+          desc='Spec: 1 × 500 days for Availability (All Rooms) + 1 × 500 days Rates & restrictions (All Rates). Data is realistic (varied by season, day-of-week, listing seed).'
         >
           <SpecTable rows={[
             { 'Call': '1', 'Endpoint': 'POST /availability', 'Covers': 'Twin + Double room types × 500 days' },
             { 'Call': '2', 'Endpoint': 'POST /restrictions', 'Covers': 'Twin BAR + Twin B&B + Double BAR + Double B&B × 500 days' },
           ]} />
-          <Btn loading={t1.loading} onClick={runT1} color="purple">Push Full 500-Day ARI</Btn>
+          <Btn loading={t1.loading} onClick={runT1} color='purple'>Push Full 500-Day ARI</Btn>
           <ErrBox msg={t1.error} />
           {t1.result && (
             <>
-              <TaskBox taskId={t1.result.availabilityTaskId || t1.result.taskIds?.[0]} label="T1 Call 1 — Availability (ALL rooms)" />
-              <TaskBox taskId={t1.result.restrictionsTaskId  || t1.result.taskIds?.[1]} label="T1 Call 2 — Restrictions (ALL rates)" />
+              <TaskBox taskId={t1.result.availabilityTaskId || t1.result.taskIds?.[0]} label='T1 Call 1 — Availability (ALL rooms)' />
+              <TaskBox taskId={t1.result.restrictionsTaskId  || t1.result.taskIds?.[1]} label='T1 Call 2 — Restrictions (ALL rates)' />
               <div style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>
                 {t1.result.callCount === 2
                   ? '✅ Exactly 2 API calls sent'
@@ -503,37 +476,37 @@ export default function CertDashboard() {
 
         {/* T2 */}
         <Section
-          title="T2 — Single Date Restriction (stop_sell)"
-          badge="1 API call — /restrictions"
-          desc="Certifier confirmed: stop_sell restriction only — no rate, no property_id, no room_type_id. Payload: { rate_plan_id, date_from, date_to, stop_sell: false }"
+          title='T2 — Single Date Restriction (stop_sell)'
+          badge='1 API call — /restrictions'
+          desc='stop_sell restriction only — no rate, no property_id, no room_type_id. Payload: { rate_plan_id, date_from, date_to, stop_sell: false }'
         >
           <SpecTable rows={[{ 'Room Type': 'Twin', 'Rate Plan': 'Best Available', 'Date': '22 Nov 2026', 'Field': 'stop_sell', 'Value': 'false' }]} />
           <Btn loading={t2.loading} onClick={runT2}>Send T2</Btn>
           <ErrBox msg={t2.error} />
-          <TaskBox taskId={t2.result?.taskId} label="T2 Restrictions Task ID" />
+          <TaskBox taskId={t2.result?.taskId} label='T2 Restrictions Task ID' />
         </Section>
 
         {/* T3 */}
         <Section
-          title="T3 — Single Date / Multiple Rates"
-          badge="1 API call"
-          desc="Spec: 3 rate plan updates for different rooms/dates — batched into a single POST /restrictions."
+          title='T3 — Single Date / Multiple Rates'
+          badge='1 API call'
+          desc='3 rate plan updates for different rooms/dates — batched into a single POST /restrictions.'
         >
           <SpecTable rows={[
-            { 'Room': 'Twin',   'Rate Plan': 'Best Available', 'Date': '21 Nov 2026', 'Value': '$333'    },
-            { 'Room': 'Double', 'Rate Plan': 'Best Available', 'Date': '25 Nov 2026', 'Value': '$444'    },
-            { 'Room': 'Double', 'Rate Plan': 'Bed & Breakfast','Date': '29 Nov 2026', 'Value': '$456.23' },
+            { 'Room': 'Twin',   'Rate Plan': 'Best Available', 'Date': '21 Nov 2026', 'Value': '$333'     },
+            { 'Room': 'Double', 'Rate Plan': 'Best Available', 'Date': '25 Nov 2026', 'Value': '$444'     },
+            { 'Room': 'Double', 'Rate Plan': 'Bed & Breakfast','Date': '29 Nov 2026', 'Value': '$456.23'  },
           ]} />
           <Btn loading={t3.loading} onClick={runT3}>Send T3</Btn>
           <ErrBox msg={t3.error} />
-          <TaskBox taskId={t3.result?.taskId} label="T3 Batch Restrictions Task ID" />
+          <TaskBox taskId={t3.result?.taskId} label='T3 Batch Restrictions Task ID' />
         </Section>
 
         {/* T4 */}
         <Section
-          title="T4 — Date Ranges / Multiple Rates"
-          badge="1 API call"
-          desc="Spec: 3 rate plan updates with date ranges — single POST /restrictions."
+          title='T4 — Date Ranges / Multiple Rates'
+          badge='1 API call'
+          desc='3 rate plan updates with date ranges — single POST /restrictions.'
         >
           <SpecTable rows={[
             { 'Room': 'Twin',   'Rate Plan': 'Best Available', 'Dates': '01–10 Nov 2026', 'Value': '$241'    },
@@ -542,46 +515,46 @@ export default function CertDashboard() {
           ]} />
           <Btn loading={t4.loading} onClick={runT4}>Send T4</Btn>
           <ErrBox msg={t4.error} />
-          <TaskBox taskId={t4.result?.taskId} label="T4 Batch Restrictions Task ID" />
+          <TaskBox taskId={t4.result?.taskId} label='T4 Batch Restrictions Task ID' />
         </Section>
 
         {/* T5 */}
         <Section
-          title="T5 — Min Stay Update"
-          badge="1 API call"
-          desc="Spec: min_stay_arrival for 3 rate plans. Sent as closed=false, only min_stay_arrival changes."
+          title='T5 — Min Stay Update'
+          badge='1 API call'
+          desc='min_stay_arrival for 3 rate plans. Sent as closed=false, only min_stay_arrival changes.'
         >
           <SpecTable rows={[
             { 'Room': 'Twin',   'Rate Plan': 'Best Available', 'Date': '23 Nov 2026', 'Min Stay': '3' },
             { 'Room': 'Double', 'Rate Plan': 'Best Available', 'Date': '25 Nov 2026', 'Min Stay': '2' },
             { 'Room': 'Double', 'Rate Plan': 'Bed & Breakfast','Date': '15 Nov 2026', 'Min Stay': '5' },
           ]} />
-          <Btn loading={t5.loading} onClick={runT5} color="amber">Send T5</Btn>
+          <Btn loading={t5.loading} onClick={runT5} color='amber'>Send T5</Btn>
           <ErrBox msg={t5.error} />
-          <TaskBox taskId={t5.result?.taskId} label="T5 Min Stay Task ID" />
+          <TaskBox taskId={t5.result?.taskId} label='T5 Min Stay Task ID' />
         </Section>
 
         {/* T6 */}
         <Section
-          title="T6 — Stop Sell Update"
-          badge="1 API call"
-          desc="Spec: closed=true for 3 rate plans on specific dates."
+          title='T6 — Stop Sell Update'
+          badge='1 API call'
+          desc='closed=true for 3 rate plans on specific dates.'
         >
           <SpecTable rows={[
             { 'Room': 'Twin',   'Rate Plan': 'Best Available', 'Date': '14 Nov 2026', 'Stop Sell': 'true' },
             { 'Room': 'Double', 'Rate Plan': 'Best Available', 'Date': '16 Nov 2026', 'Stop Sell': 'true' },
             { 'Room': 'Double', 'Rate Plan': 'Bed & Breakfast','Date': '20 Nov 2026', 'Stop Sell': 'true' },
           ]} />
-          <Btn loading={t6.loading} onClick={runT6} color="red">Send T6</Btn>
+          <Btn loading={t6.loading} onClick={runT6} color='red'>Send T6</Btn>
           <ErrBox msg={t6.error} />
-          <TaskBox taskId={t6.result?.taskId} label="T6 Stop Sell Task ID" />
+          <TaskBox taskId={t6.result?.taskId} label='T6 Stop Sell Task ID' />
         </Section>
 
         {/* T7 */}
         <Section
-          title="T7 — Multiple Restrictions"
-          badge="1 API call"
-          desc="Spec: 4 combos with CTA/CTD/maxStay/minStay. Channels Connect supports all restriction types including closed_to_departure."
+          title='T7 — Multiple Restrictions'
+          badge='1 API call'
+          desc='4 combos with CTA/CTD/maxStay/minStay. Channels Connect supports all restriction types including closed_to_departure.'
         >
           <SpecTable rows={[
             { 'Room/Rate': 'Twin BAR',    'Dates': '01–10 Nov', 'CTA': 'true',  'CTD': 'false', 'maxStay': '4', 'minStay': '1'  },
@@ -589,70 +562,70 @@ export default function CertDashboard() {
             { 'Room/Rate': 'Double BAR',  'Dates': '10–16 Nov', 'CTA': 'true',  'CTD': '—',     'maxStay': '—', 'minStay': '2'  },
             { 'Room/Rate': 'Double B&B',  'Dates': '01–20 Nov', 'CTA': '—',     'CTD': '—',     'maxStay': '—', 'minStay': '10' },
           ]} />
-          <Btn loading={t7.loading} onClick={runT7} color="purple">Send T7</Btn>
+          <Btn loading={t7.loading} onClick={runT7} color='purple'>Send T7</Btn>
           <ErrBox msg={t7.error} />
-          <TaskBox taskId={t7.result?.taskId} label="T7 Multiple Restrictions Task ID" />
+          <TaskBox taskId={t7.result?.taskId} label='T7 Multiple Restrictions Task ID' />
         </Section>
 
         {/* T8 */}
         <Section
-          title="T8 — Half-Year Update"
-          badge="1 API call"
-          desc="Spec: Dec 1 2026 → May 1 2027 for Twin BAR and Double BAR."
+          title='T8 — Half-Year Update'
+          badge='1 API call'
+          desc='Dec 1 2026 → May 1 2027 for Twin BAR and Double BAR.'
         >
           <SpecTable rows={[
             { 'Room': 'Twin BAR',   'Dates': '01 Dec 2026 → 01 May 2027', 'Rate': '$432', 'minStay': '2', 'CTA': 'false', 'CTD': 'false' },
             { 'Room': 'Double BAR', 'Dates': '01 Dec 2026 → 01 May 2027', 'Rate': '$342', 'minStay': '3', 'CTA': '—',     'CTD': '—'     },
           ]} />
-          <Btn loading={t8.loading} onClick={runT8} color="green">Send T8</Btn>
+          <Btn loading={t8.loading} onClick={runT8} color='green'>Send T8</Btn>
           <ErrBox msg={t8.error} />
-          <TaskBox taskId={t8.result?.taskId} label="T8 Half-Year Task ID" />
+          <TaskBox taskId={t8.result?.taskId} label='T8 Half-Year Task ID' />
         </Section>
 
         {/* T9 */}
         <Section
-          title="T9 — Single Date Availability"
-          badge="1–2 API calls"
-          desc="Spec: Twin Nov 21 = 7 units available | Double Nov 25 = 0 (sold out). Sent as 2 availability calls (1 per room type — within spec)."
+          title='T9 — Single Date Availability'
+          badge='1–2 API calls'
+          desc='Twin Nov 21 = 7 units available | Double Nov 25 = 0 (sold out). Sent as 2 availability calls (1 per room type — within spec).'
         >
           <SpecTable rows={[
             { 'Room': 'Twin',   'Date': '21 Nov 2026', 'Availability': '7' },
             { 'Room': 'Double', 'Date': '25 Nov 2026', 'Availability': '0' },
           ]} />
-          <Btn loading={t9.loading} onClick={runT9} color="blue">Send T9</Btn>
+          <Btn loading={t9.loading} onClick={runT9} color='blue'>Send T9</Btn>
           <ErrBox msg={t9.error} />
-          <TaskBox taskId={t9.result?.taskId}  label="T9 Twin Availability Task ID" />
-          <TaskBox taskId={t9.result?.taskId2} label="T9 Double Availability Task ID" />
+          <TaskBox taskId={t9.result?.taskId}  label='T9 Twin Availability Task ID' />
+          <TaskBox taskId={t9.result?.taskId2} label='T9 Double Availability Task ID' />
         </Section>
 
         {/* T10 */}
         <Section
-          title="T10 — Multi-Date Availability"
-          badge="1–2 API calls"
-          desc="Spec: Twin Nov10-16=3 | Double Nov17-24=4."
+          title='T10 — Multi-Date Availability'
+          badge='1–2 API calls'
+          desc='Twin Nov10-16=3 | Double Nov17-24=4.'
         >
           <SpecTable rows={[
             { 'Room': 'Twin',   'Dates': '10–16 Nov 2026', 'Availability': '3' },
             { 'Room': 'Double', 'Dates': '17–24 Nov 2026', 'Availability': '4' },
           ]} />
-          <Btn loading={t10.loading} onClick={runT10} color="blue">Send T10</Btn>
+          <Btn loading={t10.loading} onClick={runT10} color='blue'>Send T10</Btn>
           <ErrBox msg={t10.error} />
-          <TaskBox taskId={t10.result?.taskId}  label="T10 Twin Availability Task ID" />
-          <TaskBox taskId={t10.result?.taskId2} label="T10 Double Availability Task ID" />
+          <TaskBox taskId={t10.result?.taskId}  label='T10 Twin Availability Task ID' />
+          <TaskBox taskId={t10.result?.taskId2} label='T10 Double Availability Task ID' />
         </Section>
 
         {/* T11–T14 */}
         <Section
-          title="T11–T14 — Booking Events (Webhook + ACK)"
-          badge="WEBHOOK + ACK"
-          desc="T11=New / T12=Modify / T13/T14=Cancel. Triggered by Booking.com. Our webhook at /connect/webhook/booking-revision auto-ACKs each revision via POST /booking_revisions/:id/ack. Use this button for manual ACK (e.g. after T12/T13/T14)."
-          warn="IMPORTANT: Enter the booking_revision ID (UUID), NOT the booking ID. Find it in staging.channex.io → Logs → click the event → copy the top-level 'id' field."
+          title='T11–T14 — Booking Events (Webhook + ACK)'
+          badge='WEBHOOK + ACK'
+          desc='T11=New / T12=Modify / T13/T14=Cancel. Triggered by Booking.com. Our webhook at /connect/webhook/booking-revision auto-ACKs each revision. Use this button for manual ACK (e.g. after T12/T13/T14).'
+          warn='IMPORTANT: Enter the booking_revision ID (UUID), NOT the booking ID. Find it in the channel staging dashboard → Logs → click the event → copy the top-level id field.'
         >
           <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 12 }}>
             <strong style={{ color: '#f1f5f9' }}>Test booking URL:</strong>{' '}
-            <a href="https://secure.booking.com/book.html?hotel_id=5868189&test=1"
-              target="_blank" rel="noreferrer" style={{ color: '#38bdf8' }}>
-              https://secure.booking.com/book.html?hotel_id=5868189&amp;test=1
+            <a href='https://secure.booking.com/book.html?hotel_id=5868189&test=1'
+              target='_blank' rel='noreferrer' style={{ color: '#38bdf8' }}>
+              https://secure.booking.com/book.html?hotel_id=5868189&test=1
             </a>
             <br />
             <span style={{ fontSize: 12 }}>Card: 4111-1111-1111-1111 / CVC 123 / any future expiry</span>
@@ -660,28 +633,28 @@ export default function CertDashboard() {
           <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 12 }}>
             <strong style={{ color: '#f1f5f9' }}>How to get the revision ID:</strong><br />
             <span style={{ fontSize: 12 }}>1. Fire booking action on Booking.com test page</span><br />
-            <span style={{ fontSize: 12 }}>2. Go to <a href="https://staging.channex.io" target="_blank" rel="noreferrer" style={{ color: '#38bdf8' }}>staging.channex.io</a> → Logs tab</span><br />
-            <span style={{ fontSize: 12 }}>3. Find the booking_revision event → click it → copy the <code style={{ color: '#fbbf24' }}>"id"</code> UUID (top level, not booking_id)</span>
+            <span style={{ fontSize: 12 }}>2. Go to the channel staging dashboard → Logs tab</span><br />
+            <span style={{ fontSize: 12 }}>3. Find the booking_revision event → click it → copy the <code style={{ color: '#fbbf24' }}>id</code> UUID (top level, not booking_id)</span>
           </div>
           <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
             <input
-              type="text"
+              type='text'
               value={t11.revisionId || ''}
               onChange={e => setT11(s => ({ ...s, revisionId: e.target.value }))}
-              placeholder="booking_revision UUID (from Channex Logs → event id field)"
+              placeholder='booking_revision UUID (from Logs → event id field)'
               style={{
                 flex: 1, minWidth: 320, padding: '8px 12px',
                 background: '#0f172a', border: '1px solid #334155', borderRadius: 8,
                 color: '#f1f5f9', fontSize: 13,
               }}
             />
-            <Btn loading={t11.loading} onClick={runT11} color="green"
+            <Btn loading={t11.loading} onClick={runT11} color='green'
               disabled={!t11.revisionId?.trim()}>
               Send ACK
             </Btn>
           </div>
           <ErrBox msg={t11.error} />
-          {t11.result && <TaskBox taskId={t11.revisionId} label="T11-T14 Revision ACK" />}
+          {t11.result && <TaskBox taskId={t11.revisionId} label='T11-T14 Revision ACK' />}
         </Section>
 
         {/* Task Log */}
@@ -711,7 +684,7 @@ export default function CertDashboard() {
               </div>
             ))}
             <div style={{ marginTop: 12 }}>
-              <a href="https://forms.gle/xA8F3eSYBPBd8apYA" target="_blank" rel="noreferrer"
+              <a href='https://forms.gle/xA8F3eSYBPBd8apYA' target='_blank' rel='noreferrer'
                 style={{
                   display: 'inline-block', padding: '9px 20px',
                   background: '#7c3aed', color: '#fff', borderRadius: 8,
