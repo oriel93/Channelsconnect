@@ -24,6 +24,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
 import { Loader2, Plus, Calendar } from 'lucide-react';
 import { api } from '@/lib/apiClient';
 import { toast } from 'sonner';
@@ -49,6 +50,21 @@ export default function AddManualBookingModal({ open, onOpenChange, listingId: p
 
   const [loading,  setLoading]  = useState(false);
   const [apiError, setApiError] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+
+  // Block submit if no active session — show clear message instead of cryptic 401 toast
+  useEffect(() => {
+    if (!open) { setAuthChecked(false); return; }
+    supabase.auth.getSession().then(({ data }) => {
+      if (!data?.session) {
+        setApiError('You must be signed in to create a booking.');
+        setAuthChecked(false);
+      } else {
+        setApiError(null);
+        setAuthChecked(true);
+      }
+    });
+  }, [open]);
 
   const [listings,        setListings]        = useState([]);
   const [loadingListings, setLoadingListings] = useState(false);
@@ -93,6 +109,7 @@ export default function AddManualBookingModal({ open, onOpenChange, listingId: p
       setApiError('Number of guests must be at least 1.'); return;
     }
 
+    if (!authChecked) { setApiError('Session check in progress — please wait a moment.'); return; }
     setLoading(true);
 
     try {
@@ -118,10 +135,18 @@ export default function AddManualBookingModal({ open, onOpenChange, listingId: p
       const status = err?.response?.status;
       const data   = err?.response?.data;
 
-      // 401 = session expired — redirect to login instead of showing cryptic error
+      // 401 = session expired — redirect to login
       if (status === 401) {
         toast.error('Your session has expired. Redirecting to login…');
         setTimeout(() => { window.location.href = '/Login'; }, 1500);
+        setLoading(false);
+        return;
+      }
+
+      // 403 = no permission
+      if (status === 403) {
+        setApiError('You do not have permission to create bookings.');
+        toast.error('Permission denied.');
         setLoading(false);
         return;
       }
@@ -270,7 +295,7 @@ export default function AddManualBookingModal({ open, onOpenChange, listingId: p
             </DialogClose>
             <Button
               type='submit'
-              disabled={loading || loadingListings}
+              disabled={loading || loadingListings || !authChecked}
               className='bg-blue-600 hover:bg-blue-700 text-white'
             >
               {loading ? (
