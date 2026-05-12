@@ -138,22 +138,22 @@ export class BookingsService {
     // ── 3. Build the create payload ────────────────────────────────────────
     // Prisma Decimal fields accept strings or Prisma.Decimal instances.
     // We normalize price to 2 decimal places and store as string.
-    const normalizedPrice = parseFloat(parseFloat(String(dto.totalPrice || 0)).toFixed(2));
-    const totalPriceStr = String(normalizedPrice);
+    const totalPriceVal = parseFloat(String(dto.totalPrice ?? 0));
+    const totalPriceStr = isNaN(totalPriceVal) ? '0.00' : totalPriceVal.toFixed(2);
 
     const createData: Prisma.BookingUncheckedCreateInput = {
       userId,
       listingId:      dto.listingId,
-      guestName:      dto.guestName?.trim(),
+      guestName:      dto.guestName?.trim() ?? '',
       // Only include optional fields when they have a value
       ...(dto.guestEmail ? { guestEmail: dto.guestEmail.trim() } : {}),
       ...(dto.guestPhone ? { guestPhone: dto.guestPhone.trim() } : {}),
       checkIn,
       checkOut,
       numGuests:      dto.numGuests ?? 1,
-      totalPrice:     totalPriceStr, // Prisma Decimal accepts string
+      totalPrice:     totalPriceStr, // Prisma Decimal accepts string — always present, defaults to 0.00
       status:         'confirmed',
-      bookingSource:  dto.bookingSource || 'Channels Connect Direct',
+      bookingSource:  dto.bookingSource ? String(dto.bookingSource) : 'Channels Connect Direct',
       ...(dto.notes    ? { notes:    dto.notes.trim()    } : {}),
     };
 
