@@ -295,9 +295,15 @@ export const api = {
     /** Returns a Blob — use with URL.createObjectURL for download */
     exportListingsBlob: () =>
       apiClient.get('/admin/export/listings', { responseType: 'blob' }),
+    /** Download all properties as CSV (alias of exportListingsBlob) */
+    exportPropertiesBlob: () =>
+      apiClient.get('/admin/export/properties', { responseType: 'blob' }),
     /** Per-user full data export (JSON blob download) */
     exportUserData: (userId) =>
       apiClient.get(`/admin/users/${userId}/export`, { responseType: 'blob' }),
+    /** JSON export of all users (no blob) */
+    exportUsersJson: () =>
+      apiClient.get('/admin/users', { responseType: 'json' }),
     /** Get all images for a listing (admin view, includes hi-res metadata) */
     getListingImages: (listingId) =>
       apiClient.get(`/admin/listings/${listingId}/images`),

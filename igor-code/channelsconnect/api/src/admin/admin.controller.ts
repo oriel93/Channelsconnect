@@ -101,6 +101,24 @@ export class AdminController {
     res.send(csv);
   }
 
+  // ── GET /admin/export/properties ───────────────────────────────────────────
+  // Alias of export/listings — matches the explicit route name requested.
+
+  @Get('export/properties')
+  @ApiOperation({ summary: 'Download all properties/listings as CSV (admin only)' })
+  async exportProperties(@Res() res: Response) {
+    this.logger.log('[Admin] GET /admin/export/properties — building CSV');
+
+    const csv = await this.adminService.buildListingsCsv();
+
+    const filename = `listings-export_${new Date().toISOString().slice(0, 10)}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.send(csv);
+  }
+
   // ── GET /admin/users/:id/export ───────────────────────────────────────
 
   @Get('users/:id/export')
