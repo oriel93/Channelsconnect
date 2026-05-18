@@ -624,4 +624,28 @@ export class AdminService {
     this.logger.log(`[Admin] Markup set: user=${userId} markup=${markup}%`);
     return { success: true, user: updated };
   }
+
+  // ── Webhook Logs ──────────────────────────────────────────────────────────
+
+  /**
+   * Returns recent sync events from the SyncLog table.
+   * Used by the Webhook Logs viewer in the Channex Sync Ops admin tab.
+   */
+  async getWebhookLogs(limit = 20) {
+    const logs = await this.prisma.syncLog.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        syncType: true,
+        entityType: true,
+        entityId: true,
+        status: true,
+        message: true,
+        details: true,
+        createdAt: true,
+      },
+    });
+    return logs;
+  }
 }

@@ -147,9 +147,20 @@ export class AdminController {
     return this.adminService.getListingImages(listingId);
   }
 
+
   // ── Review Queue endpoints ─────────────────────────────────────────────────────
 
-  // ── Concierge Queue (OTA + Website extraction) ──────────────────────────────
+  // ── GET /admin/webhook-logs — sync event log viewer ───────────────────────
+
+  @Get('webhook-logs')
+  @ApiOperation({ summary: 'Recent sync/webhook events from SyncLog table (admin)' })
+  @ApiOkResponse({ description: 'Array of recent sync log entries' })
+  getWebhookLogs() {
+    this.logger.log('[Admin] GET /admin/webhook-logs');
+    return this.adminService.getWebhookLogs(20);
+  }
+
+  // ── GET /admin/concierge — OTA extraction queue ───────────────────────────
 
   @Get('concierge')
   @ApiOperation({ summary: 'Listings pending OTA/website extraction (admin concierge queue)' })
@@ -165,7 +176,7 @@ export class AdminController {
     @Param('listingId', ParseIntPipe) listingId: number,
     @Body() body: Record<string, any>,
   ) {
-    this.logger.log(`[Admin] POST /admin/concierge/${listingId}/complete`);
+    this.logger.log('[Admin] POST /admin/concierge/' + listingId + '/complete');
     return this.adminService.completeConciergeListing(listingId, body);
   }
 
@@ -188,15 +199,15 @@ export class AdminController {
     @Param('listingId', ParseIntPipe) listingId: number,
     @Body() body: Record<string, any>,
   ) {
-    this.logger.log(`[Admin] PATCH /admin/review/${listingId}`);
+    this.logger.log('[Admin] PATCH /admin/review/' + listingId);
     return this.adminService.updateReviewListing(listingId, body);
   }
 
   @Post('review/:listingId/approve')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Approve a pending listing — makes it live' })
+  @ApiOperation({ summary: 'Approve a pending listing -- makes it live' })
   approveListing(@Param('listingId', ParseIntPipe) listingId: number) {
-    this.logger.log(`[Admin] POST /admin/review/${listingId}/approve`);
+    this.logger.log('[Admin] POST /admin/review/' + listingId + '/approve');
     return this.adminService.approveListing(listingId);
   }
 
@@ -207,7 +218,7 @@ export class AdminController {
     @Param('listingId', ParseIntPipe) listingId: number,
     @Body() body: { reason?: string },
   ) {
-    this.logger.log(`[Admin] POST /admin/review/${listingId}/reject`);
+    this.logger.log('[Admin] POST /admin/review/' + listingId + '/reject');
     return this.adminService.rejectListing(listingId, body?.reason);
   }
 
@@ -216,7 +227,7 @@ export class AdminController {
   @Get('listings/:listingId/sync-state')
   @ApiOperation({ summary: 'Get Channex sync state for a listing (for smart button label)' })
   getListingSyncState(@Param('listingId', ParseIntPipe) listingId: number) {
-    this.logger.log(`[Admin] GET /admin/listings/${listingId}/sync-state`);
+    this.logger.log('[Admin] GET /admin/listings/' + listingId + '/sync-state');
     return this.adminService.getListingSyncState(listingId);
   }
 
@@ -224,7 +235,7 @@ export class AdminController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Publish or sync a listing to Channex (POST if new, PUT if existing)' })
   syncListingToChannex(@Param('listingId', ParseIntPipe) listingId: number) {
-    this.logger.log(`[Admin] POST /admin/listings/${listingId}/sync`);
+    this.logger.log('[Admin] POST /admin/listings/' + listingId + '/sync');
     return this.adminService.syncListingToChannex(listingId);
   }
 
@@ -232,14 +243,9 @@ export class AdminController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Set Channex property inactive and archive locally' })
   deactivateListing(@Param('listingId', ParseIntPipe) listingId: number) {
-    this.logger.log(`[Admin] POST /admin/listings/${listingId}/deactivate`);
+    this.logger.log('[Admin] POST /admin/listings/' + listingId + '/deactivate');
     return this.adminService.deactivateListingOnChannex(listingId);
   }
-
-  // ── POST /admin/listings/:listingId/images/:imageId/convert ──────────────
-
-  // ── GET  /admin/markup  — get all users' markup settings ─────────────────
-  // ── PATCH /admin/markup/:userId — set markup for a specific user ──────────
 
   @Get('markup')
   @ApiOperation({ summary: 'List all users with their adminMarkup setting' })
@@ -254,23 +260,21 @@ export class AdminController {
     @Param('userId') userId: string,
     @Body() body: { markup: number },
   ) {
-    this.logger.log(`[Admin] PATCH /admin/markup/${userId} markup=${body.markup}`);
+    this.logger.log('[Admin] PATCH /admin/markup/' + userId + ' markup=' + body.markup);
     return this.adminService.setUserMarkup(userId, body.markup);
   }
 
   @Post('listings/:listingId/images/:imageId/convert')
   @ApiOperation({
     summary: 'Convert a property image to OTA hi-res spec using sharp (admin only)',
-    description:
-      'Downloads source image from Supabase Storage, processes with sharp ' +
-      '(resize max 1920×1080, JPEG 92%), uploads back as _highres, updates DB.',
+    description: 'Downloads source image from Supabase Storage, processes with sharp (resize max 1920x1080, JPEG 92%), uploads back as _highres, updates DB.',
   })
   @ApiOkResponse({ description: 'highResUrl, storagePath, dimensions, sizeBytes' })
   async convertImageToHighRes(
     @Param('listingId', ParseIntPipe) listingId: number,
     @Param('imageId', ParseIntPipe) imageId: number,
   ) {
-    this.logger.log(`[Admin] POST convert listing=${listingId} image=${imageId}`);
+    this.logger.log('[Admin] POST convert listing=' + listingId + ' image=' + imageId);
     return this.adminService.convertImageToHighRes(listingId, imageId);
   }
 }

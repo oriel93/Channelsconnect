@@ -102,6 +102,12 @@ export class ListingEntity implements Listing {
   })
   reviewStatus: string;
 
+  @ApiProperty({ description: 'Soft-delete flag — archived properties are hidden from UI but bookings are preserved', default: false })
+  isArchived: boolean;
+
+  @ApiProperty({ required: false, nullable: true, description: 'Timestamp when the property was archived' })
+  archivedAt: Date | null;
+
   @ApiProperty()
   createdAt: Date;
 

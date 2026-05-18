@@ -12,6 +12,7 @@ import {
   Zap, Globe, CheckCircle2, XCircle, AlertTriangle,
   Terminal, Copy, CheckCheck, Settings, Activity,
   ClipboardList, Sparkles, ImageIcon, ArrowLeft,
+  Link2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -19,6 +20,7 @@ import { useAuth } from '@/lib/authContext';
 import { api } from '@/lib/apiClient';
 import AdminLayout from '@/components/dashboard/admin/AdminLayout';
 import ChannexSyncPanel from '@/components/dashboard/admin/ChannexSyncPanel';
+import ChannexMappingModal from '@/components/dashboard/admin/ChannexMappingModal';
 
 import {
   Card, CardContent, CardHeader, CardTitle,
@@ -374,6 +376,11 @@ export default function AdminDashboard() {
   const [isLoadingImages, setIsLoadingImages] = useState(false);
   const [convertingId, setConvertingId] = useState(null);
 
+  // Mapping modal
+  const [mappingModalOpen, setMappingModalOpen] = useState(false);
+  const [mappingModalListingId, setMappingModalListingId] = useState(null);
+  const [mappingModalInitial, setMappingModalInitial] = useState(null);
+
   // ── Auth guard ──────────────────────────────────────────────────────────────
   if (isLoadingAuth) return (
     <div className={`min-h-screen bg-slate-950 flex items-center justify-center`}>
@@ -460,6 +467,27 @@ export default function AdminDashboard() {
       toast.error('Sync failed: ' + (err?.response?.data?.message || err.message));
     } finally {
       setSyncingListingId(null);
+    }
+  };
+
+  const handleOpenMappingModal = async (listing) => {
+    if (!syncStates[listing.id]) {
+      await loadSyncState(listing.id);
+    }
+    const state = syncStates[listing.id];
+    setMappingModalListingId(listing.id);
+    setMappingModalInitial({
+      propertyId: state?.channexPropertyId ?? '',
+      roomTypeId: state?.channexRoomTypeId ?? '',
+      ratePlanId: state?.channexRatePlanId ?? '',
+    });
+    setMappingModalOpen(true);
+  };
+
+  const handleMappingSuccess = async () => {
+    if (mappingModalListingId) {
+      await loadSyncState(mappingModalListingId);
+      fetchData();
     }
   };
 
@@ -723,6 +751,11 @@ export default function AdminDashboard() {
                             onClick={() => handleOpenMedia(listing)}>
                             <ImageIcon className={`w-3 h-3 mr-1`} />Media
                           </Button>
+                          <Button size={`sm`} variant={`outline`}
+                            className={`h-7 text-xs border-indigo-500/40 text-indigo-300 hover:text-white hover:border-indigo-500/60 hover:bg-indigo-500/10`}
+                            onClick={() => handleOpenMappingModal(listing)}>
+                            <Link2 className={`w-3 h-3 mr-1`} />Mapping
+                          </Button>
                           <Button size={`sm`}
                             className={`h-7 text-xs bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold shadow-md shadow-indigo-500/10`}
                             disabled={syncingListingId === listing.id}
@@ -919,6 +952,17 @@ export default function AdminDashboard() {
         </div>
       </div>
       {sectionContent(activeSection)}
+
+      {/* Channex Property Mapping Modal */}
+      <ChannexMappingModal
+        open={mappingModalOpen}
+        onClose={() => setMappingModalOpen(false)}
+        initialListingId={mappingModalListingId ?? undefined}
+        initialPropertyId={mappingModalInitial?.propertyId}
+        initialRoomTypeId={mappingModalInitial?.roomTypeId}
+        initialRatePlanId={mappingModalInitial?.ratePlanId}
+        onSuccess={handleMappingSuccess}
+      />
     </AdminLayout>
   );
 }

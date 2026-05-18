@@ -341,6 +341,29 @@ export const api = {
     // ── Admin markup ──────────────────────────────────────────────────────────────────
     getMarkupSettings: () => apiClient.get('/admin/markup'),
     setUserMarkup: (userId, markup) => apiClient.patch(`/admin/markup/${userId}`, { markup }),
+
+    // ── Channex Mapping (PMS Certification) ────────────────────────────────────────
+    /** GET /admin/channex/properties-mapping — all listings with sync state */
+    getPropertiesMapping: () => apiClient.get('/admin/channex/properties-mapping'),
+    /** GET /admin/channex/sync-state/:listingId — sync state for one listing */
+    getChannexSyncState: (listingId) => apiClient.get(`/admin/channex/sync-state/${listingId}`),
+    /** POST /admin/channex/full-sync/:listingId — Cert T1 full 500-day ARI sync */
+    fullSyncChannex: (listingId) => apiClient.post(`/admin/channex/full-sync/${listingId}`),
+    /** POST /admin/channex/push-ari — Cert T9/T10 delta ARI push */
+    pushChannexAri: (dto) => apiClient.post('/admin/channex/push-ari', dto),
+    /** POST /admin/channex/mapping/:listingId — primary cert screenshare mapping setter */
+    saveChannexMapping: (listingId, ids) =>
+      apiClient.post(`/admin/channex/mapping/${listingId}`, ids),
+    /** PATCH /admin/channex/mappings/:mappingId — update an existing mapping */
+    updateChannexMapping: (mappingId, ids) =>
+      apiClient.patch(`/admin/channex/mappings/${mappingId}`, ids),
+    /** POST /admin/channex/mappings — create a new mapping */
+    createChannexMapping: (data) => apiClient.post('/admin/channex/mappings', data),
+    /** POST /admin/channex/build/:listingId — 3-step Channex property build */
+    buildChannexProperty: (listingId) => apiClient.post(`/admin/channex/build/${listingId}`),
+    /** GET /admin/channex/webhook-logs — recent sync webhook entries */
+    getChannexWebhookLogs: (limit = 50) =>
+      apiClient.get('/admin/channex/webhook-logs', { params: { limit } }),
   },
 
   /** Record ToS consent — called immediately after signup */

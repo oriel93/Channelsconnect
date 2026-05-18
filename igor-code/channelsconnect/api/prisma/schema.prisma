@@ -3,9 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider          = "postgresql"
-  url               = env("DATABASE_URL")
-  connection_limit  = 1
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -61,17 +60,19 @@ model Channel {
 }
 
 model RoomType {
-  id          Int         @id @default(autoincrement())
-  listingId   Int
-  name        String
-  description String?
-  maxGuests   Int
-  bedType     String?
-  quantity    Int         @default(1)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  inventory   Inventory[]
-  listing     Listing     @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  id                   Int         @id @default(autoincrement())
+  listingId            Int
+  name                 String
+  description          String?
+  maxGuests            Int
+  bedType              String?
+  quantity             Int         @default(1)
+  channexRoomTypeId    String?     @map("channexRoomTypeId")   // populated after Step B
+  channexRatePlanId    String?     @map("channexRatePlanId")   // populated after Step C
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  inventory            Inventory[]
+  listing              Listing     @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
   @@map("room_types")
 }
@@ -178,8 +179,10 @@ model Listing {
   maxNights           Int?
   isActive            Boolean              @default(true)
   beds                Int?
-  channexPropertyId   String?   @map("channexPropertyId")
+  channexPropertyId   String?   @unique @map("channexPropertyId")
   channexRoomId       String?   @map("channexRoomId")
+  isArchived          Boolean   @default(false) @map("isArchived")
+  archivedAt          DateTime? @map("archivedAt")
   airbnbListingId     String?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
@@ -480,6 +483,7 @@ model ChannexMapping {
 
   @@index([userId])
   @@index([channexPropertyId])
+  @@unique([userId, listingId])
   @@map("channex_mappings")
 }
 
