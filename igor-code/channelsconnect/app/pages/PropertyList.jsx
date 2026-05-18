@@ -95,21 +95,27 @@ function buildMaps(rates = [], blockedDates = [], bookings = []) {
   for (const r of rates) {
     const d = typeof r.date === 'string' ? r.date.slice(0, 10) : dk(new Date(r.date));
     if (r.roomTypeId != null) {
+      // Per-room rate. ONLY key it under the room — do NOT also write the
+      // listing-level key (that would make the rate appear on every room lane).
       rateMap[`L${r.listingId}_RT${r.roomTypeId}_${d}`] = r;
+    } else {
+      // Legacy listing-level rate (single-room listings, or pre-roomTypeId data).
+      rateMap[`L${r.listingId}_${d}`] = r;
     }
-    // Always keep a listing-level entry too for single-room listings or legacy rows
-    // (the renderer prefers the room-keyed entry when present).
-    rateMap[`L${r.listingId}_${d}`] = r;
   }
 
-  // blockMap[`${rowKey}_${date}`] → true
+  // blockMap[`${rowKey}_${date}`] → true.
+  // Per-room blocks ONLY get the room key. Listing-level blocks ONLY get the
+  // listing key. The renderer's fallback (room → listing) handles single-room
+  // listings; multi-room blocks must NOT leak across lanes.
   const blockMap = {};
   for (const b of blockedDates) {
     const d = typeof b.date === 'string' ? b.date.slice(0, 10) : dk(new Date(b.date));
     if (b.roomTypeId != null) {
       blockMap[`L${b.listingId}_RT${b.roomTypeId}_${d}`] = true;
+    } else {
+      blockMap[`L${b.listingId}_${d}`] = true;
     }
-    blockMap[`L${b.listingId}_${d}`] = true;
   }
 
   // bookingMap[`${rowKey}_${date}`] → { guestName, nights, bookingId, isStart, ... }
@@ -141,11 +147,12 @@ function buildMaps(rates = [], blockedDates = [], bookings = []) {
         booking:   bk,
         roomTypeId: rtid,
       };
-      // Place on the room-specific row when we know the room
+      // Place on the room-specific row when we know the room.
+      // Bookings already use this pattern correctly — only one key written.
       if (rtid != null) {
         bookingMap[`L${lid}_RT${rtid}_${dstr}`] = entry;
       } else {
-        // Legacy / single-room booking — also placed on the listing-level row
+        // Legacy / single-room booking (no roomTypeId set).
         bookingMap[`L${lid}_${dstr}`] = entry;
       }
       cur = addDays(cur, 1);
