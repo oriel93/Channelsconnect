@@ -4,6 +4,9 @@ export class UpdateRateDto {
   @ApiProperty()
   listingId: number;
 
+  @ApiProperty({ required: false, description: 'Specific room within the listing (multi-room).' })
+  roomTypeId?: number;
+
   @ApiProperty()
   date: Date;
 
@@ -32,6 +35,9 @@ export class UpdateRateDto {
 export class BulkUpdateRatesDto {
   @ApiProperty()
   listingId: number;
+
+  @ApiProperty({ required: false, description: 'Specific room within the listing (multi-room).' })
+  roomTypeId?: number;
 
   @ApiProperty()
   startDate: Date;

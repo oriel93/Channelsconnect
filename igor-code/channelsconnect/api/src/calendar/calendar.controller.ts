@@ -73,8 +73,10 @@ export class CalendarController {
   unblockDate(
     @Query('listingId', ParseIntPipe) listingId: number,
     @Query('date') date: string,
+    @Query('roomTypeId') roomTypeId?: string,
   ) {
-    return this.calendarService.unblockDate(listingId, new Date(date));
+    const rtId = roomTypeId != null && roomTypeId !== '' ? parseInt(roomTypeId, 10) : undefined;
+    return this.calendarService.unblockDate(listingId, new Date(date), rtId);
   }
 
   @Post('unblock/bulk')

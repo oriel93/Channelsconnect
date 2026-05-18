@@ -35,6 +35,7 @@ import { Prisma } from '@prisma/client';
 
 export interface ARIUpdate {
   listingId: number;   // our local Listing.id
+  roomTypeId?: number; // optional: pin push to a specific room (multi-room PMS)
   date: string;        // ISO 'YYYY-MM-DD'
   price?: number;
   available?: boolean;
@@ -650,10 +651,12 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
   async applyChange(update: ARIUpdate): Promise<void> {
     let ids: { channexPropertyId: string; channexRoomTypeId: string; channexRatePlanId: string | null };
     try {
-      ids = await this.resolveChannexIds(update.listingId);
+      // Honor explicit roomTypeId so multi-room properties push to the RIGHT room.
+      ids = await this.resolveChannexIds(update.listingId, { roomTypeId: update.roomTypeId });
     } catch (err: any) {
       this.logger.error(
-        `[Sync] applyChange: resolveChannexIds failed for listing=${update.listingId}: ${err?.message ?? err}`,
+        `[Sync] applyChange: resolveChannexIds failed for listing=${update.listingId} ` +
+        `room=${update.roomTypeId ?? 'auto'}: ${err?.message ?? err}`,
       );
       throw err;
     }
@@ -661,31 +664,41 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
     const queuedItem: QueuedARI = { ...update, ...ids };
 
     // ── 1. Upsert rate (non-fatal — no transaction wrapping for pooler compat) ─
+    // Uses raw SQL because the legacy Prisma unique key (listingId_date) was dropped
+    // tonight and replaced with a partial-unique index on (listingId, roomTypeId, date)
+    // that doesn't expose a typed upsert in Prisma 5. Raw SQL handles both single-room
+    // (roomTypeId=NULL) and multi-room cases via ON CONFLICT on the new index columns.
     try {
-      await this.prisma.rate.upsert({
-        where: {
-          listingId_date: {
-            listingId: update.listingId,
-            date: new Date(update.date),
-          },
-        },
-        update: {
-          ...(update.price !== undefined && { price: update.price }),
-          ...(update.available !== undefined && { available: update.available }),
-          ...(update.minStay !== undefined && { minStay: update.minStay }),
-        },
-        create: {
-          listingId: update.listingId,
-          date: new Date(update.date),
-          price: update.price ?? 0,
-          available: update.available ?? true,
-          minStay: update.minStay ?? 1,
-        },
-      });
+      const dateIso = new Date(update.date).toISOString().slice(0, 10);
+      const rtId = update.roomTypeId ?? null;
+      const price = update.price ?? 0;
+      const available = update.available ?? true;
+      const minStay = update.minStay ?? 1;
+      // COALESCE-aware ON CONFLICT: matches on (listingId, COALESCE(roomTypeId,0), date)
+      // exactly mirroring the unique index `rates_listingId_roomTypeId_date_key`.
+      await this.prisma.$executeRawUnsafe(
+        `
+        INSERT INTO rates ("listingId", "roomTypeId", "date", "price", "available", "minStay", "createdAt", "updatedAt")
+        VALUES ($1::int, $2::int, $3::date, $4::numeric, $5::bool, $6::int, NOW(), NOW())
+        ON CONFLICT ("listingId", (COALESCE("roomTypeId", 0)), "date")
+        DO UPDATE SET
+          "price"     = COALESCE(EXCLUDED."price",     rates."price"),
+          "available" = EXCLUDED."available",
+          "minStay"   = COALESCE(EXCLUDED."minStay",   rates."minStay"),
+          "updatedAt" = NOW()
+        `,
+        update.listingId,
+        rtId,
+        dateIso,
+        price,
+        available,
+        minStay,
+      );
     } catch (rateErr: any) {
       this.logger.warn(
         `[Sync] applyChange: rate upsert failed (non-fatal) for listing=${update.listingId} ` +
-        `date=${update.date}: ${rateErr?.message ?? rateErr}. Continuing with enqueue.`,
+        `room=${update.roomTypeId ?? 'auto'} date=${update.date}: ${rateErr?.message ?? rateErr}. ` +
+        `Continuing with enqueue.`,
       );
     }
 

@@ -158,14 +158,20 @@ function buildMaps(rates = [], blockedDates = [], bookings = []) {
 
 // ─── Drag-select state ────────────────────────────────────────────────────────
 
-const initialDrag = { dragging: false, listingId: null, startDate: null, endDate: null };
+// Drag-select state. For per-room rows we track BOTH listingId and roomTypeId so
+// a drag never crosses row boundaries (Twin Room drag doesn't leak into Double Room).
+const initialDrag = { dragging: false, listingId: null, roomTypeId: null, startDate: null, endDate: null };
 
 function dragReducer(state, action) {
   switch (action.type) {
-    case 'START':  return { dragging: true, listingId: action.lid, startDate: action.date, endDate: action.date };
-    case 'MOVE':   return state.dragging && action.lid === state.listingId
-                     ? { ...state, endDate: action.date }
-                     : state;
+    case 'START':
+      return { dragging: true, listingId: action.lid, roomTypeId: action.rtid ?? null, startDate: action.date, endDate: action.date };
+    case 'MOVE':
+      // Constrain drag to the same row (same listing AND same room).
+      if (!state.dragging) return state;
+      if (action.lid !== state.listingId) return state;
+      if ((action.rtid ?? null) !== (state.roomTypeId ?? null)) return state;
+      return { ...state, endDate: action.date };
     case 'END':    return { ...state, dragging: false };
     case 'RESET':  return initialDrag;
     default:       return state;
@@ -174,7 +180,7 @@ function dragReducer(state, action) {
 
 // ─── Block/Rate modal ─────────────────────────────────────────────────────────
 
-function ActionModal({ open, onClose, onSave, listing, startDate, endDate }) {
+function ActionModal({ open, onClose, onSave, listing, roomType, startDate, endDate, blockMap }) {
   const [tab,     setTab]     = useState('block');
   const [rate,    setRate]    = useState('');
   const [minStay, setMinStay] = useState('');
@@ -191,22 +197,67 @@ function ActionModal({ open, onClose, onSave, listing, startDate, endDate }) {
     return differenceInDays(addDays(dateB, 1), dateA);
   }, [dateA, dateB]);
 
+  // Detect whether the selected range is currently blocked (per-room aware).
+  // If ANY date in the range is blocked we offer the Unblock action.
+  const blockedCount = useMemo(() => {
+    if (!listing || !dateA || !dateB || !blockMap) return 0;
+    let n = 0;
+    let cur = dateA;
+    while (cur <= dateB) {
+      const ds = dk(cur);
+      const roomKey    = roomType ? `L${listing.id}_RT${roomType.id}_${ds}` : null;
+      const listingKey = `L${listing.id}_${ds}`;
+      if ((roomKey && blockMap[roomKey]) || blockMap[listingKey]) n++;
+      cur = addDays(cur, 1);
+    }
+    return n;
+  }, [listing, roomType, dateA, dateB, blockMap]);
+
+  const allBlocked = blockedCount > 0 && blockedCount === nights;
+  const someBlocked = blockedCount > 0;
+
+  // When the range is entirely blocked, default the modal to the Unblock tab.
+  useEffect(() => {
+    if (open) setTab(allBlocked ? 'unblock' : 'block');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, allBlocked]);
+
   const save = async () => {
     if (!listing || !dateA || !dateB) return;
     setLoading(true);
     try {
+      const rtId = roomType?.id ?? undefined;
       if (tab === 'block') {
-        // Block each date in range individually (existing applyChange queue)
+        // Block each date in range individually (per-room when applicable)
         const promises = [];
         let cur = dateA;
         while (cur <= dateB) {
-          promises.push(api.calendar.blockDate({ listingId: listing.id, date: dk(cur) }));
+          promises.push(api.calendar.blockDate({
+            listingId: listing.id,
+            ...(rtId != null ? { roomTypeId: rtId } : {}),
+            date: dk(cur),
+          }));
           cur = addDays(cur, 1);
         }
         await Promise.all(promises);
-        toast.success(`Blocked ${nights} night${nights !== 1 ? 's' : ''}`);
+        toast.success(`Blocked ${nights} night${nights !== 1 ? 's' : ''}${roomType ? ` on ${roomType.name}` : ''}`);
+      } else if (tab === 'unblock') {
+        // Unblock each date in range (per-room when applicable). Uses DELETE
+        // /calendar/unblock with date + optional roomTypeId query params.
+        const promises = [];
+        let cur = dateA;
+        while (cur <= dateB) {
+          promises.push(api.calendar.unblockDate({
+            listingId: listing.id,
+            ...(rtId != null ? { roomTypeId: rtId } : {}),
+            date: dk(cur),
+          }));
+          cur = addDays(cur, 1);
+        }
+        await Promise.all(promises);
+        toast.success(`Unblocked ${nights} night${nights !== 1 ? 's' : ''}${roomType ? ` on ${roomType.name}` : ''}`);
       } else {
-        // Rate override — bulk update via applyChange queue
+        // Rate override — bulk update via applyChange queue (per-room when applicable)
         if (!rate || isNaN(Number(rate)) || Number(rate) <= 0) {
           toast.error('Enter a valid nightly rate');
           setLoading(false);
@@ -214,12 +265,13 @@ function ActionModal({ open, onClose, onSave, listing, startDate, endDate }) {
         }
         await api.calendar.bulkUpdateRates({
           listingId: listing.id,
+          ...(rtId != null ? { roomTypeId: rtId } : {}),
           startDate: dk(dateA),
           endDate:   dk(dateB),
           price:     Number(rate),
           ...(minStay ? { minStay: Number(minStay) } : {}),
         });
-        toast.success(`Rate $${rate} set for ${nights} night${nights !== 1 ? 's' : ''}`);
+        toast.success(`Rate $${rate} set for ${nights} night${nights !== 1 ? 's' : ''}${roomType ? ` on ${roomType.name}` : ''}`);
       }
       onSave();
       onClose();
@@ -238,7 +290,10 @@ function ActionModal({ open, onClose, onSave, listing, startDate, endDate }) {
         <DialogHeader>
           <DialogTitle className="text-base flex items-center gap-2">
             <Calendar className="w-4 h-4 text-blue-600" />
-            {listing?.title}
+            <span className="truncate">
+              {listing?.title}
+              {roomType ? <span className="text-slate-500"> · {roomType.name}</span> : null}
+            </span>
           </DialogTitle>
           {dateA && dateB && (
             <p className="text-xs text-slate-500 mt-1">
@@ -249,19 +304,27 @@ function ActionModal({ open, onClose, onSave, listing, startDate, endDate }) {
         </DialogHeader>
 
         <div className="space-y-4 py-1">
-          {/* Tab toggle */}
+          {/* Tab toggle — Block | Unblock (shown when range has any blocks) | Rate */}
           <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-lg">
             <button
               onClick={() => setTab('block')}
               className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-sm font-medium transition-all ${tab === 'block' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
             >
-              <Lock className="w-3.5 h-3.5" />Block Room
+              <Lock className="w-3.5 h-3.5" />Block
             </button>
+            {someBlocked && (
+              <button
+                onClick={() => setTab('unblock')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-sm font-medium transition-all ${tab === 'unblock' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <Lock className="w-3.5 h-3.5 rotate-12" />Unblock
+              </button>
+            )}
             <button
               onClick={() => setTab('rate')}
               className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-sm font-medium transition-all ${tab === 'rate' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
             >
-              <DollarSign className="w-3.5 h-3.5" />Override Price
+              <DollarSign className="w-3.5 h-3.5" />Rate
             </button>
           </div>
 
@@ -269,11 +332,38 @@ function ActionModal({ open, onClose, onSave, listing, startDate, endDate }) {
             <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
               <Lock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm font-medium text-amber-800">Block {nights} night{nights !== 1 ? 's' : ''}</p>
+                <p className="text-sm font-medium text-amber-800">
+                  Block {nights} night{nights !== 1 ? 's' : ''}{roomType ? ` on ${roomType.name}` : ''}
+                </p>
                 <p className="text-xs text-amber-700 mt-0.5">
                   These dates will be closed to new bookings across all connected channels.
                   Your sync queue handles updates automatically.
                 </p>
+                {someBlocked && !allBlocked && (
+                  <p className="text-xs text-amber-700 mt-1.5 italic">
+                    {blockedCount} of {nights} night{nights !== 1 ? 's' : ''} are already blocked — blocking again is a no-op for those.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {tab === 'unblock' && (
+            <div className="flex items-start gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+              <Lock className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5 rotate-12" />
+              <div>
+                <p className="text-sm font-medium text-emerald-800">
+                  Unblock {nights} night{nights !== 1 ? 's' : ''}{roomType ? ` on ${roomType.name}` : ''}
+                </p>
+                <p className="text-xs text-emerald-700 mt-0.5">
+                  These dates will be reopened for new bookings. Availability=1 will sync to Channex
+                  and downstream OTAs.
+                </p>
+                {!allBlocked && (
+                  <p className="text-xs text-emerald-700 mt-1.5 italic">
+                    Currently {blockedCount} of {nights} night{nights !== 1 ? 's' : ''} blocked.
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -318,10 +408,14 @@ function ActionModal({ open, onClose, onSave, listing, startDate, endDate }) {
           <Button
             onClick={save}
             disabled={loading}
-            className={tab === 'block' ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}
+            className={
+              tab === 'block'   ? 'bg-amber-600 hover:bg-amber-700 text-white'
+              : tab === 'unblock' ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+              :                     'bg-blue-600 hover:bg-blue-700 text-white'
+            }
           >
             {loading && <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />}
-            {tab === 'block' ? 'Block Dates' : 'Save Rate'}
+            {tab === 'block' ? 'Block Dates' : tab === 'unblock' ? 'Unblock Dates' : 'Save Rate'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -635,21 +729,29 @@ export default function PropertyList() {
   const totalH = rows.length * ROW_H;
 
   // ── Drag handlers ──────────────────────────────────────────────────────────
-  const onCellMouseDown = useCallback((lid, date, e) => {
+  // All three handlers now thread roomTypeId (rtid). This is the multi-room fix:
+  // a drag started on Twin Room can't cross into Double Room mid-drag, and the
+  // resulting Block/Rate write goes to the correct room.
+  const onCellMouseDown = useCallback((lid, rtid, date, e) => {
     e.preventDefault();
-    dragDispatch({ type: 'START', lid, date });
+    dragDispatch({ type: 'START', lid, rtid, date });
   }, []);
 
-  const onCellMouseEnter = useCallback((lid, date) => {
-    if (drag.dragging) dragDispatch({ type: 'MOVE', lid, date });
+  const onCellMouseEnter = useCallback((lid, rtid, date) => {
+    if (drag.dragging) dragDispatch({ type: 'MOVE', lid, rtid, date });
   }, [drag.dragging]);
 
-  const onCellMouseUp = useCallback((lid) => {
-    if (!drag.dragging || drag.listingId !== lid) { dragDispatch({ type: 'RESET' }); return; }
+  const onCellMouseUp = useCallback((lid, rtid) => {
+    if (!drag.dragging || drag.listingId !== lid || (drag.roomTypeId ?? null) !== (rtid ?? null)) {
+      dragDispatch({ type: 'RESET' }); return;
+    }
     const listing = filteredListings.find((l) => l.id === drag.listingId);
     if (!listing) { dragDispatch({ type: 'RESET' }); return; }
+    const roomType = rtid != null && Array.isArray(listing.roomTypes)
+      ? (listing.roomTypes.find((rt) => rt.id === rtid) ?? null)
+      : null;
     dragDispatch({ type: 'END' });
-    setActionModal({ listing, startDate: drag.startDate, endDate: drag.endDate });
+    setActionModal({ listing, roomType, startDate: drag.startDate, endDate: drag.endDate });
   }, [drag, filteredListings]);
 
   // Prevent ghost drag image
@@ -724,9 +826,9 @@ export default function PropertyList() {
           userSelect:  'none',
           outline:     today ? '1px inset #93c5fd' : 'none',
         }}
-        onMouseDown={(e) => !booked && !blocked && onCellMouseDown(listing.id, date, e)}
-        onMouseEnter={() => onCellMouseEnter(listing.id, date)}
-        onMouseUp={() => onCellMouseUp(listing.id)}
+        onMouseDown={(e) => !booked && onCellMouseDown(listing.id, roomType?.id ?? null, date, e)}
+        onMouseEnter={() => onCellMouseEnter(listing.id, roomType?.id ?? null, date)}
+        onMouseUp={() => onCellMouseUp(listing.id, roomType?.id ?? null)}
         onClick={() => booked?.isStart && setActiveBooking(booked.booking)}
         title={blocked ? 'Blocked' : booked ? `${booked.guestName} · ${booked.nights}n` : rate?.price ? `$${Number(rate.price).toFixed(0)}${rate.isFallback ? ' (base rate)' : ''}` : 'Drag to block or set rate'}
       >
@@ -1100,8 +1202,10 @@ export default function PropertyList() {
         onClose={() => setActionModal(null)}
         onSave={fetchAll}
         listing={actionModal?.listing}
+        roomType={actionModal?.roomType ?? null}
         startDate={actionModal?.startDate}
         endDate={actionModal?.endDate}
+        blockMap={maps.blockMap}
       />
 
       <BookingDrawer

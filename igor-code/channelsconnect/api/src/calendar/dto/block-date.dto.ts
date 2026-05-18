@@ -4,6 +4,9 @@ export class BlockDateDto {
   @ApiProperty()
   listingId: number;
 
+  @ApiProperty({ required: false, description: 'Specific room within the listing (multi-room).' })
+  roomTypeId?: number;
+
   @ApiProperty()
   date: Date;
 
@@ -14,6 +17,9 @@ export class BlockDateDto {
 export class BulkBlockDatesDto {
   @ApiProperty()
   listingId: number;
+
+  @ApiProperty({ required: false, description: 'Specific room within the listing (multi-room).' })
+  roomTypeId?: number;
 
   @ApiProperty({ type: [Date] })
   dates: Date[];
@@ -26,6 +32,9 @@ export class UnblockDateDto {
   @ApiProperty()
   listingId: number;
 
+  @ApiProperty({ required: false })
+  roomTypeId?: number;
+
   @ApiProperty()
   date: Date;
 }
@@ -33,6 +42,9 @@ export class UnblockDateDto {
 export class BulkUnblockDatesDto {
   @ApiProperty()
   listingId: number;
+
+  @ApiProperty({ required: false })
+  roomTypeId?: number;
 
   @ApiProperty({ type: [Date] })
   dates: Date[];

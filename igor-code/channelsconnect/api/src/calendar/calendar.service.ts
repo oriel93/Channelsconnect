@@ -92,11 +92,14 @@ export class CalendarService {
   }
 
   async bulkUpdateRatesAndSync(bulkUpdateRatesDto: BulkUpdateRatesDto) {
-    const { listingId, startDate, endDate, price, minStay, available,
+    const { listingId, roomTypeId, startDate, endDate, price, minStay, available,
             maxStay, stopSell, closedToArrival, closedToDeparture } = bulkUpdateRatesDto as any;
     const startDateStr = new Date(startDate).toISOString().split('T')[0];
     const endDateStr   = new Date(endDate).toISOString().split('T')[0];
-    this.logger.log(`[Calendar] bulkUpdateRatesAndSync listing=${listingId} ${startDateStr}→${endDateStr}`);
+    this.logger.log(
+      `[Calendar] bulkUpdateRatesAndSync listing=${listingId} room=${roomTypeId ?? 'auto'} ` +
+        `${startDateStr}→${endDateStr}`,
+    );
 
     const cur = new Date(startDateStr + 'T00:00:00Z');
     const end = new Date(endDateStr   + 'T00:00:00Z');
@@ -106,6 +109,7 @@ export class CalendarService {
       pushes.push(
         this.channexSync.applyChange({
           listingId,
+          ...(roomTypeId !== undefined && roomTypeId !== null ? { roomTypeId } : {}),
           date: dateStr,
           ...(price     !== undefined ? { price: parseFloat(String(price)) } : {}),
           ...(minStay   !== undefined ? { minStay } : {}),
@@ -124,6 +128,7 @@ export class CalendarService {
       success: true,
       message: 'Rates queued for Channex sync',
       listingId,
+      roomTypeId: roomTypeId ?? null,
       dateRange: { startDate: startDateStr, endDate: endDateStr },
     };
   }
@@ -168,23 +173,35 @@ export class CalendarService {
 
   // Blocked Dates Management
   async blockDate(blockDateDto: BlockDateDto) {
-    const { listingId, date, reason } = blockDateDto;
+    const { listingId, roomTypeId, date, reason } = blockDateDto;
     const dateStr = new Date(date).toISOString().split('T')[0];
 
-    // Push availability=0 + stopSell to Channex via the real sync queue
+    // Push availability=0 + stopSell to Channex via the real sync queue (per-room when set)
     await this.channexSync.applyChange({
       listingId,
+      ...(roomTypeId != null ? { roomTypeId } : {}),
       date: dateStr,
       available: false,
       stopSell: true,
     }).catch(err => this.logger.warn(`[Calendar] blockDate Channex push failed (non-fatal): ${err.message}`));
 
-    // Save to local blocked dates table
-    return this.prisma.blockedDate.upsert({
-      where: { listingId_date: { listingId, date: new Date(date) } },
-      update: { reason },
-      create: { listingId, date: new Date(date), reason },
-    });
+    // Save to local blocked_dates per room. Uses raw SQL because Prisma's typed
+    // upsert key still references the legacy (listingId, date) unique; the new
+    // unique is on (listingId, COALESCE(roomTypeId, 0), date).
+    const rtId = roomTypeId ?? null;
+    await this.prisma.$executeRawUnsafe(
+      `
+      INSERT INTO blocked_dates ("listingId", "roomTypeId", "date", "reason", "createdAt", "updatedAt")
+      VALUES ($1::int, $2::int, $3::date, $4, NOW(), NOW())
+      ON CONFLICT ("listingId", (COALESCE("roomTypeId", 0)), "date")
+      DO UPDATE SET "reason" = EXCLUDED."reason", "updatedAt" = NOW()
+      `,
+      listingId,
+      rtId,
+      dateStr,
+      reason ?? null,
+    );
+    return { success: true, listingId, roomTypeId: rtId, date: dateStr };
   }
 
   async bulkBlockDates(bulkBlockDatesDto: BulkBlockDatesDto) {
@@ -212,20 +229,35 @@ export class CalendarService {
     return this.prisma.$transaction(operations);
   }
 
-  async unblockDate(listingId: number, date: Date) {
+  async unblockDate(listingId: number, date: Date, roomTypeId?: number) {
     const dateStr = new Date(date).toISOString().split('T')[0];
 
-    // Restore availability via real Channex sync queue
+    // Restore availability via real Channex sync queue (per-room when set)
     await this.channexSync.applyChange({
       listingId,
+      ...(roomTypeId != null ? { roomTypeId } : {}),
       date: dateStr,
       available: true,
       stopSell: false,
     }).catch(err => this.logger.warn(`[Calendar] unblockDate Channex push failed (non-fatal): ${err.message}`));
 
-    return this.prisma.blockedDate.deleteMany({
-      where: { listingId, date: new Date(date) },
-    });
+    // Delete the specific (listing, room, date) block row.
+    // If roomTypeId is undefined, also clear listing-level legacy rows so a single-room
+    // listing's unblock works even when the original block was written without a room.
+    if (roomTypeId != null) {
+      await this.prisma.blockedDate.deleteMany({
+        where: { listingId, roomTypeId, date: new Date(date) },
+      });
+      // Also clear any legacy listing-level row on the same date.
+      await this.prisma.blockedDate.deleteMany({
+        where: { listingId, roomTypeId: null, date: new Date(date) },
+      });
+    } else {
+      await this.prisma.blockedDate.deleteMany({
+        where: { listingId, date: new Date(date) },
+      });
+    }
+    return { success: true, listingId, roomTypeId: roomTypeId ?? null, date: dateStr };
   }
 
   async bulkUnblockDates(bulkUnblockDatesDto: BulkUnblockDatesDto) {
