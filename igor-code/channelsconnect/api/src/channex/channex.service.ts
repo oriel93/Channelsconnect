@@ -265,6 +265,35 @@ export class ChannexService {
       throw new BadRequestException(`Step C (create rate plan) failed in Channex: ${detail}`);
     }
 
+    // ── Step D: Install Booking CRS app (best-effort, non-fatal) ────────────────
+    // Required so we can POST /bookings (PMS → Channex) when a manual or direct
+    // booking is created. If it's already installed, Channex returns a 422 we ignore.
+    try {
+      this.logger.log(`[ChannexBuild/StepD] POST /applications/install booking_crs property_id=${propertyId}`);
+      await firstValueFrom(
+        this.httpService.post(
+          `${this.baseUrl}/applications/install`,
+          { application_installation: { property_id: propertyId, application_code: 'booking_crs' } },
+          { headers: this.headers },
+        ),
+      );
+      this.logger.log(`[ChannexBuild/StepD] OK — booking_crs installed`);
+    } catch (err: any) {
+      const detail =
+        err?.response?.data?.errors?.application_id?.[0] ??
+        err?.response?.data?.message ??
+        err?.message;
+      const alreadyInstalled =
+        typeof detail === 'string' && /already|exists|allowed/i.test(detail);
+      if (alreadyInstalled) {
+        this.logger.log(`[ChannexBuild/StepD] booking_crs already installed (skip)`);
+      } else {
+        this.logger.warn(
+          `[ChannexBuild/StepD] booking_crs install failed (non-fatal): ${detail ?? err?.message}`,
+        );
+      }
+    }
+
     this.logger.log(
       `[ChannexBuild] COMPLETE — property_id=${propertyId} room_type_id=${roomTypeId} rate_plan_id=${ratePlanId}`,
     );

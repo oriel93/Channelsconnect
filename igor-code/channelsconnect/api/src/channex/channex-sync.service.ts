@@ -822,27 +822,63 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
     const checkInIso  = params.checkIn.toISOString().split('T')[0];
     const checkOutIso = params.checkOut.toISOString().split('T')[0];
 
-    const payload = {
-      data: {
-        attributes: {
-          channel_type: params.channelType || 'direct',
-          property_id:  ids.channexPropertyId,
-          room_type_id: ids.channexRoomTypeId,
-          ...(ids.channexRatePlanId ? { rate_plan_id: ids.channexRatePlanId } : {}),
-          check_in:     checkInIso,
-          check_out:    checkOutIso,
-          total_amount: params.totalPrice,
-          currency:     'USD',
-          guest_details: {
-            guest_name: params.guestName,
-            adults:     params.numGuests,
-            children:   0,
-          },
-          status: 'confirmed',
-          source: 'Channels Connect PMS',
-          ...(params.externalId ? { external_id: params.externalId } : {}),
-          ...(params.notes      ? { notes:      params.notes      } : {}),
+    // Build per-day price breakdown (Channex requires days{} for the booking room).
+    // Spread total evenly across the stay; precision matters less than the sum matching `amount`.
+    const nights = Math.max(
+      1,
+      Math.round((params.checkOut.getTime() - params.checkIn.getTime()) / 86_400_000),
+    );
+    const perNight = +(params.totalPrice / nights).toFixed(2);
+    const days: Record<string, string> = {};
+    for (let i = 0; i < nights; i++) {
+      const d = new Date(params.checkIn.getTime() + i * 86_400_000);
+      days[d.toISOString().split('T')[0]] = perNight.toFixed(2);
+    }
+    // Re-balance the last day so the sum exactly equals totalPrice (rounding safety).
+    const summed = Object.values(days).reduce((s, v) => s + Number(v), 0);
+    const drift = +(params.totalPrice - summed).toFixed(2);
+    if (Math.abs(drift) > 0.001) {
+      const lastKey = Object.keys(days).pop()!;
+      days[lastKey] = (Number(days[lastKey]) + drift).toFixed(2);
+    }
+
+    // Split guest name into name/surname for Channex schema.
+    const nameParts = (params.guestName || 'Guest').trim().split(/\s+/);
+    const firstName = nameParts.shift() || 'Guest';
+    const surname   = nameParts.length ? nameParts.join(' ') : 'Direct';
+
+    // Channex Booking CRS API shape:
+    //   POST /api/v1/bookings
+    //   { booking: { property_id, ota_name:'Offline', ota_reservation_code, arrival_date,
+    //     departure_date, currency, customer{name,surname,...}, rooms[{room_type_id,rate_plan_id,
+    //     days{YYYY-MM-DD:price}, occupancy{adults,children,infants}}] } }
+    // The property must have the `booking_crs` Application installed (we install it on build).
+    const payload: Record<string, any> = {
+      booking: {
+        property_id:           ids.channexPropertyId,
+        ota_name:              'Offline',
+        ota_reservation_code:  params.externalId || `CC-${Date.now()}`,
+        arrival_date:          checkInIso,
+        departure_date:        checkOutIso,
+        currency:              'USD',
+        customer: {
+          name:    firstName,
+          surname: surname,
+          country: 'US',
         },
+        rooms: [
+          {
+            room_type_id: ids.channexRoomTypeId,
+            ...(ids.channexRatePlanId ? { rate_plan_id: ids.channexRatePlanId } : {}),
+            days,
+            occupancy: {
+              adults:   Math.max(1, params.numGuests || 1),
+              children: 0,
+              infants:  0,
+            },
+          },
+        ],
+        ...(params.notes ? { notes: params.notes } : {}),
       },
     };
 
@@ -862,7 +898,10 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
           timeout: 15000,
         },
       );
-      const bookingId: string | undefined = res.data?.data?.[0]?.id;
+      // Channex returns `{ data: { id, attributes: { id, status, booking_id, ... } } }` for /bookings.
+      // Tolerate both single-object and array shapes for safety.
+      const dataNode = Array.isArray(res.data?.data) ? res.data.data[0] : res.data?.data;
+      const bookingId: string | undefined = dataNode?.id ?? dataNode?.attributes?.id;
       const taskId:   string | undefined = res.data?.meta?.task_id;
 
       this.logger.log(

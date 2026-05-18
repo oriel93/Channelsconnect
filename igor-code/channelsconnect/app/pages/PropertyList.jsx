@@ -490,6 +490,17 @@ function PropertySettingsDrawer({ listing, onClose, onRefresh }) {
 // ─── Main virtualized calendar ────────────────────────────────────────────────
 
 export default function PropertyList() {
+  // Query param: ?listingId=63 filters the calendar to one property (drill-down from ListingDetail)
+  const focusListingId = (() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const v = p.get('listingId');
+      return v ? parseInt(v, 10) : null;
+    } catch {
+      return null;
+    }
+  })();
+
   // ── State ──────────────────────────────────────────────────────────────────
   const [listings,    setListings]    = useState([]);
   const [maps,        setMaps]        = useState({ rateMap: {}, blockMap: {}, bookingMap: {}, bookingsByListing: {} });
@@ -508,9 +519,14 @@ export default function PropertyList() {
 
   // ── Filtered property rows ─────────────────────────────────────────────────
   const filteredListings = useMemo(() => {
+    let base = listings;
+    if (focusListingId) {
+      const onlyOne = listings.filter((l) => l.id === focusListingId);
+      if (onlyOne.length) base = onlyOne;
+    }
     const q = search.toLowerCase();
-    return q ? listings.filter((l) => l.title?.toLowerCase().includes(q) || l.city?.toLowerCase().includes(q)) : listings;
-  }, [listings, search]);
+    return q ? base.filter((l) => l.title?.toLowerCase().includes(q) || l.city?.toLowerCase().includes(q)) : base;
+  }, [listings, search, focusListingId]);
 
   // ── Fetch: single /calendar/tape round-trip ────────────────────────────────
   const fetchAll = useCallback(async () => {
@@ -594,7 +610,16 @@ export default function PropertyList() {
     const key     = `${listing.id}_${dateStr}`;
     const blocked = maps.blockMap[key];
     const booked  = maps.bookingMap[key];
-    const rate    = maps.rateMap[key];
+    // Prefer per-date rate row; fall back to the listing's base price so the
+    // calendar always mirrors the published rate (even before per-day overrides exist).
+    const rateRow = maps.rateMap[key];
+    const baseFallback = listing.basePrice != null && !isNaN(Number(listing.basePrice))
+      ? Number(listing.basePrice)
+      : null;
+    const ratePrice = rateRow?.price != null && !isNaN(Number(rateRow.price))
+      ? Number(rateRow.price)
+      : baseFallback;
+    const rate = ratePrice != null ? { price: ratePrice, isFallback: rateRow?.price == null } : null;
     const today   = isToday(date);
     const weekend  = isWeekend(date);
 
@@ -631,7 +656,7 @@ export default function PropertyList() {
         onMouseEnter={() => onCellMouseEnter(listing.id, date)}
         onMouseUp={() => onCellMouseUp(listing.id)}
         onClick={() => booked?.isStart && setActiveBooking(booked.booking)}
-        title={blocked ? 'Blocked' : booked ? `${booked.guestName} · ${booked.nights}n` : rate?.price ? `$${Number(rate.price).toFixed(0)}` : 'Drag to block or set rate'}
+        title={blocked ? 'Blocked' : booked ? `${booked.guestName} · ${booked.nights}n` : rate?.price ? `$${Number(rate.price).toFixed(0)}${rate.isFallback ? ' (base rate)' : ''}` : 'Drag to block or set rate'}
       >
         {/* Blocked indicator */}
         {blocked && !booked && (
@@ -640,10 +665,10 @@ export default function PropertyList() {
           </div>
         )}
 
-        {/* Rate label on available cells */}
-        {!blocked && !booked && rate?.price && (
+        {/* Rate label on available cells. Faded color when falling back to listing.basePrice. */}
+        {!blocked && !booked && rate?.price != null && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-            <span style={{ fontSize: 9, fontWeight: 600, color: '#64748b' }}>
+            <span style={{ fontSize: 9, fontWeight: rate.isFallback ? 500 : 600, color: rate.isFallback ? '#94a3b8' : '#64748b' }}>
               ${Number(rate.price).toFixed(0)}
             </span>
           </div>

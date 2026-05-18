@@ -213,14 +213,9 @@ const ListingDetailContent = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Link to={createPageUrl('Dashboard')} className="block">
+            <Link to={`${createPageUrl('PropertyList')}?listingId=${listing.id}`} className="block">
               <Button className="w-full justify-start gap-2" variant="outline">
-                <Calendar className="w-4 h-4" />View Calendar
-              </Button>
-            </Link>
-            <Link to={createPageUrl('TapeChart')} className="block">
-              <Button className="w-full justify-start gap-2" variant="outline">
-                <Calendar className="w-4 h-4" />Open Tape Chart
+                <Calendar className="w-4 h-4" />Open Calendar
               </Button>
             </Link>
           </CardContent>

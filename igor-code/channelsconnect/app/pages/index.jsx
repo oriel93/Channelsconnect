@@ -50,7 +50,7 @@ import Listings from "./Listings";
 
 import Compare from "./Compare";
 
-import MultiCalendarSync from "./MultiCalendarSync";
+// MultiCalendarSync removed — calendar is served by PropertyList ("/PropertyList").
 
 import DynamicPricingTool from "./DynamicPricingTool";
 
@@ -156,7 +156,7 @@ const PAGES = {
     
     Compare: Compare,
     
-    MultiCalendarSync: MultiCalendarSync,
+    // MultiCalendarSync removed
     
     DynamicPricingTool: DynamicPricingTool,
     
@@ -281,7 +281,7 @@ function PagesContent() {
                 
                 <Route path="/Compare" element={<Compare />} />
                 
-                <Route path="/MultiCalendarSync" element={<MultiCalendarSync />} />
+                {/* /MultiCalendarSync removed — PropertyList is the single calendar */}
                 
                 <Route path="/DynamicPricingTool" element={<DynamicPricingTool />} />
                 
