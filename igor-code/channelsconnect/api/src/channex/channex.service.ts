@@ -130,8 +130,9 @@ export class ChannexService {
         currency:    localListing.currency ?? 'USD',
         // Channex expects these fields on the property
       });
-      // Channex returns { data: [{ id: "...", attributes: { ... } }] }
-      propertyData = propResult?.data?.[0];
+      // Channex returns { data: { id: "...", attributes: { ... } } } for single-resource POSTs
+      // (NOT an array). Tolerate both shapes for safety.
+      propertyData = Array.isArray(propResult?.data) ? propResult.data[0] : propResult?.data;
       if (!propertyData?.id) {
         const errMsg = `Step A (create property) succeeded but no property_id in response: ${JSON.stringify(propResult)}`;
         this.logger.error(`[ChannexBuild/StepA] FAIL — ${errMsg}`);
@@ -155,14 +156,20 @@ export class ChannexService {
     let roomTypeData: any;
     try {
       this.logger.log(`[ChannexBuild/StepB] POST /room_types — property_id=${propertyId}`);
+      // Channex /room_types requires occ_adults, occ_children, occ_infants — all non-null.
+      // 'occupancy' alone is NOT accepted; the API rejects with "can't be blank" on occ_children/occ_infants.
+      const adults = Math.max(1, localListing.maxGuests ?? 2);
       const roomResult = await this.createRoomType({
-        property_id:   propertyId,
-        title:         'Standard Room',
-        count_of_rooms: 1,
-        occupancy:     localListing.maxGuests ?? 2,
-        description:   localListing.description ?? 'Default room type',
+        property_id:       propertyId,
+        title:             'Standard Room',
+        count_of_rooms:    1,
+        occ_adults:        adults,
+        occ_children:      0,
+        occ_infants:       0,
+        default_occupancy: adults,
+        description:       localListing.description ?? 'Default room type',
       });
-      roomTypeData = roomResult?.data?.[0];
+      roomTypeData = Array.isArray(roomResult?.data) ? roomResult.data[0] : roomResult?.data;
       if (!roomTypeData?.id) {
         const errMsg = `Step B (create room type) succeeded but no room_type_id in response: ${JSON.stringify(roomResult)}`;
         this.logger.error(`[ChannexBuild/StepB] FAIL — ${errMsg}`);
@@ -198,25 +205,28 @@ export class ChannexService {
       this.logger.log(
         `[ChannexBuild/StepC] POST /rate_plans — property_id=${propertyId} room_type_id=${roomTypeId}`,
       );
+      // Channex /rate_plans options need occupancy + is_primary on the primary option.
+      // sell_mode/rate_mode are top-level. stop_sell/closed_to_* belong on /restrictions, not the rate plan.
+      const rpAdults = Math.max(1, localListing.maxGuests ?? 2);
       const rateResult = await this.createRatePlan({
         property_id:  propertyId,
         room_type_id: roomTypeId,
         title:        'Standard Rate',
         currency:     localListing.currency ?? 'USD',
+        sell_mode:    'per_room',
+        rate_mode:    'manual',
         options: [
           {
             // Base rate (rate field = cents)
-            rate: Math.round((Number(localListing.basePrice) || 100) * 100),
+            rate:             Math.round((Number(localListing.basePrice) || 100) * 100),
+            occupancy:        rpAdults,
+            is_primary:       true,
             // Default min stay = 1 night
             min_stay_arrival: 1,
-            // No restrictions by default
-            stop_sell:           false,
-            closed_to_arrival:   false,
-            closed_to_departure: false,
           },
         ],
       });
-      ratePlanData = rateResult?.data?.[0];
+      ratePlanData = Array.isArray(rateResult?.data) ? rateResult.data[0] : rateResult?.data;
       if (!ratePlanData?.id) {
         const errMsg = `Step C (create rate plan) succeeded but no rate_plan_id in response: ${JSON.stringify(rateResult)}`;
         this.logger.error(`[ChannexBuild/StepC] FAIL — ${errMsg}`);
