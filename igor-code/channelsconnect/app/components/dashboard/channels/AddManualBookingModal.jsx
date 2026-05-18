@@ -52,6 +52,42 @@ export default function AddManualBookingModal({ open, onOpenChange, listingId: p
   const [apiError, setApiError] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
 
+  // Existing bookings on the selected listing — used to block double-bookings.
+  // [{ start: 'YYYY-MM-DD', end: 'YYYY-MM-DD', reason: 'Guest (status)' }, ...]
+  // end is EXCLUSIVE (departure day is free for next guest's check-in — standard hotel rule).
+  const [blockedRanges, setBlockedRanges] = useState([]);
+
+  // Fetch existing bookings whenever the selected listing changes
+  useEffect(() => {
+    if (!open || !listingId) { setBlockedRanges([]); return; }
+    let cancelled = false;
+    api.bookings.getByListingId(parseInt(listingId, 10))
+      .then(({ data }) => {
+        if (cancelled) return;
+        const list = Array.isArray(data) ? data : (data?.data ?? []);
+        const ranges = list
+          .filter(b => b.status !== 'cancelled')
+          .map(b => ({
+            start: new Date(b.checkIn).toISOString().split('T')[0],
+            end:   new Date(b.checkOut).toISOString().split('T')[0],
+            reason: `${b.guestName ?? 'Guest'} (${b.status ?? 'confirmed'})`,
+          }));
+        setBlockedRanges(ranges);
+      })
+      .catch(() => { if (!cancelled) setBlockedRanges([]); });
+    return () => { cancelled = true; };
+  }, [open, listingId]);
+
+  // Overlap detection: does [checkIn, checkOut) intersect any existing booking?
+  // Two ranges overlap iff aStart < bEnd && bStart < aEnd.
+  const overlap = (() => {
+    if (!checkIn || !checkOut) return null;
+    for (const r of blockedRanges) {
+      if (checkIn < r.end && r.start < checkOut) return r;
+    }
+    return null;
+  })();
+
   // Block submit if no active session — show clear message instead of cryptic 401 toast
   useEffect(() => {
     if (!open) { setAuthChecked(false); return; }
@@ -107,6 +143,14 @@ export default function AddManualBookingModal({ open, onOpenChange, listingId: p
     }
     if (!numGuests || Number(numGuests) < 1) {
       setApiError('Number of guests must be at least 1.'); return;
+    }
+    // Hard-block on overlap with an existing booking
+    if (overlap) {
+      setApiError(
+        `Dates conflict with an existing booking: ${overlap.reason} ` +
+        `(${overlap.start} → ${overlap.end}). Pick different dates or cancel that booking first.`,
+      );
+      return;
     }
 
     if (!authChecked) { setApiError('Session check in progress — please wait a moment.'); return; }
@@ -238,6 +282,19 @@ export default function AddManualBookingModal({ open, onOpenChange, listingId: p
               />
             </div>
           </div>
+
+          {/* Inline overlap warning — blocks the booking before submit */}
+          {overlap && (
+            <div className='rounded-md border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-700'>
+              <strong>Dates unavailable.</strong> Conflicts with: {overlap.reason} ({overlap.start} → {overlap.end}).
+              Pick different dates or cancel the existing booking first.
+            </div>
+          )}
+          {!overlap && listingId && blockedRanges.length > 0 && (
+            <p className='text-xs text-slate-500'>
+              {blockedRanges.length} existing booking{blockedRanges.length === 1 ? '' : 's'} on this property — dates checked automatically.
+            </p>
+          )}
 
           {/* Guests + Total Price */}
           <div className='grid grid-cols-2 gap-4'>
