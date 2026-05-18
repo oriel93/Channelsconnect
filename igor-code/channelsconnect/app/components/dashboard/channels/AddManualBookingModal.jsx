@@ -52,6 +52,12 @@ export default function AddManualBookingModal({ open, onOpenChange, listingId: p
   const [apiError, setApiError] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
 
+  // Room type selection — required when the chosen listing has >1 room.
+  // For single-room listings the dropdown is hidden and we auto-assign on submit.
+  const [roomTypeId, setRoomTypeId] = useState('');
+  const [listingRoomTypes, setListingRoomTypes] = useState([]); // [{id, name, maxGuests, quantity}]
+  const [loadingRooms, setLoadingRooms] = useState(false);
+
   // Existing bookings on the selected listing — used to block double-bookings.
   // [{ start: 'YYYY-MM-DD', end: 'YYYY-MM-DD', reason: 'Guest (status)' }, ...]
   // end is EXCLUSIVE (departure day is free for next guest's check-in — standard hotel rule).
@@ -118,6 +124,25 @@ export default function AddManualBookingModal({ open, onOpenChange, listingId: p
     if (propListingId) setListingId(String(propListingId));
   }, [propListingId]);
 
+  // Fetch the listing's room_types whenever the listing changes.
+  // Auto-select the only room if there's exactly one.
+  useEffect(() => {
+    if (!open || !listingId) { setListingRoomTypes([]); setRoomTypeId(''); return; }
+    let cancelled = false;
+    setLoadingRooms(true);
+    api.listings.getById(parseInt(listingId, 10))
+      .then(({ data }) => {
+        if (cancelled) return;
+        const rts = Array.isArray(data?.roomTypes) ? data.roomTypes : [];
+        setListingRoomTypes(rts);
+        if (rts.length === 1) setRoomTypeId(String(rts[0].id));
+        else setRoomTypeId('');
+      })
+      .catch(() => { if (!cancelled) { setListingRoomTypes([]); setRoomTypeId(''); } })
+      .finally(() => { if (!cancelled) setLoadingRooms(false); });
+    return () => { cancelled = true; };
+  }, [open, listingId]);
+
   useEffect(() => {
     if (!open) return;
     setGuestName('');
@@ -134,7 +159,11 @@ export default function AddManualBookingModal({ open, onOpenChange, listingId: p
     e.preventDefault();
     setApiError(null);
 
-    if (!listingId)               { setApiError('Please select a room.');           return; }
+    if (!listingId)               { setApiError('Please select a property.');       return; }
+    // Require explicit room choice when the property has more than one room.
+    if (listingRoomTypes.length > 1 && !roomTypeId) {
+      setApiError('Please select which room.'); return;
+    }
     if (!guestName.trim())        { setApiError('Please enter the guest name.');    return; }
     if (!checkIn)                 { setApiError('Please select a check-in date.');  return; }
     if (!checkOut)                { setApiError('Please select a check-out date.'); return; }
@@ -159,6 +188,7 @@ export default function AddManualBookingModal({ open, onOpenChange, listingId: p
     try {
       await api.bookings.createManual({
         listingId:      parseInt(listingId, 10),
+        ...(roomTypeId ? { roomTypeId: parseInt(roomTypeId, 10) } : {}),
         guestName:      guestName.trim(),
         checkIn:        checkIn,
         checkOut:       checkOut,
@@ -221,16 +251,16 @@ export default function AddManualBookingModal({ open, onOpenChange, listingId: p
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className='space-y-4'>
-          {/* Room / Property dropdown */}
+          {/* Property dropdown */}
           <div className='space-y-1.5'>
-            <Label htmlFor='listingId'>Room / Property *</Label>
+            <Label htmlFor='listingId'>Property *</Label>
             <Select
               value={listingId}
               onValueChange={setListingId}
               disabled={loadingListings}
             >
               <SelectTrigger id='listingId'>
-                <SelectValue placeholder='Select a room…' />
+                <SelectValue placeholder='Select a property…' />
               </SelectTrigger>
               <SelectContent>
                 {listings.map(l => (
@@ -241,6 +271,40 @@ export default function AddManualBookingModal({ open, onOpenChange, listingId: p
               </SelectContent>
             </Select>
           </div>
+
+          {/* Room dropdown — visible only when the listing has more than one room.
+             For single-room listings the only room is auto-assigned silently. */}
+          {listingId && listingRoomTypes.length > 1 && (
+            <div className='space-y-1.5'>
+              <Label htmlFor='roomTypeId'>Room *</Label>
+              <Select
+                value={roomTypeId}
+                onValueChange={setRoomTypeId}
+                disabled={loadingRooms}
+              >
+                <SelectTrigger id='roomTypeId'>
+                  <SelectValue placeholder='Select a room…' />
+                </SelectTrigger>
+                <SelectContent>
+                  {listingRoomTypes.map(rt => (
+                    <SelectItem key={rt.id} value={String(rt.id)}>
+                      {rt.name}
+                      {rt.quantity > 1 ? ` ×${rt.quantity}` : ''}
+                      {' — sleeps '}{rt.maxGuests}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {/* When there's exactly one room, show a tiny line so user knows it's tied to that room */}
+          {listingId && listingRoomTypes.length === 1 && (
+            <p className='text-xs text-slate-500 -mt-1'>
+              Room: <span className='font-medium text-slate-700'>{listingRoomTypes[0].name}</span>
+              {listingRoomTypes[0].quantity > 1 ? ` (×${listingRoomTypes[0].quantity})` : ''}
+              <span className='text-slate-400'> · auto-assigned</span>
+            </p>
+          )}
 
           {/* Guest Name */}
           <div className='space-y-1.5'>

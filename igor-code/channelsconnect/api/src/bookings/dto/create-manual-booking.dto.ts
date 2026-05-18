@@ -4,6 +4,13 @@ export class CreateManualBookingDto {
   @ApiProperty({ description: 'Internal listing (room) ID' })
   listingId: number;
 
+  @ApiPropertyOptional({
+    description:
+      'Specific room_type id within the listing. Required when the listing has >1 room type. ' +
+      'When omitted on a single-room listing, the only room_type is auto-assigned.',
+  })
+  roomTypeId?: number;
+
   @ApiProperty({ description: 'Guest full name' })
   guestName: string;
 

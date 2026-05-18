@@ -12,6 +12,9 @@ export class BookingEntity implements Booking {
   @ApiProperty()
   listingId: number;
 
+  @ApiProperty({ required: false, nullable: true })
+  roomTypeId: number | null;
+
   @ApiProperty()
   guestName: string;
 

@@ -180,14 +180,41 @@ export class BookingsService {
       throw new BadRequestException('Check-out date must be after check-in date.');
     }
 
-    // ── Step 1b: Verify the listing exists ────────────────────────────────
+    // ── Step 1b: Verify the listing exists + resolve room_type assignment ────────
+    // Every booking must be tied to a specific room_type. For multi-room properties
+    // the caller picks one (room dropdown in the modal). For single-room properties
+    // we auto-assign the only room so older clients keep working.
     const listing = await this.prisma.listing.findUnique({
       where: { id: dto.listingId },
-      select: { id: true, title: true },
+      select: {
+        id: true,
+        title: true,
+        roomTypes: { select: { id: true, name: true } },
+      },
     });
     if (!listing) {
       throw new BadRequestException(`Listing with ID ${dto.listingId} not found.`);
     }
+
+    let resolvedRoomTypeId: number | null = null;
+    if (dto.roomTypeId != null) {
+      const valid = listing.roomTypes.find((rt) => rt.id === dto.roomTypeId);
+      if (!valid) {
+        throw new BadRequestException(
+          `Room type ${dto.roomTypeId} does not belong to listing ${dto.listingId}.`,
+        );
+      }
+      resolvedRoomTypeId = valid.id;
+    } else if (listing.roomTypes.length === 1) {
+      resolvedRoomTypeId = listing.roomTypes[0].id;
+    } else if (listing.roomTypes.length > 1) {
+      throw new BadRequestException(
+        `Listing "${listing.title}" has ${listing.roomTypes.length} rooms ` +
+          `(${listing.roomTypes.map((rt) => rt.name).join(', ')}). ` +
+          `Specify roomTypeId in the request body.`,
+      );
+    }
+    // listing.roomTypes.length === 0 — legacy listing without room types; leave null.
 
     // ── Step 1c: Build and insert the booking record ──────────────────────
     const totalPriceVal = parseFloat(String(dto.totalPrice ?? 0));
@@ -196,6 +223,7 @@ export class BookingsService {
     const createData: Prisma.BookingUncheckedCreateInput = {
       userId,
       listingId:     dto.listingId,
+      ...(resolvedRoomTypeId != null ? { roomTypeId: resolvedRoomTypeId } : {}),
       guestName:     dto.guestName?.trim() ?? '',
       ...(dto.guestEmail ? { guestEmail: dto.guestEmail.trim() } : {}),
       ...(dto.guestPhone ? { guestPhone: dto.guestPhone.trim() } : {}),
@@ -382,9 +410,12 @@ export class BookingsService {
     );
 
     // Push formal booking record to Channex Bookings (non-fatal)
+    // Pass roomTypeId so the resolver picks the right channex_room_type_id
+    // for multi-room properties (not just the first mapping).
     setImmediate(() =>
       this.channexSync.pushBookingToChannex({
         listingId:   booking.listingId,
+        roomTypeId:  resolvedRoomTypeId ?? undefined,
         guestName:   booking.guestName,
         checkIn:     checkIn,
         checkOut:    checkOut,

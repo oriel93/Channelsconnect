@@ -342,7 +342,9 @@ export class CalendarService {
    * Single DB round-trip per data type (4 queries, all parallel via Promise.all).
    */
   async getTapeData(userId: string, startDate: Date, endDate: Date) {
-    // 1. Fetch only the user's active listings
+    // 1. Fetch only the user's active listings + their room types.
+    //    The tape chart needs one row per (listing, room_type) so multi-room
+    //    properties can show separate availability lanes (Twin / Double / King).
     const listings = await this.prisma.listing.findMany({
       where: { userId, isActive: true },
       select: {
@@ -352,6 +354,16 @@ export class CalendarService {
         bedrooms: true,
         city: true,
         basePrice: true,
+        roomTypes: {
+          select: {
+            id: true,
+            name: true,
+            maxGuests: true,
+            quantity: true,
+            channexRoomTypeId: true,
+          },
+          orderBy: { id: 'asc' },
+        },
       },
       orderBy: { title: 'asc' },
     });
@@ -360,7 +372,7 @@ export class CalendarService {
       return { listings: [], rates: [], blockedDates: [], bookings: [] };
     }
 
-    const listingIds = listings.map(l => l.id);
+    const listingIds = listings.map((l) => l.id);
 
     // 2. Parallel fetch — all listings, all dates in one shot per type
     const [rates, blockedDates, bookings] = await Promise.all([
@@ -388,6 +400,7 @@ export class CalendarService {
         select: {
           id: true,
           listingId: true,
+          roomTypeId: true,
           guestName: true,
           guestEmail: true,
           checkIn: true,

@@ -112,12 +112,41 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
   // 1. Mapping: resolve local Listing → Channex IDs
   // -------------------------------------------------------------------------
 
-  private async resolveChannexIds(listingId: number): Promise<{
+  private async resolveChannexIds(
+    listingId: number,
+    opts: { roomTypeId?: number } = {},
+  ): Promise<{
     channexPropertyId: string;
     channexRoomTypeId: string;
     channexRatePlanId: string | null;
   }> {
-    // Primary: dedicated ChannexMapping table (populated by onboarding / deep-sync)
+    // Strongest match: caller passed a specific roomTypeId — use ITS channex IDs.
+    // This is the multi-room case: a booking on the Twin Room must push to the
+    // Twin Room's channex_room_type_id, not whatever findFirst returns.
+    if (opts.roomTypeId != null) {
+      const rt = await this.prisma.roomType.findUnique({
+        where: { id: opts.roomTypeId },
+        select: {
+          channexRoomTypeId: true,
+          channexRatePlanId: true,
+          listing: { select: { channexPropertyId: true } },
+        },
+      });
+      if (rt?.channexRoomTypeId && rt.listing?.channexPropertyId) {
+        return {
+          channexPropertyId: rt.listing.channexPropertyId,
+          channexRoomTypeId: rt.channexRoomTypeId,
+          channexRatePlanId: rt.channexRatePlanId ?? null,
+        };
+      }
+      this.logger.warn(
+        `[Sync] roomTypeId=${opts.roomTypeId} provided but missing channex IDs; ` +
+          `falling back to listing-level mapping.`,
+      );
+    }
+
+    // Primary fallback: dedicated ChannexMapping table (populated by onboarding / deep-sync).
+    // For multi-room properties findFirst is non-deterministic — use roomTypeId above when possible.
     const mapping = await this.prisma.channexMapping.findFirst({
       where: { listingId },
     });
@@ -802,6 +831,7 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
    */
   async pushBookingToChannex(params: {
     listingId: number;
+    roomTypeId?: number; // when set, resolves channex IDs against THIS room (multi-room support)
     guestName: string;
     checkIn: Date;
     checkOut: Date;
@@ -817,7 +847,7 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
       return {};
     }
 
-    const ids = await this.resolveChannexIds(params.listingId);
+    const ids = await this.resolveChannexIds(params.listingId, { roomTypeId: params.roomTypeId });
 
     const checkInIso  = params.checkIn.toISOString().split('T')[0];
     const checkOutIso = params.checkOut.toISOString().split('T')[0];

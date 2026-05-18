@@ -71,6 +71,7 @@ model RoomType {
   channexRatePlanId    String?     @map("channexRatePlanId")   // populated after Step C
   createdAt            DateTime    @default(now())
   updatedAt            DateTime    @updatedAt
+  bookings             Booking[]
   inventory            Inventory[]
   listing              Listing     @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
@@ -95,6 +96,7 @@ model Booking {
   id            Int      @id @default(autoincrement())
   userId        String
   listingId     Int
+  roomTypeId    Int?     @map("roomTypeId")     // nullable for legacy bookings + single-room listings
   guestName     String
   guestEmail    String?
   guestPhone    String?
@@ -109,9 +111,11 @@ model Booking {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   listing       Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  roomType      RoomType? @relation(fields: [roomTypeId], references: [id], onDelete: SetNull)
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([listingId])
+  @@index([roomTypeId])
   @@index([userId])
   @@index([checkIn, checkOut])
   @@map("bookings")
