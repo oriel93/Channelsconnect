@@ -840,7 +840,7 @@ export class ChannexAriService {
     //   - 500 days of varied rates + min_stay (rate-plan level)
     // And then pulls Channex back into local `rates` so the tape chart mirrors.
     // Non-fatal: if it fails, the property is still built + mapped; user can retry.
-    let postSync: { success: boolean; taskIds: string[]; message: string } | null = null;
+    let postSync: FullSyncResult | null = null;
     try {
       postSync = await this.executeFullSync(listingId);
       this.logger.log(

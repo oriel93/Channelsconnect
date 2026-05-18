@@ -327,7 +327,7 @@ export class ChannexAriController {
       channexPropertyId: string;
       channexRoomTypeId: string;
       channexRatePlanId: string;
-      postBuildSync?: { success: boolean; taskIds: string[]; message: string };
+      postBuildSync?: { success: boolean; taskIds: string[]; message?: string };
     };
     try {
       ids = (await this.ariService.buildPropertyAndPersist(listingId)) as any;
