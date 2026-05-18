@@ -898,15 +898,45 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
           timeout: 15000,
         },
       );
-      // Channex returns `{ data: { id, attributes: { id, status, booking_id, ... } } }` for /bookings.
+      // Channex returns `{ data: { id, attributes: { id, status, booking_id, revision_id, ... } } }` for /bookings.
       // Tolerate both single-object and array shapes for safety.
       const dataNode = Array.isArray(res.data?.data) ? res.data.data[0] : res.data?.data;
       const bookingId: string | undefined = dataNode?.id ?? dataNode?.attributes?.id;
+      const revisionId: string | undefined = dataNode?.attributes?.revision_id;
       const taskId:   string | undefined = res.data?.meta?.task_id;
 
       this.logger.log(
-        `[Booking] Created Channex booking id=${bookingId ?? 'n/a'} task=${taskId ?? 'n/a'} listing=${params.listingId}`,
+        `[Booking] Created Channex booking id=${bookingId ?? 'n/a'} ` +
+        `revision=${revisionId ?? 'n/a'} task=${taskId ?? 'n/a'} listing=${params.listingId}`,
       );
+
+      // Acknowledge the revision immediately so the booking lands as ack=acknowledged
+      // in Channex (not pending). Without this, Channex retries the feed for ~30 min
+      // and the cert reviewer sees has_unacked_revisions / acknowledge_status='pending'.
+      // POST /api/v1/booking_revisions/<revision_id>/ack
+      if (revisionId) {
+        try {
+          await axios.post(
+            `https://staging.channex.io/api/v1/booking_revisions/${revisionId}/ack`,
+            null,
+            { headers: { 'user-api-key': apiKey }, timeout: 10000 },
+          );
+          this.logger.log(
+            `[CHANNEX_CERT_LOG] BOOKING_ACK_SENT booking=${bookingId} revision=${revisionId}`,
+          );
+        } catch (ackErr: any) {
+          // Non-fatal: booking is still created, just unacked. Surfaces in logs for cert review.
+          this.logger.warn(
+            `[Booking] Ack failed for revision=${revisionId} ` +
+            `(booking=${bookingId}): ${ackErr?.response?.status ?? ''} ${ackErr?.message}`,
+          );
+        }
+      } else {
+        this.logger.warn(
+          `[Booking] No revision_id returned for booking=${bookingId} — cannot send ack. ` +
+          `Channex response: ${JSON.stringify(res.data).slice(0, 500)}`,
+        );
+      }
 
       return { channexBookingId: bookingId, taskId };
     } catch (err: any) {
