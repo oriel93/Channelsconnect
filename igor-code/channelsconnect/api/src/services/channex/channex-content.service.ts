@@ -27,6 +27,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ChannexHttpClient } from './channex-http.client';
+import { normalizeCountryToISO2 } from '../../channex/channex.service';
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -325,7 +326,8 @@ export class ChannexContentService {
     };
     if (listing.address)     p['address']   = listing.address;
     if (listing.city)        p['city']       = listing.city;
-    if (listing.country)     p['country']    = listing.country;
+    const iso2 = normalizeCountryToISO2(listing.country);
+    if (iso2) p['country'] = iso2;
     if (listing.postalCode)  p['zip']        = listing.postalCode;
     if (listing.latitude)    p['latitude']   = Number(listing.latitude);
     if (listing.longitude)   p['longitude']  = Number(listing.longitude);

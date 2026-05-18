@@ -3,6 +3,37 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 
 /**
+ * Normalize a country value to an ISO-3166-1 alpha-2 code (Channex requires <= 2 chars).
+ * Accepts common full names, 3-letter codes, and case variants. Returns undefined for empty.
+ * If the input is unrecognized but longer than 2 chars, returns undefined (better to omit
+ * the field than send something Channex will reject).
+ */
+export function normalizeCountryToISO2(country?: string | null): string | undefined {
+  if (!country) return undefined;
+  const c = country.trim();
+  if (!c) return undefined;
+  if (c.length === 2) return c.toUpperCase();
+  const map: Record<string, string> = {
+    'united states': 'US', 'usa': 'US', 'us': 'US', 'u.s.': 'US', 'u.s.a.': 'US', 'america': 'US',
+    'united kingdom': 'GB', 'uk': 'GB', 'great britain': 'GB', 'england': 'GB',
+    'canada': 'CA', 'mexico': 'MX', 'france': 'FR', 'germany': 'DE', 'spain': 'ES',
+    'italy': 'IT', 'portugal': 'PT', 'netherlands': 'NL', 'belgium': 'BE', 'switzerland': 'CH',
+    'austria': 'AT', 'ireland': 'IE', 'australia': 'AU', 'new zealand': 'NZ',
+    'japan': 'JP', 'china': 'CN', 'india': 'IN', 'brazil': 'BR', 'argentina': 'AR',
+    'colombia': 'CO', 'chile': 'CL', 'peru': 'PE', 'thailand': 'TH', 'singapore': 'SG',
+    'malaysia': 'MY', 'indonesia': 'ID', 'philippines': 'PH', 'vietnam': 'VN',
+    'south korea': 'KR', 'korea': 'KR', 'taiwan': 'TW', 'hong kong': 'HK',
+    'sweden': 'SE', 'norway': 'NO', 'denmark': 'DK', 'finland': 'FI', 'iceland': 'IS',
+    'poland': 'PL', 'greece': 'GR', 'turkey': 'TR', 'israel': 'IL',
+    'south africa': 'ZA', 'egypt': 'EG', 'morocco': 'MA',
+    'united arab emirates': 'AE', 'uae': 'AE', 'saudi arabia': 'SA',
+  };
+  const hit = map[c.toLowerCase()];
+  if (hit) return hit;
+  return undefined; // unknown longer-than-2 input — safer to omit than 422
+}
+
+/**
  * Result of the 3-step Channex property build.
  * All three IDs are needed before any ARI push (Tests T9/T10/T11) is valid.
  */
@@ -126,7 +157,7 @@ export class ChannexService {
         description: localListing.description ?? undefined,
         address:     localListing.address ?? undefined,
         city:        localListing.city ?? undefined,
-        country:     localListing.country ?? undefined,
+        country:     normalizeCountryToISO2(localListing.country) ?? undefined,
         currency:    localListing.currency ?? 'USD',
         // Channex expects these fields on the property
       });
