@@ -463,11 +463,12 @@ export default function AdminDashboard() {
         const res = await api.admin.buildChannexProperty(listing.id);
         const result = res.data;
         if (result.success) {
+          const taskCount = (result.syncTaskIds || []).length;
+          const synced = !!result.synced;
           toast.success(
-            `Published “${listing.title}” to Channex ✓ — ` +
-            `property=${(result.channexPropertyId || '').slice(0, 8)} ` +
-            `room=${(result.channexRoomTypeId || '').slice(0, 8)} ` +
-            `rate=${(result.channexRatePlanId || '').slice(0, 8)}`
+            synced
+              ? `Published “${listing.title}” ✓ — property+rates+availability synced (${taskCount} task${taskCount === 1 ? '' : 's'})`
+              : `Published “${listing.title}” to Channex ✓ (sync deferred — click Sync to push rates)`
           );
           await loadSyncState(listing.id);
           fetchData();

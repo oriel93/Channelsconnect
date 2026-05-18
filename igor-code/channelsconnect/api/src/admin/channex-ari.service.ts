@@ -832,11 +832,36 @@ export class ChannexAriService {
         `prop=${result.channexPropertyId} room=${result.channexRoomTypeId} rate=${result.channexRatePlanId}`,
     );
 
+    // ── Auto-run the 500-day full sync so the property is immediately ready ──────
+    // Publish should be ONE click — the next thing a reviewer (or guest) expects to
+    // see is varied rates + availability=1 across the calendar, not Channex's defaults.
+    // executeFullSync() pushes:
+    //   - 500 days of availability=1 (room-type level)
+    //   - 500 days of varied rates + min_stay (rate-plan level)
+    // And then pulls Channex back into local `rates` so the tape chart mirrors.
+    // Non-fatal: if it fails, the property is still built + mapped; user can retry.
+    let postSync: { success: boolean; taskIds: string[]; message: string } | null = null;
+    try {
+      postSync = await this.executeFullSync(listingId);
+      this.logger.log(
+        `[BuildProperty] Post-build sync complete: ${postSync.taskIds.length} task(s) ` +
+          `[${postSync.taskIds.join(', ')}]`,
+      );
+    } catch (err: any) {
+      this.logger.warn(
+        `[BuildProperty] Post-build sync failed (non-fatal) for listing=${listingId}: ` +
+          `${err?.message ?? err}. Property/mapping still saved — user can re-run Full Sync.`,
+      );
+    }
+
     return {
       channexPropertyId: result.channexPropertyId,
       channexRoomTypeId: result.channexRoomTypeId,
       channexRatePlanId: result.channexRatePlanId,
-    };
+      // Surface post-build sync details so the UI toast can show 'Published + Synced'.
+      // Optional/loosely typed because legacy callers don't care.
+      ...(postSync ? { postBuildSync: postSync } : {}),
+    } as any;
   }
 
   // ── Pull rates + availability from Channex → local `rates` table ──────────────────

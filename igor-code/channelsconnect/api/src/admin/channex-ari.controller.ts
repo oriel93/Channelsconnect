@@ -323,9 +323,14 @@ export class ChannexAriController {
   @ApiOperation({ summary: '3-step build: create property + room_type + rate_plan in Channex (admin)' })
   async buildPropertyInChannex(@Param('listingId', ParseIntPipe) listingId: number) {
     this.logger.log(`[ChannexAri] POST /admin/channex/build/${listingId} — 3-step property build`);
-    let ids: { channexPropertyId: string; channexRoomTypeId: string; channexRatePlanId: string };
+    let ids: {
+      channexPropertyId: string;
+      channexRoomTypeId: string;
+      channexRatePlanId: string;
+      postBuildSync?: { success: boolean; taskIds: string[]; message: string };
+    };
     try {
-      ids = await this.ariService.buildPropertyAndPersist(listingId);
+      ids = (await this.ariService.buildPropertyAndPersist(listingId)) as any;
     } catch (err: any) {
       // Surface BadRequestException from service as 400 JSON
       const status = err?.status ?? 500;
@@ -343,14 +348,19 @@ export class ChannexAriController {
         channexRatePlanId: null,
       };
     }
+    const pbs = ids.postBuildSync;
     return {
       success: true,
       channexPropertyId: ids.channexPropertyId,
       channexRoomTypeId: ids.channexRoomTypeId,
       channexRatePlanId: ids.channexRatePlanId,
-      message:
-        `Property built in Channex. IDs: property=${ids.channexPropertyId} ` +
-        `room_type=${ids.channexRoomTypeId} rate_plan=${ids.channexRatePlanId}`,
+      // Surface the 500-day full-sync task IDs so the UI / cert reviewer can copy them.
+      syncTaskIds: pbs?.taskIds ?? [],
+      synced: pbs?.success ?? false,
+      message: pbs?.success
+        ? `Property built + 500-day sync complete. ${pbs.taskIds.length} task(s): [${pbs.taskIds.join(', ')}]`
+        : `Property built in Channex (sync deferred). IDs: property=${ids.channexPropertyId} ` +
+          `room_type=${ids.channexRoomTypeId} rate_plan=${ids.channexRatePlanId}`,
     };
   }
 
