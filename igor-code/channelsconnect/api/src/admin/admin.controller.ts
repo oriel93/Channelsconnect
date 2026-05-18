@@ -3,14 +3,17 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   ParseIntPipe,
+  Query,
   Res,
   UseGuards,
   Logger,
   HttpCode,
   HttpStatus,
+  NotFoundException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import {
@@ -245,6 +248,44 @@ export class AdminController {
   deactivateListing(@Param('listingId', ParseIntPipe) listingId: number) {
     this.logger.log('[Admin] POST /admin/listings/' + listingId + '/deactivate');
     return this.adminService.deactivateListingOnChannex(listingId);
+  }
+
+  // ── DELETE /admin/listings/:listingId ─ admin delete (soft or hard) ──────
+
+  @Delete('listings/:listingId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Delete a listing (soft by default; ?force=true for hard delete)',
+    description:
+      'Soft delete (default) archives the listing and deactivates it on Channex. ' +
+      'Hard delete (?force=true) removes the listing row, cascading bookings, ' +
+      'images, room types, rates, and pricing. Channex deactivation is best-effort.',
+  })
+  @ApiOkResponse({
+    description:
+      'Returns { success, mode, listingId, title, channexDeactivated, cascadeCounts? }',
+  })
+  async deleteListing(
+    @Param('listingId', ParseIntPipe) listingId: number,
+    @Query('force') force?: string,
+    @Query('skipChannex') skipChannex?: string,
+  ) {
+    const isForce = force === 'true' || force === '1';
+    const skipChannexFlag = skipChannex === 'true' || skipChannex === '1';
+    this.logger.log(
+      `[Admin] DELETE /admin/listings/${listingId} force=${isForce} skipChannex=${skipChannexFlag}`,
+    );
+    try {
+      return await this.adminService.deleteListing(listingId, {
+        force: isForce,
+        deactivateOnChannex: !skipChannexFlag,
+      });
+    } catch (err: any) {
+      if (err?.message?.includes('not found')) {
+        throw new NotFoundException(err.message);
+      }
+      throw err;
+    }
   }
 
   @Get('markup')

@@ -329,6 +329,18 @@ export const api = {
     syncListingToChannex: (listingId) => apiClient.post(`/admin/listings/${listingId}/sync`),
     /** Set Channex property inactive and archive locally */
     deactivateListing: (listingId) => apiClient.post(`/admin/listings/${listingId}/deactivate`),
+    /**
+     * Delete a listing. Soft delete by default (archives + deactivates on Channex).
+     * Pass { force: true } for a hard delete (removes the listing row and cascades).
+     * Pass { skipChannex: true } to bypass Channex deactivation.
+     */
+    deleteListing: (listingId, { force = false, skipChannex = false } = {}) => {
+      const params = new URLSearchParams();
+      if (force) params.set('force', 'true');
+      if (skipChannex) params.set('skipChannex', 'true');
+      const qs = params.toString();
+      return apiClient.delete(`/admin/listings/${listingId}${qs ? `?${qs}` : ''}`);
+    },
 
     /** Update a user's role. Super-admin (oriel@erorentals.com) cannot be demoted. */
     updateUserRole: (userId, role) => apiClient.patch(`/admin/users/${userId}/role`, { role }),

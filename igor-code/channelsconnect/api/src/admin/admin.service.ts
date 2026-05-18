@@ -581,6 +581,122 @@ export class AdminService {
     return this.channexContent.deactivateListing(listingId);
   }
 
+  // ── Delete Listing ────────────────────────────────────────────────────────
+
+  /**
+   * Delete a listing permanently from the platform.
+   *
+   * Soft delete (force=false, default):
+   *   - Marks listing isArchived=true, isActive=false, archivedAt=now
+   *   - Attempts to deactivate the Channex property (best-effort)
+   *   - Listing remains in DB; can be restored later
+   *
+   * Hard delete (force=true):
+   *   - Attempts to deactivate the Channex property (best-effort)
+   *   - Deletes any channex_mappings rows for this listing
+   *   - Deletes the listing row — cascade removes:
+   *       bookings, blocked_dates, calendar, calendar_events,
+   *       ical_connections, pricing_rules, property_connections,
+   *       property_images, property_pricing, rates, room_types
+   *   - Sets imported_listings.listingId to NULL (history preserved)
+   *
+   * Returns details for the admin UI to display.
+   */
+  async deleteListing(
+    listingId: number,
+    opts: { force?: boolean; deactivateOnChannex?: boolean } = {},
+  ): Promise<{
+    success: boolean;
+    mode: 'soft' | 'hard';
+    listingId: number;
+    title: string;
+    channexDeactivated: boolean;
+    channexError?: string;
+    cascadeCounts?: Record<string, number>;
+  }> {
+    const force = !!opts.force;
+    const wantDeactivate = opts.deactivateOnChannex !== false; // default true
+
+    const listing = await this.prisma.listing.findUnique({
+      where: { id: listingId },
+      select: { id: true, title: true, channexPropertyId: true, isArchived: true },
+    });
+    if (!listing) {
+      throw new Error(`Listing ${listingId} not found`);
+    }
+
+    this.logger.log(
+      `[Admin/Delete] Listing ${listingId} ("${listing.title}") mode=${force ? 'hard' : 'soft'} ` +
+        `channex=${listing.channexPropertyId ?? 'none'}`,
+    );
+
+    // ── Step 1: Deactivate on Channex (best-effort) ───────────────────────
+    let channexDeactivated = false;
+    let channexError: string | undefined;
+    if (wantDeactivate && listing.channexPropertyId) {
+      try {
+        await this.channexContent.deactivateListing(listingId);
+        channexDeactivated = true;
+        this.logger.log(`[Admin/Delete] Channex deactivated: ${listing.channexPropertyId}`);
+      } catch (err: any) {
+        channexError = err?.message ?? String(err);
+        this.logger.warn(
+          `[Admin/Delete] Channex deactivation failed for ${listing.channexPropertyId}: ${channexError}. ` +
+            `Continuing with local delete.`,
+        );
+      }
+    }
+
+    // ── Step 2a: Soft delete (default) ────────────────────────────────────
+    if (!force) {
+      await this.prisma.listing.update({
+        where: { id: listingId },
+        data: {
+          isArchived: true,
+          isActive: false,
+          archivedAt: new Date(),
+        },
+      });
+      this.logger.log(`[Admin/Delete] Soft-deleted listing ${listingId}`);
+      return {
+        success: true,
+        mode: 'soft',
+        listingId,
+        title: listing.title,
+        channexDeactivated,
+        channexError,
+      };
+    }
+
+    // ── Step 2b: Hard delete ──────────────────────────────────────────────
+    const cascadeCounts = await this.prisma.$transaction(async (tx) => {
+      const counts: Record<string, number> = {};
+      // Channex mappings have ON DELETE SET NULL — explicitly remove them so
+      // we don't leave orphans referencing a property we just deactivated.
+      const dm = await tx.channexMapping.deleteMany({ where: { listingId } });
+      counts.channexMappings = dm.count;
+      // The listing delete cascades to: bookings, blocked_dates, calendar,
+      // calendar_events, ical_connections, pricing_rules, property_connections,
+      // property_images, property_pricing, rates, room_types.
+      await tx.listing.delete({ where: { id: listingId } });
+      return counts;
+    });
+
+    this.logger.log(
+      `[Admin/Delete] Hard-deleted listing ${listingId}. Removed mappings=${cascadeCounts.channexMappings}.`,
+    );
+
+    return {
+      success: true,
+      mode: 'hard',
+      listingId,
+      title: listing.title,
+      channexDeactivated,
+      channexError,
+      cascadeCounts,
+    };
+  }
+
   // ── Admin Markup ───────────────────────────────────────────────────────────
 
   /**

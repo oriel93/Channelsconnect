@@ -12,7 +12,7 @@ import {
   Zap, Globe, CheckCircle2, XCircle, AlertTriangle,
   Terminal, Copy, CheckCheck, Settings, Activity,
   ClipboardList, Sparkles, ImageIcon, ArrowLeft,
-  Link2,
+  Link2, Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -503,6 +503,48 @@ export default function AdminDashboard() {
     }
   };
 
+  const [deletingId, setDeletingId] = useState(null);
+  const handleDelete = async (listing) => {
+    // Two-step confirm: first regular confirm, then a typed confirm for hard delete
+    const first = confirm(
+      `Delete “${listing.title}”?\n\n` +
+      `Click OK to ARCHIVE (safe, reversible).\n` +
+      `Click Cancel to choose hard delete instead.`
+    );
+    let force = false;
+    if (!first) {
+      const typed = prompt(
+        `HARD delete “${listing.title}”?\n\n` +
+        `This removes the listing row, cascading bookings, images, room types, rates.\n` +
+        `Channex property will be deactivated (best-effort).\n\n` +
+        `Type DELETE to confirm:`
+      );
+      if (typed !== 'DELETE') {
+        toast.info('Delete cancelled');
+        return;
+      }
+      force = true;
+    }
+    setDeletingId(listing.id);
+    try {
+      const res = await api.admin.deleteListing(listing.id, { force });
+      const data = res?.data || res;
+      if (data?.mode === 'hard') {
+        toast.success(`Hard-deleted “${data.title}” (mappings: ${data.cascadeCounts?.channexMappings ?? 0})`);
+      } else {
+        toast.success(`Archived “${data.title}”${data.channexDeactivated ? ' (Channex deactivated)' : ''}`);
+      }
+      if (data?.channexError) {
+        toast.warning(`Channex deactivation warning: ${data.channexError}`);
+      }
+      fetchData();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err.message || 'Delete failed');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const handleApprove = async (listingId) => {
     setApprovingId(listingId);
     try {
@@ -762,6 +804,13 @@ export default function AdminDashboard() {
                             onClick={() => handleSync(listing)}>
                             {syncingListingId === listing.id ? <Loader2 className={`w-3 h-3 mr-1 animate-spin`} /> : <Zap className={`w-3 h-3 mr-1`} />}
                             {syncStates[listing.id]?.channexPropertyId ? 'Sync' : 'Publish'}
+                          </Button>
+                          <Button size={`sm`} variant={`outline`}
+                            className={`h-7 text-xs border-red-500/40 text-red-300 hover:text-white hover:border-red-500/60 hover:bg-red-500/10`}
+                            disabled={deletingId === listing.id}
+                            onClick={() => handleDelete(listing)}
+                            title="Archive (OK) or hard-delete (Cancel + type DELETE)">
+                            {deletingId === listing.id ? <Loader2 className={`w-3 h-3 animate-spin`} /> : <Trash2 className={`w-3 h-3`} />}
                           </Button>
                         </div>
                       </TableCell>
