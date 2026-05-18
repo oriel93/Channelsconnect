@@ -154,6 +154,21 @@ export class ChannexAriController {
         `Task IDs: ${result.taskIds.join(', ')}`,
     );
 
+    // After pushing to Channex, immediately pull what's actually stored there back into
+    // the local rates table so the tape chart mirrors Channex. Non-fatal on failure.
+    let pullResult: { upserted: number; dateCount: number } | null = null;
+    try {
+      const pulled = await this.ariService.pullFromChannex(listingId, { days: 500 });
+      if (pulled.success) {
+        pullResult = { upserted: pulled.upserted, dateCount: pulled.dateCount };
+        this.logger.log(
+          `[ChannexAri] Post-sync pull complete: ${pulled.upserted} rate rows mirrored locally`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.warn(`[ChannexAri] Post-sync pull failed (non-fatal): ${err?.message}`);
+    }
+
     return {
       success: true,
       taskIds: result.taskIds,
@@ -161,6 +176,7 @@ export class ChannexAriController {
         `Copy the Task ID(s) into the certification form.`,
       listingId,
       taskIdDisplay: result.taskIds.map(tid => ({ taskId: tid, type: tid.startsWith('avail') ? 'Availability' : 'Rates' })),
+      localMirror: pullResult,
     };
   }
 
@@ -336,5 +352,23 @@ export class ChannexAriController {
         `Property built in Channex. IDs: property=${ids.channexPropertyId} ` +
         `room_type=${ids.channexRoomTypeId} rate_plan=${ids.channexRatePlanId}`,
     };
+  }
+
+  // ── POST /admin/channex/pull/:listingId — Mirror Channex → local rates table ────
+  // Backfills the calendar from what Channex actually has stored.
+  // Use this when a property's tape chart shows empty cells but Channex has data.
+  // Body (optional): { days?: number }  default=500
+
+  @Post('pull/:listingId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Pull rates+availability from Channex into local DB so calendar mirrors Channex',
+  })
+  async pullFromChannex(
+    @Param('listingId', ParseIntPipe) listingId: number,
+    @Body() body: { days?: number } = {},
+  ) {
+    this.logger.log(`[ChannexAri] POST /admin/channex/pull/${listingId} days=${body?.days ?? 500}`);
+    return this.ariService.pullFromChannex(listingId, { days: body?.days });
   }
 }

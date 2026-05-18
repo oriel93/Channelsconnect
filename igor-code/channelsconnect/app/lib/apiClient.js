@@ -330,6 +330,14 @@ export const api = {
     /** Set Channex property inactive and archive locally */
     deactivateListing: (listingId) => apiClient.post(`/admin/listings/${listingId}/deactivate`),
     /**
+     * Pull rates+availability from Channex → local DB so calendar mirrors Channex.
+     * Default 500 days. Useful after a property has been edited in Channex directly
+     * or by an OTA, and the local calendar shows stale/empty cells.
+     */
+    pullFromChannex: (listingId, { days = 500 } = {}) =>
+      apiClient.post(`/admin/channex/pull/${listingId}`, { days }),
+
+    /**
      * Delete a listing. Soft delete by default (archives + deactivates on Channex).
      * Pass { force: true } for a hard delete (removes the listing row and cascades).
      * Pass { skipChannex: true } to bypass Channex deactivation.

@@ -838,4 +838,145 @@ export class ChannexAriService {
       channexRatePlanId: result.channexRatePlanId,
     };
   }
+
+  // ── Pull rates + availability from Channex → local `rates` table ──────────────────
+  /**
+   * pullFromChannex — backfills the local `rates` table from what Channex actually has.
+   *
+   * Why this exists:
+   *   The tape chart (PropertyList) reads from the local `rates` table. If a property
+   *   was pushed to Channex but the local rate rows were never seeded (e.g. via raw
+   *   Channex API or by an OTA), the calendar appears empty. Calling this method
+   *   pulls 500 days of restrictions + availability from Channex and upserts them
+   *   locally, so the calendar mirrors Channex.
+   *
+   * Endpoints used:
+   *   GET /restrictions?filter[property_id]&filter[date][gte]&filter[date][lte]&filter[rate_plan_id]&filter[restrictions]=rate,min_stay_arrival,stop_sell
+   *   GET /availability?filter[property_id]&filter[date][gte]&filter[date][lte]
+   *
+   * Returns { upserted, dateCount } so the UI can show progress.
+   */
+  async pullFromChannex(
+    listingId: number,
+    opts: { days?: number } = {},
+  ): Promise<{ success: boolean; upserted: number; dateCount: number; message: string }> {
+    const days = Math.min(Math.max(opts.days ?? 500, 1), 730);
+
+    const listing = await this.prisma.listing.findUnique({
+      where: { id: listingId },
+      select: { id: true, channexPropertyId: true },
+    });
+    if (!listing) {
+      return { success: false, upserted: 0, dateCount: 0, message: `Listing ${listingId} not found` };
+    }
+    if (!listing.channexPropertyId) {
+      return { success: false, upserted: 0, dateCount: 0, message: `Listing ${listingId} has no channexPropertyId — cannot pull` };
+    }
+
+    const mapping = await this.prisma.channexMapping.findFirst({
+      where: { listingId, syncStatus: { not: 'archived' } },
+    });
+    if (!mapping?.channexRoomTypeId) {
+      return { success: false, upserted: 0, dateCount: 0, message: `Listing ${listingId} has no active mapping — cannot pull` };
+    }
+
+    const propId = listing.channexPropertyId;
+    const roomTypeId = mapping.channexRoomTypeId;
+    const ratePlanId = mapping.channexRatePlanId;
+
+    const today = new Date();
+    const todayISO = today.toISOString().slice(0, 10);
+    const end = new Date(today);
+    end.setDate(end.getDate() + days - 1);
+    const endISO = end.toISOString().slice(0, 10);
+
+    this.logger.log(
+      `[ChannexAri] pullFromChannex listing=${listingId} prop=${propId.slice(0, 8)} ` +
+        `rate_plan=${ratePlanId?.slice(0, 8) ?? 'none'} ${todayISO}→${endISO}`,
+    );
+
+    // Fetch restrictions (rates, min_stay, stop_sell) and availability in parallel
+    const apiKey = process.env.CHANNEX_API_KEY;
+    if (!apiKey) {
+      return { success: false, upserted: 0, dateCount: 0, message: 'CHANNEX_API_KEY not set' };
+    }
+
+    const fetchRestrictions = async (): Promise<Record<string, any>> => {
+      if (!ratePlanId) return {};
+      const path =
+        `/restrictions?` +
+        `filter[property_id]=${propId}&` +
+        `filter[date][gte]=${todayISO}&filter[date][lte]=${endISO}&` +
+        `filter[rate_plan_id]=${ratePlanId}&` +
+        `filter[restrictions]=rate,min_stay_arrival,stop_sell`;
+      try {
+        const res = await this.deepSync['http'].get<any>(path, apiKey);
+        return res?.data?.[ratePlanId] ?? {};
+      } catch (err: any) {
+        this.logger.warn(`[ChannexAri/pull] restrictions fetch failed: ${err?.message}`);
+        return {};
+      }
+    };
+
+    const fetchAvail = async (): Promise<Record<string, any>> => {
+      const path =
+        `/availability?` +
+        `filter[property_id]=${propId}&` +
+        `filter[date][gte]=${todayISO}&filter[date][lte]=${endISO}`;
+      try {
+        const res = await this.deepSync['http'].get<any>(path, apiKey);
+        return res?.data?.[roomTypeId] ?? {};
+      } catch (err: any) {
+        this.logger.warn(`[ChannexAri/pull] availability fetch failed: ${err?.message}`);
+        return {};
+      }
+    };
+
+    const [rateMap, availMap] = await Promise.all([fetchRestrictions(), fetchAvail()]);
+    const allDates = new Set<string>([...Object.keys(rateMap), ...Object.keys(availMap)]);
+
+    let upserted = 0;
+    const BATCH = 100;
+    const dates = [...allDates];
+    for (let i = 0; i < dates.length; i += BATCH) {
+      const chunk = dates.slice(i, i + BATCH);
+      await this.prisma.$transaction(
+        chunk.map((ds) => {
+          const r = rateMap[ds] ?? {};
+          const a = availMap[ds];
+          const price = r.rate != null ? Number(r.rate) : null;
+          const minStay = r.min_stay_arrival ?? null;
+          const available = a !== undefined ? Number(a) > 0 : true;
+          return this.prisma.rate.upsert({
+            where: { listingId_date: { listingId, date: new Date(`${ds}T00:00:00Z`) } },
+            update: {
+              ...(price != null ? { price: price as any } : {}),
+              ...(minStay != null ? { minStay } : {}),
+              available,
+            },
+            create: {
+              listingId,
+              date: new Date(`${ds}T00:00:00Z`),
+              price: (price ?? 0) as any,
+              minStay: minStay ?? undefined,
+              available,
+            },
+          });
+        }),
+      );
+      upserted += chunk.length;
+    }
+
+    this.logger.log(
+      `[CHANNEX_CERT_LOG] PULL_FROM_CHANNEX listing=${listingId} ` +
+        `upserted=${upserted} dates=${allDates.size}`,
+    );
+
+    return {
+      success: true,
+      upserted,
+      dateCount: allDates.size,
+      message: `Pulled ${allDates.size} date(s) from Channex; upserted ${upserted} rate row(s).`,
+    };
+  }
 }
