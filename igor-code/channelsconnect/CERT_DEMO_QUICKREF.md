@@ -58,8 +58,15 @@ During the call, create a booking on listing 63 for **mid-July 2026** (high-rate
 Then on Channex dashboard show:
 - 2026-07-17, 18, 19: availability = `0` ✅ (blocked)
 - 2026-07-16 and 2026-07-20: availability = `1` ✅ (untouched)
+- **Channex Bookings tab** → booking should appear with guest name, dates, source="Offline", amount $1,170
 
 Cancel the booking → availability restored to `1` on all 3 nights.
+
+**Pre-existing test bookings on Channex** (you can delete or ignore during demo):
+- `833690d9...` Guest "Test" 2026-09-10→-12 (left from initial wire-format probe)
+- `b461f0b4...` Guest "Production Dryrun" 2026-10-15→-17 (left from deployed-code dry-run)
+
+Both show the booking pipeline works end-to-end. Use dates outside Sep 10–12 and Oct 15–17 for the live demo if you want a clean availability picture.
 
 ---
 
