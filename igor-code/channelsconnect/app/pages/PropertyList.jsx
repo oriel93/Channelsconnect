@@ -75,25 +75,47 @@ function buildDates(startOffset) {
 
 // ─── Module D: Build O(1) hash maps ──────────────────────────────────────────
 
+/**
+ * Row key helper. For multi-room listings, every (listing, room_type) gets its own
+ * row in the calendar. We compose a stable key so rateMap/blockMap/bookingMap can
+ * look up per-row data in O(1).
+ *
+ *   rowKeyOf(35, 4)  -> 'L35_RT4'      (Erorentals · Twin Room)
+ *   rowKeyOf(63, null) -> 'L63'         (single-room listing has no roomTypeId column on rates)
+ */
+function rowKeyOf(listingId, roomTypeId) {
+  return roomTypeId != null ? `L${listingId}_RT${roomTypeId}` : `L${listingId}`;
+}
+
 function buildMaps(rates = [], blockedDates = [], bookings = []) {
-  // rateMap[`${lid}_${date}`] → { price, minStay, available }
+  // rateMap[`${rowKey}_${date}`] → { price, minStay, available, roomTypeId }
+  // For listings whose rates have roomTypeId set (multi-room), we ONLY key by room.
+  // For legacy/single-room listings we ALSO key by listing alone so the fallback works.
   const rateMap = {};
   for (const r of rates) {
     const d = typeof r.date === 'string' ? r.date.slice(0, 10) : dk(new Date(r.date));
-    rateMap[`${r.listingId}_${d}`] = r;
+    if (r.roomTypeId != null) {
+      rateMap[`L${r.listingId}_RT${r.roomTypeId}_${d}`] = r;
+    }
+    // Always keep a listing-level entry too for single-room listings or legacy rows
+    // (the renderer prefers the room-keyed entry when present).
+    rateMap[`L${r.listingId}_${d}`] = r;
   }
 
-  // blockMap[`${lid}_${date}`] → true
+  // blockMap[`${rowKey}_${date}`] → true
   const blockMap = {};
   for (const b of blockedDates) {
     const d = typeof b.date === 'string' ? b.date.slice(0, 10) : dk(new Date(b.date));
-    blockMap[`${b.listingId}_${d}`] = true;
+    if (b.roomTypeId != null) {
+      blockMap[`L${b.listingId}_RT${b.roomTypeId}_${d}`] = true;
+    }
+    blockMap[`L${b.listingId}_${d}`] = true;
   }
 
-  // bookingMap[`${lid}_${date}`] → { guestName, nights, bookingId, isStart }
-  // We mark every date in the booking span so rendering is O(1) per cell
+  // bookingMap[`${rowKey}_${date}`] → { guestName, nights, bookingId, isStart, ... }
+  // Bookings are placed on the room's row (when roomTypeId is set), otherwise on the
+  // listing-level row.
   const bookingMap = {};
-  // Also keep an array of booking objects per listing for pill rendering
   const bookingsByListing = {};
 
   for (const bk of bookings) {
@@ -101,6 +123,7 @@ function buildMaps(rates = [], blockedDates = [], bookings = []) {
     const cout = startOfDay(parseISO(bk.checkOut));
     const nights = differenceInDays(cout, cin);
     const lid  = bk.listingId;
+    const rtid = bk.roomTypeId;
 
     if (!bookingsByListing[lid]) bookingsByListing[lid] = [];
     bookingsByListing[lid].push({ ...bk, nights, cinDate: cin, coutDate: cout });
@@ -109,14 +132,22 @@ function buildMaps(rates = [], blockedDates = [], bookings = []) {
     let cur = cin;
     let dayIndex = 0;
     while (cur < cout) {
-      const key = `${lid}_${dk(cur)}`;
-      bookingMap[key] = {
+      const dstr = dk(cur);
+      const entry = {
         guestName: bk.guestName,
         nights,
         bookingId: bk.id,
         isStart:   dayIndex === 0,
         booking:   bk,
+        roomTypeId: rtid,
       };
+      // Place on the room-specific row when we know the room
+      if (rtid != null) {
+        bookingMap[`L${lid}_RT${rtid}_${dstr}`] = entry;
+      } else {
+        // Legacy / single-room booking — also placed on the listing-level row
+        bookingMap[`L${lid}_${dstr}`] = entry;
+      }
       cur = addDays(cur, 1);
       dayIndex++;
     }
@@ -528,6 +559,39 @@ export default function PropertyList() {
     return q ? base.filter((l) => l.title?.toLowerCase().includes(q) || l.city?.toLowerCase().includes(q)) : base;
   }, [listings, search, focusListingId]);
 
+  /**
+   * Row expansion for multi-room listings.
+   *
+   * Each entry in `rows` is one calendar lane:
+   *   { kind: 'listing', listing, roomType: null }
+   *     — single-room or legacy listing; one row, listing-level data
+   *   { kind: 'parent', listing, roomType: null }
+   *     — header row for a multi-room listing (no cells, just the property name)
+   *   { kind: 'room', listing, roomType: {id,name,maxGuests,quantity,channexRoomTypeId} }
+   *     — individual room row under a multi-room listing
+   *
+   * For multi-room listings we render N+1 rows (parent header + N room lanes).
+   * Cells render against the room’s key (`L35_RT4_2026-06-25` style) so each
+   * room has its own availability/rate display.
+   */
+  const rows = useMemo(() => {
+    const out = [];
+    for (const l of filteredListings) {
+      const rts = Array.isArray(l.roomTypes) ? l.roomTypes : [];
+      if (rts.length <= 1) {
+        // Single-room or legacy listing — one combined row
+        out.push({ kind: 'listing', listing: l, roomType: rts[0] ?? null });
+      } else {
+        // Multi-room: parent header (no cells) + one row per room
+        out.push({ kind: 'parent', listing: l, roomType: null });
+        for (const rt of rts) {
+          out.push({ kind: 'room', listing: l, roomType: rt });
+        }
+      }
+    }
+    return out;
+  }, [filteredListings]);
+
   // ── Fetch: single /calendar/tape round-trip ────────────────────────────────
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -550,9 +614,9 @@ export default function PropertyList() {
   // ── Virtualizer refs ───────────────────────────────────────────────────────
   const scrollRef = useRef(null);
 
-  // Y axis: property rows
+  // Y axis: property rows (now: listing-level + per-room rows)
   const rowVirt = useVirtualizer({
-    count:         filteredListings.length,
+    count:         rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize:  () => ROW_H,
     overscan:      3,
@@ -568,7 +632,7 @@ export default function PropertyList() {
   });
 
   const totalW = PROP_W + DAYS_TOTAL * COL_W;
-  const totalH = filteredListings.length * ROW_H;
+  const totalH = rows.length * ROW_H;
 
   // ── Drag handlers ──────────────────────────────────────────────────────────
   const onCellMouseDown = useCallback((lid, date, e) => {
@@ -605,14 +669,20 @@ export default function PropertyList() {
   };
 
   // ── Cell renderer ──────────────────────────────────────────────────────────
-  const renderCell = useCallback((listing, date, colIndex) => {
+  /**
+   * Render one calendar cell for a row.
+   * The row may be a listing-level row (roomType=null) or a per-room row.
+   * Lookups are room-keyed when available, otherwise fall back to listing-level keys.
+   */
+  const renderCell = useCallback((listing, roomType, date, colIndex) => {
     const dateStr = dk(date);
-    const key     = `${listing.id}_${dateStr}`;
-    const blocked = maps.blockMap[key];
-    const booked  = maps.bookingMap[key];
-    // Prefer per-date rate row; fall back to the listing's base price so the
-    // calendar always mirrors the published rate (even before per-day overrides exist).
-    const rateRow = maps.rateMap[key];
+    const roomKey    = roomType ? `L${listing.id}_RT${roomType.id}_${dateStr}` : null;
+    const listingKey = `L${listing.id}_${dateStr}`;
+
+    const blocked = (roomKey && maps.blockMap[roomKey]) || maps.blockMap[listingKey];
+    const booked  = (roomKey && maps.bookingMap[roomKey]) || maps.bookingMap[listingKey];
+    // Prefer the room-specific rate row; fall back to listing-level rate; then basePrice.
+    const rateRow = (roomKey && maps.rateMap[roomKey]) || maps.rateMap[listingKey];
     const baseFallback = listing.basePrice != null && !isNaN(Number(listing.basePrice))
       ? Number(listing.basePrice)
       : null;
@@ -623,7 +693,8 @@ export default function PropertyList() {
     const today   = isToday(date);
     const weekend  = isWeekend(date);
 
-    // Determine if this cell is in the drag selection for this listing
+    // Drag selection: scoped to listing id (drag spans only within the same row's listing).
+    // For per-room rows we still use listing.id as the scope id.
     const inDrag = drag.dragging && drag.listingId === listing.id && (() => {
       const [dA, dB] = drag.startDate <= drag.endDate
         ? [drag.startDate, drag.endDate]
@@ -636,9 +707,10 @@ export default function PropertyList() {
     if (blocked) cellBg = '#cbd5e1';
     if (inDrag)  cellBg = '#dbeafe';
 
+    const cellKey = roomKey ?? listingKey;
     return (
       <div
-        key={key}
+        key={cellKey}
         style={{
           position:   'absolute',
           left:       colIndex * COL_W,
@@ -866,13 +938,67 @@ export default function PropertyList() {
                 </div>
               </div>
 
-              {/* ── Virtualised rows ────────────────────────────── */}
+              {/* ── Virtualised rows (now: listing-level + per-room lanes) ── */}
               <div style={{ position: 'relative', height: totalH, top: HEADER_H }}>
                 {rowVirt.getVirtualItems().map((vr) => {
-                  const listing = filteredListings[vr.index];
-                  if (!listing) return null;
+                  const row = rows[vr.index];
+                  if (!row) return null;
+                  const { kind, listing, roomType } = row;
                   const hasChannex = !!listing.channexPropertyId;
 
+                  // PARENT row — header for a multi-room listing. No cells; just the
+                  // property name spanning the full width, slightly different background.
+                  if (kind === 'parent') {
+                    return (
+                      <div
+                        key={vr.key}
+                        style={{
+                          position:   'absolute',
+                          top:        vr.start,
+                          width:      '100%',
+                          height:     ROW_H,
+                          display:    'flex',
+                          background: '#f8fafc',
+                          borderBottom: '1px solid #e2e8f0',
+                        }}
+                      >
+                        <div style={{
+                          position: 'sticky', left: 0, zIndex: 25,
+                          width: PROP_W, minWidth: PROP_W, height: ROW_H,
+                          background: '#f8fafc',
+                          borderRight: '1px solid #e2e8f0',
+                          display: 'flex', alignItems: 'center', gap: 8,
+                          paddingLeft: 10, paddingRight: 6, boxSizing: 'border-box',
+                        }}>
+                          <div style={{
+                            width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                            background: hasChannex ? '#10b981' : '#f59e0b',
+                          }} title={hasChannex ? 'Connected to channels' : 'Pending channel mapping'} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ fontSize: 11, fontWeight: 700, color: '#0f172a', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {listing.title}
+                            </p>
+                            <p style={{ fontSize: 9, color: '#64748b', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {listing.roomTypes?.length} rooms · {listing.city || ''}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => setSettingsProp(listing)}
+                            style={{ opacity: 0, padding: '4px', borderRadius: 4, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', flexShrink: 0 }}
+                            className="group-hover:!opacity-100 transition-opacity"
+                            title="iCal & Pricing settings"
+                          >
+                            <Settings2 style={{ width: 13, height: 13, color: '#64748b' }} />
+                          </button>
+                        </div>
+                        <div style={{ flex: 1, background: '#f8fafc' }} />
+                      </div>
+                    );
+                  }
+
+                  // Either a single-room listing (kind='listing') or a room lane under
+                  // a multi-room parent (kind='room'). Both render cells the same way.
+                  const isRoomLane = kind === 'room';
                   return (
                     <div
                       key={vr.key}
@@ -885,7 +1011,6 @@ export default function PropertyList() {
                       }}
                       className="group"
                     >
-                      {/* Sticky property name cell */}
                       <div style={{
                         position:    'sticky',
                         left:        0,
@@ -899,44 +1024,65 @@ export default function PropertyList() {
                         display:     'flex',
                         alignItems:  'center',
                         gap:         8,
-                        paddingLeft: 10,
+                        paddingLeft: isRoomLane ? 22 : 10,
                         paddingRight: 6,
                         boxSizing:   'border-box',
                       }}
                         className="group-hover:bg-slate-50"
                       >
-                        {/* Color dot for quick ID */}
-                        <div style={{
-                          width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-                          background: hasChannex ? '#10b981' : '#f59e0b',
-                        }} title={hasChannex ? 'Connected to channels' : 'Pending channel mapping'} />
+                        {!isRoomLane && (
+                          <div style={{
+                            width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                            background: hasChannex ? '#10b981' : '#f59e0b',
+                          }} title={hasChannex ? 'Connected to channels' : 'Pending channel mapping'} />
+                        )}
+                        {isRoomLane && (
+                          <div style={{
+                            width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+                            background: roomType?.channexRoomTypeId ? '#10b981' : '#cbd5e1',
+                          }} title={roomType?.channexRoomTypeId ? `Synced room: ${roomType.channexRoomTypeId.slice(0,8)}…` : 'Not synced'} />
+                        )}
 
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ fontSize: 11, fontWeight: 600, color: '#0f172a', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {listing.title}
+                          <p style={{
+                            fontSize: isRoomLane ? 10 : 11,
+                            fontWeight: isRoomLane ? 500 : 600,
+                            color: isRoomLane ? '#475569' : '#0f172a',
+                            margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                          }}>
+                            {isRoomLane ? roomType.name : listing.title}
+                            {isRoomLane && roomType.quantity > 1 && (
+                              <span style={{ marginLeft: 4, color: '#94a3b8', fontWeight: 400 }}>×{roomType.quantity}</span>
+                            )}
                           </p>
-                          {listing.city && (
+                          {!isRoomLane && listing.city && (
                             <p style={{ fontSize: 9, color: '#94a3b8', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {listing.city}
                             </p>
                           )}
+                          {isRoomLane && (
+                            <p style={{ fontSize: 8, color: '#94a3b8', margin: 0 }}>
+                              sleeps {roomType.maxGuests}
+                            </p>
+                          )}
                         </div>
 
-                        <button
-                          onClick={() => setSettingsProp(listing)}
-                          style={{ opacity: 0, padding: '4px', borderRadius: 4, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', flexShrink: 0 }}
-                          className="group-hover:!opacity-100 transition-opacity"
-                          title="iCal & Pricing settings"
-                        >
-                          <Settings2 style={{ width: 13, height: 13, color: '#64748b' }} />
-                        </button>
+                        {!isRoomLane && (
+                          <button
+                            onClick={() => setSettingsProp(listing)}
+                            style={{ opacity: 0, padding: '4px', borderRadius: 4, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', flexShrink: 0 }}
+                            className="group-hover:!opacity-100 transition-opacity"
+                            title="iCal & Pricing settings"
+                          >
+                            <Settings2 style={{ width: 13, height: 13, color: '#64748b' }} />
+                          </button>
+                        )}
                       </div>
 
-                      {/* Virtualised date cells for this row */}
                       <div style={{ position: 'relative', flex: 1, height: ROW_H }}>
                         {colVirt.getVirtualItems().map((vc) => {
                           const d = dates[vc.index];
-                          return renderCell(listing, d, vc.index);
+                          return renderCell(listing, roomType, d, vc.index);
                         })}
                       </div>
                     </div>

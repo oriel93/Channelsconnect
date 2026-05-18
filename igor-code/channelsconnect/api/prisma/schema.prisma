@@ -71,9 +71,11 @@ model RoomType {
   channexRatePlanId    String?     @map("channexRatePlanId")   // populated after Step C
   createdAt            DateTime    @default(now())
   updatedAt            DateTime    @updatedAt
+  blockedDates         BlockedDate[]
   bookings             Booking[]
   inventory            Inventory[]
-  listing              Listing     @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  listing              Listing       @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  rates                Rate[]
 
   @@map("room_types")
 }
@@ -216,18 +218,23 @@ model Listing {
 }
 
 model Rate {
-  id        Int      @id @default(autoincrement())
-  listingId Int
-  date      DateTime @db.Date
-  price     Decimal  @db.Decimal(10, 2)
-  minStay   Int?
-  available Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  id         Int       @id @default(autoincrement())
+  listingId  Int
+  roomTypeId Int?      @map("roomTypeId")   // per-room rate; null = legacy listing-level row
+  date       DateTime  @db.Date
+  price      Decimal   @db.Decimal(10, 2)
+  minStay    Int?
+  available  Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  listing    Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  roomType   RoomType? @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
 
-  @@unique([listingId, date])
+  // Allow one rate row per (listing, room_type, date). Legacy rows with NULL
+  // roomTypeId are still constrained to one per (listing, date) by the old key.
+  @@unique([listingId, date], name: "listingId_date")
   @@index([date])
+  @@index([roomTypeId])
   @@map("rates")
 }
 
@@ -249,15 +256,18 @@ model ChannelsConnectBooking {
 }
 
 model BlockedDate {
-  id        Int      @id @default(autoincrement())
-  listingId Int
-  date      DateTime @db.Date
-  reason    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  id         Int       @id @default(autoincrement())
+  listingId  Int
+  roomTypeId Int?      @map("roomTypeId")
+  date       DateTime  @db.Date
+  reason     String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  listing    Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  roomType   RoomType? @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
 
   @@unique([listingId, date])
+  @@index([roomTypeId])
   @@index([listingId])
   @@index([date])
   @@index([listingId, date])

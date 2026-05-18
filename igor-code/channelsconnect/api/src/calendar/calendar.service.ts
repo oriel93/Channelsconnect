@@ -381,14 +381,14 @@ export class CalendarService {
           listingId: { in: listingIds },
           date: { gte: startDate, lte: endDate },
         },
-        select: { listingId: true, date: true, price: true, minStay: true, available: true },
+        select: { listingId: true, roomTypeId: true, date: true, price: true, minStay: true, available: true },
       }),
       this.prisma.blockedDate.findMany({
         where: {
           listingId: { in: listingIds },
           date: { gte: startDate, lte: endDate },
         },
-        select: { listingId: true, date: true, reason: true },
+        select: { listingId: true, roomTypeId: true, date: true, reason: true },
       }),
       this.prisma.booking.findMany({
         where: {
