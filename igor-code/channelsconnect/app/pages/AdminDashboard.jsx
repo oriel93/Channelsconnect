@@ -453,15 +453,37 @@ export default function AdminDashboard() {
     if (syncingListingId === listing.id) return;
     setSyncingListingId(listing.id);
     try {
-      const res = await api.admin.syncListingToChannex(listing.id);
-      const result = res.data;
-      if (result.outcome === 'synced') {
-        const op = result.operation === 'created' ? 'Published' : 'Updated';
-        toast.success(`${op} “${listing.title}” on Channex ✓ — ${result.channexPropertyId}`);
-        await loadSyncState(listing.id);
-        fetchData();
+      // First-time publish (no Channex property yet) → use the new 3-step build flow
+      // which creates property + room_type + rate_plan AND installs the Booking CRS app.
+      // Subsequent syncs (already mapped) → use legacy update path (PUT /properties).
+      const state = syncStates[listing.id];
+      const isFirstPublish = !state?.channexPropertyId;
+
+      if (isFirstPublish) {
+        const res = await api.admin.buildChannexProperty(listing.id);
+        const result = res.data;
+        if (result.success) {
+          toast.success(
+            `Published “${listing.title}” to Channex ✓ — ` +
+            `property=${(result.channexPropertyId || '').slice(0, 8)} ` +
+            `room=${(result.channexRoomTypeId || '').slice(0, 8)} ` +
+            `rate=${(result.channexRatePlanId || '').slice(0, 8)}`
+          );
+          await loadSyncState(listing.id);
+          fetchData();
+        } else {
+          toast.error(`Publish failed: ${result.message || 'unknown error'}`);
+        }
       } else {
-        toast.error(`Sync failed: ${result.errorMessage || 'unknown error'}`);
+        const res = await api.admin.syncListingToChannex(listing.id);
+        const result = res.data;
+        if (result.outcome === 'synced') {
+          toast.success(`Updated “${listing.title}” on Channex ✓`);
+          await loadSyncState(listing.id);
+          fetchData();
+        } else {
+          toast.error(`Sync failed: ${result.errorMessage || 'unknown error'}`);
+        }
       }
     } catch (err) {
       toast.error('Sync failed: ' + (err?.response?.data?.message || err.message));

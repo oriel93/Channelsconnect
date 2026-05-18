@@ -333,14 +333,23 @@ export class ChannexContentService {
     return p;
   }
 
-  /** Build the Channex room_type payload. */
+  /** Build the Channex room_type payload.
+   *  Channex requires occ_adults + occ_children + occ_infants (all non-null) and
+   *  count_of_rooms >= 1. Older versions used `occ` which Channex rejects with
+   *  422 'occ_children/occ_infants can\u2019t be blank'.
+   *  Defensive: handle listings created without bedroom/guest counts by defaulting.
+   */
   private _buildRoomTypePayload(listing: any, propertyId: string): Record<string, any> {
+    const adults = Math.max(1, Number(listing.maxGuests) || 2);
     return {
-      property_id:    propertyId,
-      title:          listing.title,
-      occ:            listing.maxGuests     ?? 2,
-      count_of_rooms: listing.bedrooms      ?? 1,
-      currency:       listing.currency      || 'USD',
+      property_id:       propertyId,
+      title:             listing.title || 'Standard Room',
+      count_of_rooms:    Math.max(1, Number(listing.bedrooms) || 1),
+      occ_adults:        adults,
+      occ_children:      0,
+      occ_infants:       0,
+      default_occupancy: adults,
+      currency:          listing.currency || 'USD',
     };
   }
 
