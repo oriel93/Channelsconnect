@@ -178,6 +178,14 @@ export default function GlobalCreateBookingModal({
 
   // ── Submit ─────────────────────────────────────────────────────────────────
   const onSubmit = async (values: BookingFormValues) => {
+    // Hard-block submit if dates overlap an existing booking.
+    if (overlap) {
+      setSubmitError(
+        `Dates conflict with an existing booking: ${overlap.reason} ` +
+        `(${overlap.start} → ${overlap.end}). Pick different dates or cancel the existing booking first.`
+      );
+      return;
+    }
     setSubmitError(null);
     setIsSubmitting(true);
     try {
@@ -330,6 +338,21 @@ export default function GlobalCreateBookingModal({
               )}
             </div>
           </div>
+
+          {/* Overlap warning — inline, blocks submit */}
+          {overlap && (
+            <Alert variant=\"destructive\" className=\"border-red-500/40 bg-red-500/10\">
+              <AlertDescription className=\"text-red-200 text-sm\">
+                <strong>Dates unavailable.</strong> Conflicts with: {overlap.reason} ({overlap.start} → {overlap.end}).
+                Pick different dates or cancel the existing booking first.
+              </AlertDescription>
+            </Alert>
+          )}
+          {!overlap && watchedListingId && blockedRanges.length > 0 && !loadingBlocks && (
+            <p className=\"text-xs text-slate-500\">
+              {blockedRanges.length} existing booking{blockedRanges.length === 1 ? '' : 's'} on this property — dates checked automatically.
+            </p>
+          )}
 
           {/* Guests + Price row */}
           <div className=\"grid grid-cols-2 gap-3\">
