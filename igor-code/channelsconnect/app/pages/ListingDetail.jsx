@@ -22,7 +22,7 @@ import { Listing } from '@/api/entities';
 import {
   Loader2, MapPin, Users, Bed, Bath, Calendar,
   Settings, Home, ArrowLeft, ShieldCheck, Plus,
-  User, Clock, DollarSign, XCircle,
+  User, Clock, DollarSign, XCircle, BedDouble, Hash,
 } from 'lucide-react';
 import { api } from '@/lib/apiClient';
 import AddManualBookingModal from '@/components/dashboard/channels/AddManualBookingModal';
@@ -185,6 +185,72 @@ const ListingDetailContent = () => {
             <DetailItem icon={Bath}  label="Bathrooms"     value={listing.bathrooms    || 'Not specified'} />
           </CardContent>
         </Card>
+
+        {/* Room Types — the inventory-bearing sub-units (e.g. Twin Room, Double Room, King Suite). */}
+        {Array.isArray(listing.roomTypes) && listing.roomTypes.length > 0 && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <BedDouble className="w-4 h-4 text-indigo-500" />
+                  Rooms
+                  <Badge variant="outline" className="ml-2 text-xs font-normal">
+                    {listing.roomTypes.length} type{listing.roomTypes.length === 1 ? '' : 's'}
+                    {' · '}
+                    {listing.roomTypes.reduce((sum, rt) => sum + (rt.quantity || 1), 0)} unit{listing.roomTypes.reduce((sum, rt) => sum + (rt.quantity || 1), 0) === 1 ? '' : 's'}
+                  </Badge>
+                </CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {listing.roomTypes.map((rt) => (
+                <div key={rt.id} className="border border-slate-200 rounded-lg p-3 hover:bg-slate-50 transition-colors">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="font-medium text-slate-800 text-sm truncate">{rt.name}</p>
+                        {rt.quantity > 1 && (
+                          <Badge variant="outline" className="text-xs">×{rt.quantity}</Badge>
+                        )}
+                        {rt.channexRoomTypeId && (
+                          <Badge variant="outline" className="text-xs border-emerald-200 text-emerald-700 bg-emerald-50">
+                            Synced
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-3 text-xs text-slate-600">
+                        <span className="inline-flex items-center gap-1">
+                          <Users className="w-3 h-3" />
+                          Sleeps {rt.maxGuests}
+                        </span>
+                        {rt.bedType && (
+                          <span className="inline-flex items-center gap-1">
+                            <Bed className="w-3 h-3" />
+                            {rt.bedType}
+                          </span>
+                        )}
+                      </div>
+                      {rt.description && (
+                        <p className="text-xs text-slate-500 mt-1.5">{rt.description}</p>
+                      )}
+                    </div>
+                    {/* Admin: Channex IDs for debug / cert review */}
+                    {isAdmin && (rt.channexRoomTypeId || rt.channexRatePlanId) && (
+                      <div className="text-xs text-slate-400 font-mono space-y-0.5 text-right">
+                        {rt.channexRoomTypeId && (
+                          <div title="Channex room_type_id">rt: {rt.channexRoomTypeId.slice(0, 8)}…</div>
+                        )}
+                        {rt.channexRatePlanId && (
+                          <div title="Channex rate_plan_id">rp: {rt.channexRatePlanId.slice(0, 8)}…</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Location — admin sees coordinates; user sees only address */}
         {listing.address && (
