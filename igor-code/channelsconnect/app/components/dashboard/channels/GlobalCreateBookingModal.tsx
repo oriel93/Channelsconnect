@@ -46,7 +46,7 @@ const bookingSchema = z.object({
   listingId:   z.number({ invalid_type_error: 'Please select a property' })
                   .positive('Please select a property'),
   checkIn:     z.string()
-                  .regex(/^\\d{4}-\\d{2}-\\d{2}$/, 'Use YYYY-MM-DD format')
+                  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format')
                   .refine((d) => {
                     const t = new Date(d + 'T00:00:00Z');
                     const today = new Date();
@@ -54,7 +54,7 @@ const bookingSchema = z.object({
                     return t >= today;
                   }, 'Check-in must be today or in the future'),
   checkOut:    z.string()
-                  .regex(/^\\d{4}-\u03b4-\u03b4-\u03b4$/, 'Use YYYY-MM-DD format')
+                  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format')
                   .refine((d) => {
                     const t = new Date(d + 'T00:00:00Z');
                     const today = new Date();
