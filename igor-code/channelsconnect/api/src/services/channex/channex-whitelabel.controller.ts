@@ -125,33 +125,63 @@ export class ChannexWhitelabelController {
     });
     if (existingPending?.channexMappings?.[0]?.channexPropertyId) {
       const channexPropertyId = existingPending.channexMappings[0].channexPropertyId;
-      this.logger.log(
-        `[Airbnb/init] Reusing pending listingId=${existingPending.id} ` +
-          `propertyId=${channexPropertyId} for user=${user.id}`,
-      );
-      // Re-mint the one-time token (they're short-lived) and rebuild iframe URL.
-      const tokenRes = await this.http.post<any>('/auth/one_time_token', this.masterKey, {
-        one_time_token: {
-          property_id: channexPropertyId,
-          group_id:    process.env.CHANNEX_GROUP_ID || undefined,
-          username:    email,
-        },
-      });
-      const oneTimeToken = tokenRes?.data?.token;
-      if (!oneTimeToken) throw new Error('Failed to generate one-time token (reuse path)');
-      const apiBase = process.env.CHANNEX_BASE || process.env.CHANNEX_BASE_URL || 'https://app.channex.io/api/v1';
-      const channexBase = apiBase.replace(/\/api\/v1\/?$/, '').replace(/\/+$/, '');
-      const iframeUrl =
-        `${channexBase}/auth/exchange` +
-        `?oauth_session_key=${oneTimeToken}` +
-        `&app_mode=headless` +
-        `&redirect_to=/channels` +
-        `&property_id=${channexPropertyId}` +
-        `&channels=ABB`;
-      return {
-        success: true,
-        data: { iframeUrl, listingId: existingPending.id, channexPropertyId, reused: true },
-      };
+
+      // Before reusing, verify the property still exists on Channex. If we (or the
+      // user) cleaned it up out-of-band, the one_time_token mint will 500. Probe
+      // first; if it's gone, drop the stale local rows and fall through to fresh-build.
+      let propertyStillExists = false;
+      try {
+        await this.http.get<any>(`/properties/${channexPropertyId}`, this.masterKey);
+        propertyStillExists = true;
+      } catch (err: any) {
+        const status = err?.response?.status ?? err?.status;
+        if (status === 404 || status === 410) {
+          this.logger.warn(
+            `[Airbnb/init] Pending listingId=${existingPending.id} points at deleted ` +
+              `Channex property ${channexPropertyId}; cleaning up and rebuilding.`,
+          );
+          // Delete the orphan local rows (mapping FK first, then listing).
+          await this.prisma.channexMapping.deleteMany({ where: { listingId: existingPending.id } });
+          await this.prisma.listing.delete({ where: { id: existingPending.id } });
+        } else {
+          this.logger.warn(
+            `[Airbnb/init] Channex property probe failed (non-404): ${err?.message ?? err}. ` +
+              `Continuing with reuse path anyway.`,
+          );
+          propertyStillExists = true; // probe failure != property gone; let the token call try
+        }
+      }
+
+      if (propertyStillExists) {
+        this.logger.log(
+          `[Airbnb/init] Reusing pending listingId=${existingPending.id} ` +
+            `propertyId=${channexPropertyId} for user=${user.id}`,
+        );
+        // Re-mint the one-time token (they're short-lived) and rebuild iframe URL.
+        const tokenRes = await this.http.post<any>('/auth/one_time_token', this.masterKey, {
+          one_time_token: {
+            property_id: channexPropertyId,
+            group_id:    process.env.CHANNEX_GROUP_ID || undefined,
+            username:    email,
+          },
+        });
+        const oneTimeToken = tokenRes?.data?.token;
+        if (!oneTimeToken) throw new Error('Failed to generate one-time token (reuse path)');
+        const apiBase = process.env.CHANNEX_BASE || process.env.CHANNEX_BASE_URL || 'https://app.channex.io/api/v1';
+        const channexBase = apiBase.replace(/\/api\/v1\/?$/, '').replace(/\/+$/, '');
+        const iframeUrl =
+          `${channexBase}/auth/exchange` +
+          `?oauth_session_key=${oneTimeToken}` +
+          `&app_mode=headless` +
+          `&redirect_to=/channels` +
+          `&property_id=${channexPropertyId}` +
+          `&channels=ABB`;
+        return {
+          success: true,
+          data: { iframeUrl, listingId: existingPending.id, channexPropertyId, reused: true },
+        };
+      }
+      // Else: fall through and build fresh below.
     }
 
     // 1. Create a blank Channex property — Airbnb will populate the real name after OAuth
