@@ -713,6 +713,16 @@ export default function PropertyList() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
+  // Refetch when the user switches back to this tab — catches bookings/blocks
+  // made in another tab so they show up without manual Refresh.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') fetchAll();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [fetchAll]);
+
   // ── Virtualizer refs ───────────────────────────────────────────────────────
   const scrollRef = useRef(null);
 
@@ -938,8 +948,16 @@ export default function PropertyList() {
                 <ChevronRight style={{ width: 16, height: 16, color: '#475569' }} />
               </button>
             </div>
-            {/* Refresh — reload local data from API (cheap, fast) */}
-            <Button variant="outline" size="sm" onClick={fetchAll} disabled={loading} title="Refresh calendar from database">
+            {/* Refresh — reload local data from API and confirm with a toast. */}
+            <Button
+              variant="outline" size="sm"
+              onClick={async () => {
+                await fetchAll();
+                toast.success('Calendar refreshed from database');
+              }}
+              disabled={loading}
+              title="Refresh calendar from database"
+            >
               {loading ? <Loader2 style={{ width: 14, height: 14 }} className="animate-spin" /> : <RefreshCw style={{ width: 14, height: 14 }} />}
             </Button>
             {/* Full Sync — push local rates+availability to Channex (and pull back to verify mirror).
@@ -950,29 +968,48 @@ export default function PropertyList() {
               onClick={async () => {
                 setSyncingAll(true);
                 try {
-                  const toSync = filteredListings.filter(l => l.channexPropertyId);
-                  if (toSync.length === 0) {
-                    toast.info('No properties are mapped to Channex yet — nothing to sync');
+                  if (filteredListings.length === 0) {
+                    toast.info('No properties to sync');
                     return;
                   }
-                  let ok = 0, failed = 0; const allTasks = [];
-                  for (const l of toSync) {
+                  let ok = 0, failed = 0, built = 0; const allTasks = []; const failures = [];
+                  for (const l of filteredListings) {
                     try {
+                      // If the listing has no Channex property yet, build it first.
+                      // This makes the button work even for fresh listings the user hasn't
+                      // published yet — one click takes them from local-only to fully synced.
+                      if (!l.channexPropertyId) {
+                        const buildRes = await api.admin.buildChannexProperty(l.id);
+                        const br = buildRes?.data ?? buildRes;
+                        if (!br?.success) {
+                          failed++;
+                          failures.push(`${l.title}: build failed (${br?.message || 'unknown'})`);
+                          continue;
+                        }
+                        built++;
+                        // buildChannexProperty already auto-runs the 500-day full sync at the
+                        // end (see channex-ari.service buildPropertyAndPersist). Count its
+                        // task IDs and skip the explicit full-sync call below.
+                        ok++;
+                        (br.syncTaskIds || []).forEach(t => allTasks.push(t));
+                        continue;
+                      }
                       const res = await api.admin.fullSyncChannex(l.id);
                       const r = res?.data ?? res;
                       if (r?.success) { ok++; (r.taskIds || []).forEach(t => allTasks.push(t)); }
-                      else failed++;
-                    } catch { failed++; }
+                      else { failed++; failures.push(`${l.title}: ${r?.message || 'unknown'}`); }
+                    } catch (e) { failed++; failures.push(`${l.title}: ${e?.response?.data?.message || e?.message || 'error'}`); }
                   }
-                  if (failed === 0) toast.success(`Synced ${ok} propert${ok === 1 ? 'y' : 'ies'} to Channex (${allTasks.length} task${allTasks.length === 1 ? '' : 's'})`);
-                  else if (ok > 0) toast.warning(`Synced ${ok}, ${failed} failed`);
-                  else toast.error(`Full sync failed for all ${failed} propert${failed === 1 ? 'y' : 'ies'}`);
+                  const builtMsg = built > 0 ? ` (${built} newly built)` : '';
+                  if (failed === 0) toast.success(`Synced ${ok} propert${ok === 1 ? 'y' : 'ies'} → Channex${builtMsg} · ${allTasks.length} task${allTasks.length === 1 ? '' : 's'}`);
+                  else if (ok > 0) toast.warning(`Synced ${ok}, ${failed} failed${builtMsg}: ${failures[0]}`);
+                  else toast.error(`Full sync failed: ${failures[0]}`);
                   await fetchAll();
                 } finally {
                   setSyncingAll(false);
                 }
               }}
-              title="Push 500-day rates+availability to Channex for all mapped properties"
+              title="Push 500-day rates+availability to Channex for all properties (auto-builds unmapped listings first)"
               className="border-indigo-500/50 text-indigo-700 hover:bg-indigo-50"
             >
               {syncingAll ? (

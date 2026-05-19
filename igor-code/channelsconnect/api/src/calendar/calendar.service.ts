@@ -386,6 +386,7 @@ export class CalendarService {
         bedrooms: true,
         city: true,
         basePrice: true,
+        channexPropertyId: true,  // needed for the calendar's Full Sync button to know which listings are Channex-mapped
         roomTypes: {
           select: {
             id: true,

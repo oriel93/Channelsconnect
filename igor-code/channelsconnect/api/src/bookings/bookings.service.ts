@@ -288,20 +288,11 @@ export class BookingsService {
         `${dto.checkIn} → ${dto.checkOut} status=CONFIRMED`,
     );
 
-    // ── Step 2: Deduct local inventory ──────────────────────────────────────
-    // Decrements the Inventory table for each stay night (checkIn → checkOut).
-    // This also fires pushAvailabilityToChannex() via the event emitter,
-    // which enqueues a delta for Channex (handled by ChannexDeepSyncService).
-    // The explicit Step 3 call below handles the ARI push to Channex directly
-    // for immediate cert-test confirmation.
-    try {
-      await this.deductInventory(booking.listingId, checkIn, checkOut);
-      this.logger.debug(`[ManualBooking/Step2] Inventory deducted for listing=${booking.listingId}`);
-    } catch (err: any) {
-      // Inventory deduction failure is non-fatal — booking is already saved.
-      // Log and continue; the ARI push (Step 3) still runs.
-      this.logger.warn(`[ManualBooking/Step2] Inventory deduction failed: ${err?.message}`);
-    }
+    // -- (Step 2 removed) ---------------------------------------------------
+    // Previously fired deductInventory() here which looped applyChange() per night.
+    // Removed per cert reviewer feedback: createManual should emit ONE Channex call
+    // (the range push in Step 3), not N per-night calls.
+
 
     // ── Step 3: Synchronous ARI push to Channex ────────────────────────────
     // Immediately await the sync push — do NOT fire-and-forget for cert tests.
@@ -411,35 +402,18 @@ export class BookingsService {
       syncResult = { success: false, error: channexError };
     }
 
-    // NOTE: Two redundant Channex calls were removed here per cert reviewer feedback:
-    //   1. deductInventory() — per-night applyChange() loop. The pushAvailability() call
-    //      above already does the same thing in a single range call (the canonical one).
-    //   2. pushBookingToChannex() — sent the full booking record via Booking CRS API.
-    //      For PMS-direct bookings the cert reviewer wants ONLY the availability lock to
-    //      go to Channex, not full booking details (Channex bookings tab is for OTA-pushed
-    //      reservations, not PMS-direct ones — those should reflect on availability only).
-    // Keeping the (currently unused) calls below behind an `if (false)` so the logic and
-    // helper functions don't get garbage-collected by build warnings, and a future test
-    // suite can re-enable per-flag if Channex changes their stance.
-    if (false as boolean) {
-    setImmediate(() =>
-      this.deductInventory(booking.listingId, checkIn, checkOut),
-    );
-    setImmediate(() =>
-      this.channexSync.pushBookingToChannex({
-        listingId:   booking.listingId,
-        roomTypeId:  resolvedRoomTypeId ?? undefined,
-        guestName:   booking.guestName,
-        checkIn:     checkIn,
-        checkOut:    checkOut,
-        numGuests:   booking.numGuests,
-        totalPrice:  parseFloat(String(booking.totalPrice)),
-        channelType: 'MANUAL_DASHBOARD',
-        externalId:  `cc_${booking.id}`,
-        notes:       booking.notes || undefined,
-      }),
-    );
-    } // end if (false)
+    // ✨ PMS-direct bookings now push ONLY an availability lock to Channex (line 369:
+    // `pushAvailability(checkIn → checkOut-1, availability=0)`). They DO NOT push the
+    // full booking record to /bookings. Two previously-fired calls have been removed:
+    //
+    //   - deductInventory()         — redundant per-night availability loop
+    //   - pushBookingToChannex()    — full Booking CRS payload, not wanted for PMS-direct
+    //
+    // Rationale per cert reviewer (2026-05-18 screenshare): the Channex bookings tab is
+    // intended for OTA-pushed reservations; PMS-direct bookings should only reflect on
+    // availability. The deductInventory/pushBookingToChannex helpers stay on the class
+    // for the OTA-side webhook path (booking-revision controller) which legitimately
+    // calls deductInventory().
 
     // Return both the booking record and the sync outcome
     return {
