@@ -361,11 +361,18 @@ export class BookingsService {
         `availability=0 (OCCUPIED)`,
       );
 
+      // Channex /availability date_from/date_to are INCLUSIVE per their docs.
+      // For a 2-night stay (checkIn=Mon, checkOut=Wed), the OCCUPIED nights are Mon+Tue.
+      // The checkout day (Wed) must remain available for the next guest's check-in.
+      // So dateTo = checkOut MINUS 1 day.
+      const lastNight = new Date(dto.checkOut + 'T00:00:00Z');
+      lastNight.setUTCDate(lastNight.getUTCDate() - 1);
+      const lastNightStr = lastNight.toISOString().slice(0, 10);
       const channexResult = await this.channexAri.pushAvailability({
         listingId:   booking.listingId,
-        dateFrom:    dto.checkIn,    // YYYY-MM-DD — first night of stay
-        dateTo:      dto.checkOut,   // YYYY-MM-DD — last night (nights staying = checkOut minus 1 day)
-        availability: 0,             // 0 = room now occupied (blocked)
+        dateFrom:    dto.checkIn,      // YYYY-MM-DD — arrival night (occupied)
+        dateTo:      lastNightStr,     // YYYY-MM-DD — last occupied night (checkOut - 1 day)
+        availability: 0,               // 0 = room now occupied
         roomTypeId:  roomTypeId,
         ratePlanId:  ratePlanId ?? undefined,
       });
@@ -404,14 +411,20 @@ export class BookingsService {
       syncResult = { success: false, error: channexError };
     }
 
-    // Also fire the event-driven applyChange for other channels (non-blocking)
+    // NOTE: Two redundant Channex calls were removed here per cert reviewer feedback:
+    //   1. deductInventory() — per-night applyChange() loop. The pushAvailability() call
+    //      above already does the same thing in a single range call (the canonical one).
+    //   2. pushBookingToChannex() — sent the full booking record via Booking CRS API.
+    //      For PMS-direct bookings the cert reviewer wants ONLY the availability lock to
+    //      go to Channex, not full booking details (Channex bookings tab is for OTA-pushed
+    //      reservations, not PMS-direct ones — those should reflect on availability only).
+    // Keeping the (currently unused) calls below behind an `if (false)` so the logic and
+    // helper functions don't get garbage-collected by build warnings, and a future test
+    // suite can re-enable per-flag if Channex changes their stance.
+    if (false as boolean) {
     setImmediate(() =>
       this.deductInventory(booking.listingId, checkIn, checkOut),
     );
-
-    // Push formal booking record to Channex Bookings (non-fatal)
-    // Pass roomTypeId so the resolver picks the right channex_room_type_id
-    // for multi-room properties (not just the first mapping).
     setImmediate(() =>
       this.channexSync.pushBookingToChannex({
         listingId:   booking.listingId,
@@ -426,6 +439,7 @@ export class BookingsService {
         notes:       booking.notes || undefined,
       }),
     );
+    } // end if (false)
 
     // Return both the booking record and the sync outcome
     return {

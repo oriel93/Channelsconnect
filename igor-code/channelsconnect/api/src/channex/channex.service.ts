@@ -34,6 +34,42 @@ export function normalizeCountryToISO2(country?: string | null): string | undefi
 }
 
 /**
+ * Channex /properties accepts a fixed enum for property_type. Map common user inputs
+ * to one of the allowed values. Defaults to `villa` for any unrecognized input (good
+ * neutral default for vacation rentals).
+ *
+ * Allowed values per Channex docs:
+ *   apart_hotel, apartment, boat, camping, capsule_hotel, chalet, country_house,
+ *   farm_stay, guest_house, holiday_home, holiday_park, homestay, hostel, hotel,
+ *   inn, lodge, motel, resort, riad, ryokan, tent, villa.
+ */
+export function normalizePropertyType(t?: string | null): string | undefined {
+  if (!t) return undefined;
+  const allowed = new Set([
+    'apart_hotel','apartment','boat','camping','capsule_hotel','chalet','country_house',
+    'farm_stay','guest_house','holiday_home','holiday_park','homestay','hostel','hotel',
+    'inn','lodge','motel','resort','riad','ryokan','tent','villa',
+  ]);
+  const norm = t.trim().toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+  if (allowed.has(norm)) return norm;
+  // Common synonyms
+  const aliases: Record<string, string> = {
+    'house': 'holiday_home',
+    'vacation_home': 'holiday_home',
+    'vacation_rental': 'holiday_home',
+    'rental': 'holiday_home',
+    'bnb': 'guest_house',
+    'b_and_b': 'guest_house',
+    'bed_and_breakfast': 'guest_house',
+    'condo': 'apartment',
+    'condominium': 'apartment',
+    'flat': 'apartment',
+    'studio': 'apartment',
+  };
+  return aliases[norm];
+}
+
+/**
  * Result of the 3-step Channex property build.
  * All three IDs are needed before any ARI push (Tests T9/T10/T11) is valid.
  */
@@ -142,6 +178,8 @@ export class ChannexService {
     currency?: string;
     maxGuests?: number;
     basePrice?: number;
+    propertyType?: string | null;
+    timezone?: string | null;
   }): Promise<ChannexPropertyBuildResult> {
     this.logger.log(
       `[ChannexBuild] Starting 3-step property build — "${localListing.title}"`,
@@ -152,14 +190,24 @@ export class ChannexService {
     let propertyData: any;
     try {
       this.logger.log('[ChannexBuild/StepA] POST /properties');
+      // Per cert reviewer: every property must have property_type and timezone set,
+      // and the availability auto-update settings must mirror PMS expectations:
+      //   - on_confirmation: ALWAYS true (Channex enforces, can't be disabled)
+      //   - on_modification: true  (we want Channex to track OTA modifications)
+      //   - on_cancellation: false (PMS controls re-opening, not Channex)
       const propResult = await this.createProperty({
-        title:       localListing.title,
-        description: localListing.description ?? undefined,
-        address:     localListing.address ?? undefined,
-        city:        localListing.city ?? undefined,
-        country:     normalizeCountryToISO2(localListing.country) ?? undefined,
-        currency:    localListing.currency ?? 'USD',
-        // Channex expects these fields on the property
+        title:         localListing.title,
+        description:   localListing.description ?? undefined,
+        address:       localListing.address ?? undefined,
+        city:          localListing.city ?? undefined,
+        country:       normalizeCountryToISO2(localListing.country) ?? undefined,
+        currency:      localListing.currency ?? 'USD',
+        property_type: normalizePropertyType(localListing.propertyType) ?? 'villa',
+        timezone:      localListing.timezone || 'America/New_York',
+        settings: {
+          allow_availability_autoupdate_on_modification: true,
+          allow_availability_autoupdate_on_cancellation: false,
+        },
       });
       // Channex returns { data: { id: "...", attributes: { ... } } } for single-resource POSTs
       // (NOT an array). Tolerate both shapes for safety.

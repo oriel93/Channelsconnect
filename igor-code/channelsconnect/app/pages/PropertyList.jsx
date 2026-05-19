@@ -53,7 +53,7 @@ import AppLayout from '@/components/app/AppLayout';
 import {
   ChevronLeft, ChevronRight, RefreshCw, Loader2,
   DollarSign, Lock, Unlock, Settings2, Check, AlertCircle,
-  Calendar, Copy, ExternalLink, Plus, Trash2, Percent,
+  Calendar, Copy, ExternalLink, Plus, Trash2, Percent, Zap,
 } from 'lucide-react';
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
@@ -637,6 +637,7 @@ export default function PropertyList() {
   const [listings,    setListings]    = useState([]);
   const [maps,        setMaps]        = useState({ rateMap: {}, blockMap: {}, bookingMap: {}, bookingsByListing: {} });
   const [loading,     setLoading]     = useState(true);
+  const [syncingAll,  setSyncingAll]  = useState(false);  // true while Full Sync push to Channex is in flight
   const [search,      setSearch]      = useState('');
   const [startOffset, setStartOffset] = useState(0);   // days from today
 
@@ -937,8 +938,48 @@ export default function PropertyList() {
                 <ChevronRight style={{ width: 16, height: 16, color: '#475569' }} />
               </button>
             </div>
-            <Button variant="outline" size="sm" onClick={fetchAll} disabled={loading}>
+            {/* Refresh — reload local data from API (cheap, fast) */}
+            <Button variant="outline" size="sm" onClick={fetchAll} disabled={loading} title="Refresh calendar from database">
               {loading ? <Loader2 style={{ width: 14, height: 14 }} className="animate-spin" /> : <RefreshCw style={{ width: 14, height: 14 }} />}
+            </Button>
+            {/* Full Sync — push local rates+availability to Channex (and pull back to verify mirror).
+                Cert reviewer: this button must actually trigger a Channex API call, not just a local refetch. */}
+            <Button
+              variant="outline" size="sm"
+              disabled={syncingAll || loading || filteredListings.length === 0}
+              onClick={async () => {
+                setSyncingAll(true);
+                try {
+                  const toSync = filteredListings.filter(l => l.channexPropertyId);
+                  if (toSync.length === 0) {
+                    toast.info('No properties are mapped to Channex yet — nothing to sync');
+                    return;
+                  }
+                  let ok = 0, failed = 0; const allTasks = [];
+                  for (const l of toSync) {
+                    try {
+                      const res = await api.admin.fullSyncChannex(l.id);
+                      const r = res?.data ?? res;
+                      if (r?.success) { ok++; (r.taskIds || []).forEach(t => allTasks.push(t)); }
+                      else failed++;
+                    } catch { failed++; }
+                  }
+                  if (failed === 0) toast.success(`Synced ${ok} propert${ok === 1 ? 'y' : 'ies'} to Channex (${allTasks.length} task${allTasks.length === 1 ? '' : 's'})`);
+                  else if (ok > 0) toast.warning(`Synced ${ok}, ${failed} failed`);
+                  else toast.error(`Full sync failed for all ${failed} propert${failed === 1 ? 'y' : 'ies'}`);
+                  await fetchAll();
+                } finally {
+                  setSyncingAll(false);
+                }
+              }}
+              title="Push 500-day rates+availability to Channex for all mapped properties"
+              className="border-indigo-500/50 text-indigo-700 hover:bg-indigo-50"
+            >
+              {syncingAll ? (
+                <><Loader2 style={{ width: 14, height: 14 }} className="animate-spin" /><span style={{ marginLeft: 6, fontSize: 12 }}>Pushing…</span></>
+              ) : (
+                <><Zap style={{ width: 14, height: 14 }} /><span style={{ marginLeft: 6, fontSize: 12 }}>Full Sync</span></>
+              )}
             </Button>
           </div>
         </div>

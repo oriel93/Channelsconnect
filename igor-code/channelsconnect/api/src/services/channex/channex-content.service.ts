@@ -27,7 +27,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ChannexHttpClient } from './channex-http.client';
-import { normalizeCountryToISO2 } from '../../channex/channex.service';
+import { normalizeCountryToISO2, normalizePropertyType } from '../../channex/channex.service';
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -317,12 +317,19 @@ export class ChannexContentService {
   // PRIVATE: helpers
   // ──────────────────────────────────────────────────────────────────────────
 
-  /** Build the Channex property payload from a Listing row. */
+  /** Build the Channex property payload from a Listing row.
+   *  Always includes property_type + timezone + safety settings (cert reviewer requirement). */
   private _buildPropertyPayload(listing: any): Record<string, any> {
     const p: Record<string, any> = {
-      title:    listing.title,
-      currency: listing.currency || 'USD',
-      email:    `noreply+listing${listing.id}@channelsconnect.com`,
+      title:         listing.title,
+      currency:      listing.currency || 'USD',
+      email:         `noreply+listing${listing.id}@channelsconnect.com`,
+      property_type: normalizePropertyType(listing.propertyType) ?? 'villa',
+      timezone:      'America/New_York',
+      settings: {
+        allow_availability_autoupdate_on_modification: true,
+        allow_availability_autoupdate_on_cancellation: false,
+      },
     };
     if (listing.address)     p['address']   = listing.address;
     if (listing.city)        p['city']       = listing.city;

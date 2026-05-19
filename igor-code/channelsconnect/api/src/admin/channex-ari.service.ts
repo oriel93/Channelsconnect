@@ -773,14 +773,18 @@ export class ChannexAriService {
 
     // ── Execute 3-step build in ChannexService ─────────────────────────────
     const result = await this.channexService.buildPropertyInChannex({
-      title:       listing.title,
-      description: listing.description,
-      address:     listing.address,
-      city:        listing.city,
-      country:     listing.country,
-      currency:    listing.currency,
-      basePrice:   listing.basePrice ? Number(listing.basePrice) : undefined,
-      maxGuests:   listing.maxGuests ?? undefined,
+      title:        listing.title,
+      description:  listing.description,
+      address:      listing.address,
+      city:         listing.city,
+      country:      listing.country,
+      currency:     listing.currency,
+      basePrice:    listing.basePrice ? Number(listing.basePrice) : undefined,
+      maxGuests:    listing.maxGuests ?? undefined,
+      propertyType: listing.propertyType,  // mapped to Channex enum by normalizePropertyType()
+      // No timezone column on Listing yet — default to America/New_York per cert reviewer.
+      // If/when a per-listing timezone is added, pass it through here.
+      timezone:     'America/New_York',
     });
 
     // ── Persist all three IDs to DB ─────────────────────────────────────────
