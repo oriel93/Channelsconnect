@@ -10,7 +10,7 @@
  *  - Rate limiting is delegated to ChannexHttpClient (token-bucket, 429 ACK).
  *  - Full sync produces exactly 2 API calls for 500 days of ARI.
  *
- * Channex API endpoints (staging.channex.io/api/v1):
+ * Channex API endpoints (CHANNEX_BASE env, default app.channex.io/api/v1):
  *  - POST /availability  — flat payload: { property_id, room_type_id, date_from, date_to, availability }
  *  - POST /restrictions  — flat payload: { property_id, rate_plan_id, date_from, date_to, rate, ... }
  *  - Task ID returned as:  res.data[0].id  (NOT res.meta.task_id)
@@ -91,6 +91,13 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
    */
   private batchTimer: NodeJS.Timeout | null = null;
   private readonly BATCH_WINDOW_MS = 500;
+
+  /**
+   * Channex API base URL. CHANNEX_BASE env var, defaults to production app.channex.io.
+   * Used by the direct-axios calls below (bookings + ack) that don't go through
+   * the ChannexHttpClient pool.
+   */
+  private readonly channexBase = (process.env.CHANNEX_BASE || 'https://app.channex.io/api/v1').replace(/\/+$/, '');
 
   /** Prevents concurrent drain runs from overlapping. */
   private draining = false;
@@ -934,7 +941,7 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
 
       // Use direct axios (bypasses global interceptor) — bookings API requires user-api-key header
       const res = await axios.post(
-        'https://staging.channex.io/api/v1/bookings',
+        `${this.channexBase}/bookings`,
         payload,
         {
           headers: { 'Content-Type': 'application/json', 'user-api-key': apiKey },
@@ -960,7 +967,7 @@ export class ChannexSyncService implements OnModuleInit, OnModuleDestroy {
       if (revisionId) {
         try {
           await axios.post(
-            `https://staging.channex.io/api/v1/booking_revisions/${revisionId}/ack`,
+            `${this.channexBase}/booking_revisions/${revisionId}/ack`,
             null,
             { headers: { 'user-api-key': apiKey }, timeout: 10000 },
           );

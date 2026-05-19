@@ -452,7 +452,7 @@ export class ChannexAriService {
       '\n  date_to:        ' + dto.dateTo +
       '\n  availability:   ' + dto.availability +
       '\n  Full payload:   ' + JSON.stringify(payload) +
-      '\n  Endpoint:       POST https://staging.channex.io/api/v1/availability' +
+      '\n  Endpoint:       POST ' + (process.env.CHANNEX_BASE || 'https://app.channex.io/api/v1') + '/availability' +
       '\n[CHANNEX_CERT_LOG] ════════════════════════════════\n';
 
     this.logger.log(preflightLog);

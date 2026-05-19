@@ -242,9 +242,11 @@ export class ChannexOnboardingService {
       this.logger.warn(`[OAuth] Could not fetch channel auth link: ${err.message}`);
     }
 
-    // Fallback: construct standard Channex OAuth URL
+    // Fallback: construct standard Channex OAuth URL.
+    // CHANNEX_BASE env, defaults to production app.channex.io.
     if (!authUrl) {
-      authUrl = `https://staging.channex.io/api/v1/auth/${channelType}?property_id=${mapping.channexPropertyId}&state=${state}`;
+      const cxBase = (process.env.CHANNEX_BASE || 'https://app.channex.io/api/v1').replace(/\/+$/, '');
+      authUrl = `${cxBase}/auth/${channelType}?property_id=${mapping.channexPropertyId}&state=${state}`;
     }
 
     this.logger.log(`[OAuth] Auth link generated for user ${userId} channel=${channelType}`);

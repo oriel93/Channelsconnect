@@ -91,7 +91,9 @@ export interface ChannexPropertyBuildResult {
 @Injectable()
 export class ChannexService {
   private readonly logger = new Logger(ChannexService.name);
-  private readonly baseUrl = 'https://staging.channex.io/api/v1';
+  // Driven by CHANNEX_BASE env var. Defaults to production (app.channex.io); set to
+  // 'https://staging.channex.io/api/v1' for cert/test environments.
+  private readonly baseUrl = (process.env.CHANNEX_BASE || 'https://app.channex.io/api/v1').replace(/\/+$/, '');
   private readonly headers: any;
 
   constructor(private readonly httpService: HttpService) {

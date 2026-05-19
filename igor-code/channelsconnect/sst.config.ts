@@ -62,6 +62,9 @@ export default $config({
                 SUPABASE_ANON_KEY: supabaseKey.value,
                 CHANNEX_API_KEY: channexKey.value,
                 CHANNEX_WEBHOOK_SECRET: channexWebhookSecret.value,
+                // CHANNEX_BASE: defaults to https://app.channex.io/api/v1 in code.
+                // Override here to 'https://staging.channex.io/api/v1' if testing against staging.
+                CHANNEX_BASE: "https://app.channex.io/api/v1",
                 FRONTEND_URL: "https://channelsconnect.com"
             },
             dev: {
