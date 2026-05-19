@@ -110,6 +110,50 @@ export class ChannexWhitelabelController {
   async airbnbInit(@CurrentUser() user: any) {
     const email = user?.email || `user+${user?.id}@channelsconnect.com`;
 
+    // ✨ Idempotency: if the user already has a pending Airbnb-connect listing whose
+    //    OAuth hasn't completed yet (still 'pending_airbnb_connect'), REUSE it. Avoids
+    //    spawning a fresh Channex property + DB listing every time the user clicks the
+    //    button (which used to happen on page reload, double-click, etc).
+    const existingPending = await this.prisma.listing.findFirst({
+      where: {
+        userId:       user.id,
+        source:       'airbnb_oauth',
+        reviewStatus: 'pending_airbnb_connect',
+      },
+      include: { channexMappings: { take: 1, orderBy: { createdAt: 'desc' } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (existingPending?.channexMappings?.[0]?.channexPropertyId) {
+      const channexPropertyId = existingPending.channexMappings[0].channexPropertyId;
+      this.logger.log(
+        `[Airbnb/init] Reusing pending listingId=${existingPending.id} ` +
+          `propertyId=${channexPropertyId} for user=${user.id}`,
+      );
+      // Re-mint the one-time token (they're short-lived) and rebuild iframe URL.
+      const tokenRes = await this.http.post<any>('/auth/one_time_token', this.masterKey, {
+        one_time_token: {
+          property_id: channexPropertyId,
+          group_id:    process.env.CHANNEX_GROUP_ID || undefined,
+          username:    email,
+        },
+      });
+      const oneTimeToken = tokenRes?.data?.token;
+      if (!oneTimeToken) throw new Error('Failed to generate one-time token (reuse path)');
+      const apiBase = process.env.CHANNEX_BASE || process.env.CHANNEX_BASE_URL || 'https://app.channex.io/api/v1';
+      const channexBase = apiBase.replace(/\/api\/v1\/?$/, '').replace(/\/+$/, '');
+      const iframeUrl =
+        `${channexBase}/auth/exchange` +
+        `?oauth_session_key=${oneTimeToken}` +
+        `&app_mode=headless` +
+        `&redirect_to=/channels` +
+        `&property_id=${channexPropertyId}` +
+        `&channels=ABB`;
+      return {
+        success: true,
+        data: { iframeUrl, listingId: existingPending.id, channexPropertyId, reused: true },
+      };
+    }
+
     // 1. Create a blank Channex property — Airbnb will populate the real name after OAuth
     let channexPropertyId: string;
     try {
@@ -163,8 +207,12 @@ export class ChannexWhitelabelController {
     const oneTimeToken = tokenRes?.data?.token;
     if (!oneTimeToken) throw new Error('Failed to generate one-time token');
 
-    // 5. Build the iFrame URL — headless, ABB-only filter, no Channex branding shown
-    const channexBase = process.env.CHANNEX_BASE_URL || 'https://app.channex.io';
+    // 5. Build the iFrame URL — headless, ABB-only filter, no Channex branding shown.
+    // CHANNEX_BASE drives the API host (...channex.io/api/v1). The iFrame lives at the
+    // host root /auth/exchange (no /api/v1), so we strip the path off CHANNEX_BASE.
+    // Falls back to production app.channex.io when neither env var is set.
+    const apiBase = process.env.CHANNEX_BASE || process.env.CHANNEX_BASE_URL || 'https://app.channex.io/api/v1';
+    const channexBase = apiBase.replace(/\/api\/v1\/?$/, '').replace(/\/+$/, '');
     const iframeUrl =
       `${channexBase}/auth/exchange` +
       `?oauth_session_key=${oneTimeToken}` +
