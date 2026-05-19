@@ -68,6 +68,30 @@ const DAYS_TOTAL = 365;   // 12-month window
 
 const dk = (d) => format(d, 'yyyy-MM-dd');
 
+/**
+ * Parse a date value that came from the API (Prisma @db.Date columns serialize as
+ * 'YYYY-MM-DDT00:00:00.000Z') and return a Date at LOCAL midnight on the same
+ * calendar day. parseISO() honors the Z and gives UTC midnight, which in any
+ * non-UTC timezone (e.g. EDT = UTC-4) lands on the PREVIOUS calendar day after
+ * local formatting — the classic 'off by one' bug. Always grab the date part as
+ * a string and construct a local Date from that.
+ */
+function parseLocalDateOnly(value) {
+  if (!value) return null;
+  if (typeof value === 'string') {
+    const ymd = value.slice(0, 10); // 'YYYY-MM-DD'
+    const [y, m, d] = ymd.split('-').map(Number);
+    if (!y || !m || !d) return null;
+    return new Date(y, m - 1, d, 0, 0, 0, 0);
+  }
+  if (value instanceof Date) {
+    // If a Date was passed, normalize to its UTC y/m/d — because that's what Prisma
+    // gave us in the original string before JS pulled it apart.
+    return new Date(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate(), 0, 0, 0, 0);
+  }
+  return null;
+}
+
 function buildDates(startOffset) {
   const base = addDays(startOfDay(new Date()), startOffset);
   return Array.from({ length: DAYS_TOTAL }, (_, i) => addDays(base, i));
@@ -93,7 +117,8 @@ function buildMaps(rates = [], blockedDates = [], bookings = []) {
   // For legacy/single-room listings we ALSO key by listing alone so the fallback works.
   const rateMap = {};
   for (const r of rates) {
-    const d = typeof r.date === 'string' ? r.date.slice(0, 10) : dk(new Date(r.date));
+    // Always grab the date as the UTC calendar day, never let JS local-tz shift it.
+    const d = typeof r.date === 'string' ? r.date.slice(0, 10) : dk(parseLocalDateOnly(r.date));
     if (r.roomTypeId != null) {
       // Per-room rate. ONLY key it under the room — do NOT also write the
       // listing-level key (that would make the rate appear on every room lane).
@@ -110,7 +135,7 @@ function buildMaps(rates = [], blockedDates = [], bookings = []) {
   // listings; multi-room blocks must NOT leak across lanes.
   const blockMap = {};
   for (const b of blockedDates) {
-    const d = typeof b.date === 'string' ? b.date.slice(0, 10) : dk(new Date(b.date));
+    const d = typeof b.date === 'string' ? b.date.slice(0, 10) : dk(parseLocalDateOnly(b.date));
     if (b.roomTypeId != null) {
       blockMap[`L${b.listingId}_RT${b.roomTypeId}_${d}`] = true;
     } else {
@@ -125,8 +150,10 @@ function buildMaps(rates = [], blockedDates = [], bookings = []) {
   const bookingsByListing = {};
 
   for (const bk of bookings) {
-    const cin  = startOfDay(parseISO(bk.checkIn));
-    const cout = startOfDay(parseISO(bk.checkOut));
+    // Use parseLocalDateOnly to avoid the UTC → local off-by-one shift for @db.Date columns.
+    const cin  = parseLocalDateOnly(bk.checkIn);
+    const cout = parseLocalDateOnly(bk.checkOut);
+    if (!cin || !cout) continue;
     const nights = differenceInDays(cout, cin);
     const lid  = bk.listingId;
     const rtid = bk.roomTypeId;
@@ -435,8 +462,8 @@ function ActionModal({ open, onClose, onSave, listing, roomType, startDate, endD
 function BookingDrawer({ booking, onClose }) {
   if (!booking) return null;
   const nights = differenceInDays(
-    startOfDay(parseISO(booking.checkOut)),
-    startOfDay(parseISO(booking.checkIn)),
+    parseLocalDateOnly(booking.checkOut),
+    parseLocalDateOnly(booking.checkIn),
   );
   return (
     <Sheet open={!!booking} onOpenChange={(v) => !v && onClose()}>
@@ -460,11 +487,11 @@ function BookingDrawer({ booking, onClose }) {
           <div className="grid grid-cols-2 gap-3">
             <div className="p-3 bg-blue-50 rounded-lg">
               <p className="text-xs text-blue-600">Check-in</p>
-              <p className="font-semibold text-sm">{format(parseISO(booking.checkIn), 'MMM d, yyyy')}</p>
+              <p className="font-semibold text-sm">{format(parseLocalDateOnly(booking.checkIn), 'MMM d, yyyy')}</p>
             </div>
             <div className="p-3 bg-blue-50 rounded-lg">
               <p className="text-xs text-blue-600">Check-out</p>
-              <p className="font-semibold text-sm">{format(parseISO(booking.checkOut), 'MMM d, yyyy')}</p>
+              <p className="font-semibold text-sm">{format(parseLocalDateOnly(booking.checkOut), 'MMM d, yyyy')}</p>
             </div>
           </div>
           <div className="flex justify-between p-3 bg-slate-50 rounded-lg">

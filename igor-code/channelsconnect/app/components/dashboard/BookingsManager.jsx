@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -237,6 +239,21 @@ function BookingFormDialog({ open, onClose, onSaved, editBooking, listingId }) {
               onChange={set('checkOut')}
             />
           </div>
+
+          {/* Open on Calendar — only when editing an existing booking with a listing */}
+          {editBooking && form.listingId && (
+            <div className="col-span-2 -mt-2">
+              <Link
+                to={`${createPageUrl('PropertyList')}?listingId=${form.listingId}`}
+                onClick={onClose}
+                className="inline-flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-800 hover:underline"
+                title="Open this booking on the calendar to drag-block other dates around it"
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                View on Calendar →
+              </Link>
+            </div>
+          )}
 
           {/* Guests / Price */}
           <div>
