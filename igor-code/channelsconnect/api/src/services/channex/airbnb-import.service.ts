@@ -85,8 +85,40 @@ export class AirbnbImportService {
       startedAt: new Date(),
     });
 
-    // group_id is required — pull the user's organization group from Channex.
     const groupId = await this.getGroupId();
+    const email = params.email || `noreply+${params.userId.slice(0, 8)}@channelsconnect.com`;
+
+    // Channex's /meta/airbnb/connection_link REQUIRES properties[] to have at
+    // least 1 item (despite the docs implying empty is allowed). Create a
+    // placeholder Channex property up front; we'll repurpose it as the FIRST
+    // imported Airbnb listing's property during runImport(), so it doesn't
+    // become an orphan.
+    let placeholderPropertyId: string;
+    try {
+      const propRes = await this.http.post<any>('/properties', this.masterKey, {
+        property: {
+          title:         'Airbnb Import (pending)',
+          currency:      'USD',
+          country:       'US',
+          property_type: 'villa',
+          timezone:      'America/New_York',
+          email,
+          settings: {
+            allow_availability_autoupdate_on_modification: true,
+            allow_availability_autoupdate_on_cancellation: false,
+          },
+        },
+      });
+      placeholderPropertyId = propRes?.data?.id;
+      if (!placeholderPropertyId) throw new Error('No property id returned');
+    } catch (err: any) {
+      this.logger.error(`[AirbnbImport] placeholder property create failed: ${err?.message ?? err}`);
+      throw new BadRequestException('Could not initialize Airbnb connection (placeholder property)');
+    }
+
+    // Stash the placeholder on the state object so handleCallback() can pass it
+    // to runImport() and reuse it for the first imported listing.
+    (this.states.get(token) as any).placeholderPropertyId = placeholderPropertyId;
 
     const redirectUri = `${params.appBaseUrl.replace(/\/+$/, '')}/AirbnbCallback`;
     const failureRedirectUri = `${params.appBaseUrl.replace(/\/+$/, '')}/AirbnbCallback?error=1`;
@@ -94,7 +126,7 @@ export class AirbnbImportService {
     const payload = {
       connection_link: {
         group_id: groupId,
-        properties: [],              // empty: we'll create properties per Airbnb listing during runImport()
+        properties: [placeholderPropertyId],
         redirect_uri:        redirectUri,
         failure_redirect_uri: failureRedirectUri,
         token,
@@ -115,7 +147,10 @@ export class AirbnbImportService {
       throw new BadRequestException('Could not generate Airbnb authorization link');
     }
 
-    this.logger.log(`[AirbnbImport] OAuth URL minted for user=${params.userId} token=${token.slice(0, 24)}…`);
+    this.logger.log(
+      `[AirbnbImport] OAuth URL minted for user=${params.userId} token=${token.slice(0, 24)}… ` +
+        `placeholder=${placeholderPropertyId.slice(0, 8)}`,
+    );
     return { authUrl, token };
   }
 
@@ -175,20 +210,42 @@ export class AirbnbImportService {
     state.message = `Found ${dict.length} listing${dict.length === 1 ? '' : 's'} on Airbnb`;
     this.logger.log(`[AirbnbImport] user=${userId} channel=${channelId.slice(0, 8)} found ${dict.length} listing(s)`);
 
+    const placeholderPropertyId: string | undefined = (state as any).placeholderPropertyId;
+
     if (dict.length === 0) {
       state.status = 'completed';
       state.message = 'No Airbnb listings found on this account.';
       state.finishedAt = new Date();
+      // Clean up the placeholder property since no listing claimed it.
+      if (placeholderPropertyId) {
+        try {
+          await this.http.delete<any>(`/properties/${placeholderPropertyId}`, this.masterKey);
+          this.logger.log(`[AirbnbImport] cleaned up unused placeholder ${placeholderPropertyId.slice(0, 8)}`);
+        } catch (err: any) {
+          this.logger.warn(`[AirbnbImport] placeholder cleanup failed: ${err?.message ?? err}`);
+        }
+      }
       return;
     }
 
     // 3b. For each Airbnb listing, build the property/room/rate in Channex and locally.
+    // The FIRST listing reuses the placeholder property we created in start().
+    // Every other listing creates a fresh Channex property.
+    let firstUsedPlaceholder = false;
     for (const entry of dict) {
       const listingId: string = entry.id;
       const listingTitle: string = entry.title || `Airbnb #${listingId}`;
+      const reusePropId = !firstUsedPlaceholder ? placeholderPropertyId : undefined;
       try {
         state.message = `Importing "${listingTitle}"…`;
-        const localListingId = await this.importOneListing(userId, channelId, listingId, listingTitle);
+        const localListingId = await this.importOneListing(
+          userId,
+          channelId,
+          listingId,
+          listingTitle,
+          reusePropId,
+        );
+        if (reusePropId) firstUsedPlaceholder = true;
         state.importedCount += 1;
         state.importedListingIds.push(localListingId);
       } catch (err: any) {
@@ -197,6 +254,13 @@ export class AirbnbImportService {
         );
         state.failedCount += 1;
       }
+    }
+    // Edge case: every import failed and the placeholder is still unused.
+    if (!firstUsedPlaceholder && placeholderPropertyId) {
+      try {
+        await this.http.delete<any>(`/properties/${placeholderPropertyId}`, this.masterKey);
+        this.logger.log(`[AirbnbImport] all imports failed; cleaned up placeholder`);
+      } catch {/* swallow */}
     }
 
     // 3c. Activate the channel + pull future reservations (non-fatal).
@@ -238,6 +302,7 @@ export class AirbnbImportService {
     channelId: string,
     airbnbListingId: string,
     fallbackTitle: string,
+    reusePropertyId?: string,
   ): Promise<number> {
     // 1. Fetch the Airbnb listing detail through Channex.
     const detailRes = await this.http.get<any>(
@@ -263,8 +328,12 @@ export class AirbnbImportService {
       .map((img: any) => img.large_url || img.extra_large_url || img.extra_medium_url || img.small_url)
       .filter(Boolean);
 
-    // 2. Build Channex property.
-    const propRes = await this.http.post<any>('/properties', this.masterKey, {
+    // 2. Build (or update) the Channex property.
+    // If reusePropertyId is set, this is the FIRST Airbnb listing in a batch and
+    // we should repurpose the placeholder we created during start() so it doesn't
+    // become an orphan. Otherwise create a fresh property.
+    let channexPropertyId: string;
+    const propertyPayload = {
       property: {
         title,
         currency,
@@ -283,8 +352,22 @@ export class AirbnbImportService {
           allow_availability_autoupdate_on_cancellation: false,
         },
       },
-    });
-    const channexPropertyId: string | undefined = propRes?.data?.id;
+    };
+    if (reusePropertyId) {
+      try {
+        await this.http.put<any>(`/properties/${reusePropertyId}`, this.masterKey, propertyPayload);
+        channexPropertyId = reusePropertyId;
+      } catch (err: any) {
+        // Update failed — fall back to a fresh property (the placeholder will
+        // be cleaned up later by the orphan-check in runImport()).
+        this.logger.warn(`[AirbnbImport] PUT placeholder failed (${err?.message}); creating new property`);
+        const propRes = await this.http.post<any>('/properties', this.masterKey, propertyPayload);
+        channexPropertyId = propRes?.data?.id;
+      }
+    } else {
+      const propRes = await this.http.post<any>('/properties', this.masterKey, propertyPayload);
+      channexPropertyId = propRes?.data?.id;
+    }
     if (!channexPropertyId) {
       throw new Error(`Channex /properties returned no id (Airbnb listing ${airbnbListingId})`);
     }

@@ -264,6 +264,10 @@ export class ChannexHttpClient {
     return this.request<T>('PATCH', path, apiKey, body);
   }
 
+  delete<T = any>(path: string, apiKey: string): Promise<T> {
+    return this.request<T>('DELETE', path, apiKey);
+  }
+
   private sleep(ms: number): Promise<void> {
     return new Promise((r) => setTimeout(r, ms));
   }
