@@ -187,17 +187,65 @@ function AirbnbConnectForm({ onSuccess }) {
   const runHarvest = async () => {
     if (!listingId || !channexPropertyId) return;
     setPhase('harvesting');
+
+    // Multi-listing import: the Channex webhook (activate_channel) does the
+    // actual harvest server-side. We poll /connect/airbnb/status to detect
+    // when at least one listing has been populated, then advance the wizard.
+    // Falls back to the legacy one-shot harvest if status stays empty for
+    // more than the timeout (means webhook didn't fire — single-listing case).
+    const POLL_INTERVAL_MS = 2500;
+    const MAX_POLLS = 40;          // 100s total before we fall back
+    let polls = 0;
+    let importedListings = [];
+
     try {
-      const res = await api.connect.airbnbHarvest(listingId, channexPropertyId);
-      const data = res.data?.data || res.data || {};
+      while (polls < MAX_POLLS) {
+        polls += 1;
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+        try {
+          const res = await api.connect.airbnbStatus(channexPropertyId);
+          const data = res.data?.data || res.data || {};
+          const status = data.status || res.data?.status;
+          if (status === 'ready') {
+            importedListings = res.data?.listings || data.listings || [];
+            break;
+          }
+          if (status === 'failed') {
+            throw new Error('Connection failed — please try again or contact support.');
+          }
+          // 'waiting' or 'harvesting' — keep polling
+        } catch (pollErr) {
+          // Transient — keep polling unless we've burned through MAX_POLLS
+          if (polls === MAX_POLLS) throw pollErr;
+        }
+      }
+
+      if (importedListings.length === 0) {
+        // Fallback: webhook never fired (could be a single-listing OAuth where
+        // Channex skipped the activate_channel event). Try the one-shot harvest
+        // so we don't leave the user staring at a spinner forever.
+        try {
+          const fallback = await api.connect.airbnbHarvest(listingId, channexPropertyId);
+          const fbData = fallback.data?.data || fallback.data || {};
+          importedListings = [{ id: listingId, title: fbData.title || 'Airbnb Property' }];
+        } catch (fbErr) {
+          throw new Error('Import timed out. Please refresh and check your listings.');
+        }
+      }
+
       onSuccess({
-        listingId,
-        title: data.title || 'Airbnb Property',
-        message: 'Your Airbnb listing has been connected to Channels Connect. Our team will review and activate it shortly.',
+        listingId: importedListings[0]?.id || listingId,
+        title: importedListings[0]?.title || 'Airbnb Property',
+        count: importedListings.length,
+        listings: importedListings,
+        message:
+          importedListings.length > 1
+            ? `Imported ${importedListings.length} listings from your Airbnb account.`
+            : 'Your Airbnb listing has been imported successfully.',
       });
     } catch (err) {
-      toast.error('Could not retrieve your listing data — please contact support.');
-      console.error('[AirbnbConnect] harvest error:', err?.response?.data ?? err?.message);
+      toast.error(err?.message || 'Could not retrieve your listing data — please contact support.');
+      console.error('[AirbnbConnect] harvest error:', err?.response?.data ?? err?.message ?? err);
       setPhase('iframe'); // let user try again
     }
   };

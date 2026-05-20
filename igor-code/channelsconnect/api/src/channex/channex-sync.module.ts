@@ -17,6 +17,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ChannexSyncService } from './channex-sync.service';
 import { ChannexSyncController } from './channex-sync.controller';
 import { ChannexBookingWebhookController } from './channex-booking-webhook.controller';
+import { ChannexChannelWebhookController } from '../services/channex/channex-channel-webhook.controller';
 import { ChannexBookingFeedService } from './channex-booking-feed.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PrismaService } from '../prisma/prisma.service';
@@ -36,6 +37,7 @@ import { ChannexServicesModule } from '../services/channex/channex-services.modu
   controllers: [
     ChannexSyncController,
     ChannexBookingWebhookController,
+    ChannexChannelWebhookController, // POST /connect/webhook/channel + dispatcher target
   ],
   exports: [ChannexSyncService],
 })

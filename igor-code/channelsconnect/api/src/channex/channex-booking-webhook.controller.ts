@@ -28,6 +28,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ChannexHttpClient } from '../services/channex/channex-http.client';
 import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
+import { ChannexChannelWebhookController } from '../services/channex/channex-channel-webhook.controller';
 
 // ---------------------------------------------------------------------------
 // Channex webhook payload shape (booking_revision event)
@@ -98,6 +99,10 @@ export class ChannexBookingWebhookController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly http: ChannexHttpClient,
+    // Channex sends booking AND channel events to one global webhook URL.
+    // We dispatch channel events to this dedicated controller. Required (not
+    // optional) so the DI container fails fast at boot if it's missing.
+    private readonly channelWebhook: ChannexChannelWebhookController,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -236,15 +241,34 @@ export class ChannexBookingWebhookController {
     description: 'Plain-text shared secret configured in Channex webhook settings',
   })
   async handleBookingRevision(
-    @Body() payload: ChannexBookingRevisionPayload,
+    @Body() payload: any, // ChannexBookingRevisionPayload OR ChannelLifecycleEvent (dispatched below)
     @Headers('x-channex-webhook-secret') webhookSecret?: string,
   ) {
-    // ── 1. Validate secret ─────────────────────────────────────────────────
+    // -- 1. Validate secret ---------------------------------------------------
     this.validateSecret(webhookSecret);
+
+    // -- 1a. Dispatch: channel-lifecycle events go to the channel controller --
+    // The global webhook is subscribed to both booking_* and *_channel events
+    // but Channex sends them all to ONE URL. Detect by top-level `event` field
+    // (channel events have it; booking_revision payloads do not).
+    const eventName = (payload as any)?.event;
+    if (
+      typeof eventName === 'string' &&
+      (eventName === 'new_channel' ||
+        eventName === 'updated_channel' ||
+        eventName === 'activate_channel' ||
+        eventName === 'deactivate_channel')
+    ) {
+      if (!this.channelWebhook) {
+        this.logger.warn('[Webhook] Channel event received but channelWebhook not injected');
+        return { ack: true, received: true, skipped: true, reason: 'channel_handler_unavailable' };
+      }
+      return this.channelWebhook.handleChannelEvent(payload as any);
+    }
 
     const revision = payload?.booking_revision;
     if (!revision?.id) {
-      this.logger.warn('[Webhook] Received payload with no booking_revision.id');
+      this.logger.warn('[Webhook] Received payload with no booking_revision.id and no channel event');
       return { ack: true, received: true, skipped: true, reason: 'no_revision_id' };
     }
 

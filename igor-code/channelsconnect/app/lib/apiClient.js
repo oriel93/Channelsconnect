@@ -230,6 +230,11 @@ export const api = {
      */
     airbnbHarvest: (listingId, channexPropertyId) =>
       apiClient.post('/connect/airbnb/harvest', { listingId, channexPropertyId }),
+    // Polled by the OAuth wizard while the iframe is open. Returns the current
+    // harvest state and any listings that have been imported so far. Backend
+    // populates this via webhook (activate_channel) so it's eventually consistent.
+    airbnbStatus: (channexPropertyId) =>
+      apiClient.get('/connect/airbnb/status', { params: { channexPropertyId } }),
 
     /** Legacy: Get a branded OTA OAuth URL to open in a modal. channel = 'airbnb' | 'booking_com' */
     getOAuthLink: (channel = 'airbnb') => apiClient.get(`/connect/oauth-link?channel=${channel}`),

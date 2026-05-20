@@ -358,6 +358,72 @@ export class ChannexWhitelabelController {
     };
   }
 
+  /**
+   * GET /connect/airbnb/status?channexPropertyId=...
+   *
+   * Frontend polls this endpoint after opening the OAuth iframe. The webhook
+   * (ChannexChannelWebhookController) handles harvest in the background when
+   * Channex fires `activate_channel`; this endpoint reports the latest state
+   * of the local DB so the wizard knows when to advance.
+   *
+   * States:
+   *   - waiting:   no listings yet; iframe still in OAuth/mapping
+   *   - harvesting: webhook has fired but we're mid-update (rare timing window)
+   *   - ready:     at least one listing has been harvested with content
+   *   - failed:    something went wrong (mapping deleted, etc)
+   */
+  @Get('airbnb/status')
+  async airbnbStatus(
+    @CurrentUser() user: any,
+    @Query('channexPropertyId') channexPropertyId: string,
+  ) {
+    if (!channexPropertyId) {
+      return { success: false, status: 'failed', message: 'channexPropertyId required' };
+    }
+
+    // Every listing harvested for this Channex property by either the
+    // webhook-driven path (preferred) or the manual harvest call.
+    const listings = await this.prisma.listing.findMany({
+      where: {
+        userId: user.id,
+        channexPropertyId,
+      },
+      select: {
+        id: true,
+        title: true,
+        reviewStatus: true,
+        bedrooms: true,
+        maxGuests: true,
+        city: true,
+        country: true,
+      },
+      orderBy: { id: 'asc' },
+    });
+
+    // 'pending_airbnb_connect' = still waiting on user OAuth.
+    // 'pending_admin_review' = harvested, content populated, ready for next step.
+    const harvested = listings.filter((l) => l.reviewStatus !== 'pending_airbnb_connect');
+    const stillPending = listings.filter((l) => l.reviewStatus === 'pending_airbnb_connect');
+
+    let status: 'waiting' | 'harvesting' | 'ready' | 'failed';
+    if (harvested.length === 0 && stillPending.length === 0) {
+      status = 'failed'; // mapping vanished mid-flow
+    } else if (harvested.length === 0) {
+      status = 'waiting';
+    } else if (stillPending.length > 0) {
+      status = 'harvesting'; // some done, some pending
+    } else {
+      status = 'ready';
+    }
+
+    return {
+      success: true,
+      status,
+      listings: harvested,
+      pendingCount: stillPending.length,
+    };
+  }
+
   // ── OTA OAuth Bridge (legacy) ──────────────────────────────────────────
 
   @Get('oauth-link')
