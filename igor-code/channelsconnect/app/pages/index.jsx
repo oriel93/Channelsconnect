@@ -73,6 +73,7 @@ import ExternalAuth from "./ExternalAuth";
 import VerifyEmail from "./VerifyEmail";
 
 import AuthCallback from "./AuthCallback";
+import AirbnbCallback from "./AirbnbCallback";
 
 import PrivacyPolicy from "./PrivacyPolicy";
 
@@ -304,6 +305,7 @@ function PagesContent() {
                 <Route path="/VerifyEmail" element={<VerifyEmail />} />
                 
                 <Route path="/AuthCallback" element={<AuthCallback />} />
+                <Route path="/AirbnbCallback" element={<AirbnbCallback />} />
                 
                 <Route path="/PrivacyPolicy" element={<PrivacyPolicy />} />
                 

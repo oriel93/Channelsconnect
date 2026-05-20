@@ -221,6 +221,10 @@ export const api = {
      * The iFrame is headless (no Channex branding) and filtered to Airbnb only.
      */
     airbnbInit: () => apiClient.post('/connect/airbnb/init', {}),
+    // New Channel API flow (2026-05-20). Returns { authUrl, token }. The
+    // frontend should window.location.href = authUrl to take the user to
+    // airbnb.com. Channex redirects back to /AirbnbCallback?channel_id=...&token=...
+    airbnbStart: () => apiClient.post('/connect/airbnb/start', {}),
 
     /**
      * Airbnb connect — Step 2:

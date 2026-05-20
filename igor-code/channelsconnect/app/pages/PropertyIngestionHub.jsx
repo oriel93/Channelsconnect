@@ -170,13 +170,15 @@ function AirbnbConnectForm({ onSuccess }) {
     setPhase('loading');
     try {
       await ensureProfileExists();
-      const res = await api.connect.airbnbInit();
-      const { iframeUrl: url, listingId: lid, channexPropertyId: pid } = res.data?.data || res.data || {};
-      if (!url) throw new Error('Could not generate connection link. Please try again.');
-      setIframeUrl(url);
-      setListingId(lid);
-      setChannexPropertyId(pid);
-      setPhase('iframe');
+      // New flow (Channex Channel API): backend mints a real Airbnb OAuth URL.
+      // We FULL-PAGE redirect to airbnb.com; user authorizes; Channex bounces
+      // them back to /AirbnbCallback?channel_id=...&token=... which runs the
+      // multi-listing import in the background and shows progress.
+      const res = await api.connect.airbnbStart();
+      const data = res.data?.data ?? res.data ?? {};
+      const authUrl = data.authUrl;
+      if (!authUrl) throw new Error('Could not generate Airbnb authorization link.');
+      window.location.href = authUrl;
     } catch (err) {
       const msg = err?.response?.data?.message || err?.message || 'Connection failed — please try again';
       toast.error(msg);

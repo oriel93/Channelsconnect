@@ -26,6 +26,7 @@ import {
   Logger,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 import { ChannexOnboardingService, OnboardPropertyDto } from './channex-onboarding.service';
 import { ChannexDeepSyncService, SyncProgress } from './channex-deep-sync.service';
@@ -35,6 +36,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { SupabaseAuthGuard } from '../../auth/guards/supabase-auth.guard';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Public } from '../../auth/decorators/public.decorator';
+import { AirbnbImportService } from './airbnb-import.service';
 import { ParseIntPipe } from '@nestjs/common';
 
 @Controller('connect')
@@ -49,7 +51,51 @@ export class ChannexWhitelabelController {
     private readonly http: ChannexHttpClient,
     private readonly prisma: PrismaService,
     private readonly contentService: ChannexContentService,
+    private readonly airbnbImport: AirbnbImportService,
   ) {}
+
+  // ── Airbnb (Channel API — the real one, not the iframe) ───────────────────
+  // POST /connect/airbnb/start — returns Airbnb OAuth URL for redirect.
+  //   The user goes to airbnb.com, authorizes, Channex creates the channel,
+  //   and Channex redirects to <FRONTEND_URL>/AirbnbCallback?channel_id=...&token=...
+  @Post('airbnb/start')
+  @HttpCode(HttpStatus.OK)
+  async airbnbStart(@CurrentUser() user: any) {
+    const appBaseUrl = process.env.FRONTEND_URL || 'https://channelsconnect.com';
+    const result = await this.airbnbImport.start({
+      userId: user.id,
+      email:  user?.email,
+      appBaseUrl,
+    });
+    return { success: true, data: result };
+  }
+
+  // POST /connect/airbnb/callback — called by the frontend /AirbnbCallback page
+  //   after Channex bounces the user back. Kicks off the import in background.
+  @Post('airbnb/callback')
+  @Public() // The user may not have a fresh session right after the OAuth bounce.
+  @HttpCode(HttpStatus.OK)
+  async airbnbCallback(@Body() body: { channelId?: string; token?: string }) {
+    if (!body?.channelId || !body?.token) {
+      throw new BadRequestException('channelId and token are required');
+    }
+    return this.airbnbImport.handleCallback({
+      channelId: body.channelId,
+      token: body.token,
+    });
+  }
+
+  // GET /connect/airbnb/import_status?token=... — polled by the frontend wizard
+  @Get('airbnb/import_status')
+  @Public()
+  async airbnbImportStatus(@Query('token') token: string) {
+    if (!token) throw new BadRequestException('token required');
+    const state = this.airbnbImport.getStatus(token);
+    if (!state) {
+      return { success: false, status: 'unknown', message: 'Import not found or expired' };
+    }
+    return { success: true, ...state };
+  }
 
   // ── Onboarding ────────────────────────────────────────────────────────
 

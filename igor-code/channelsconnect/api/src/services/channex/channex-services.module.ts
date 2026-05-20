@@ -4,6 +4,7 @@ import { ChannexHttpClient } from './channex-http.client';
 import { ChannexOnboardingService } from './channex-onboarding.service';
 import { ChannexDeepSyncService } from './channex-deep-sync.service';
 import { ChannexContentService } from './channex-content.service';
+import { AirbnbImportService } from './airbnb-import.service';
 import { ChannexWhitelabelController } from './channex-whitelabel.controller';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -11,7 +12,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 @Module({
   imports: [HttpModule, PrismaModule],
   controllers: [ChannexWhitelabelController],
-  providers: [ChannexHttpClient, ChannexOnboardingService, ChannexDeepSyncService, ChannexContentService, PrismaService],
-  exports: [ChannexHttpClient, ChannexOnboardingService, ChannexDeepSyncService, ChannexContentService],
+  providers: [ChannexHttpClient, ChannexOnboardingService, ChannexDeepSyncService, ChannexContentService, AirbnbImportService, PrismaService],
+  exports: [ChannexHttpClient, ChannexOnboardingService, ChannexDeepSyncService, ChannexContentService, AirbnbImportService],
 })
 export class ChannexServicesModule {}
