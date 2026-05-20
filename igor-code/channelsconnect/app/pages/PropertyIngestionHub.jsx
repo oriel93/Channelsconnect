@@ -310,21 +310,61 @@ function AirbnbConnectForm({ onSuccess }) {
   if (phase === 'iframe') {
     return (
       <div className="space-y-4">
-        <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 flex items-center justify-between">
-          <p className="text-sm text-blue-800 font-medium">
-            Log into your Airbnb account below to authorise the connection.
-          </p>
-          <button
-            type="button"
-            onClick={() => setPhase('idle')}
-            className="text-slate-400 hover:text-slate-700 ml-4"
+        {/* Close button row */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-slate-600">
+            <button
+              type="button"
+              onClick={() => setPhase('idle')}
+              className="text-slate-500 hover:text-slate-800 inline-flex items-center gap-1"
+            >
+              <X className="w-4 h-4" />
+              Cancel
+            </button>
+          </div>
+          <Button
+            onClick={runHarvest}
+            size="sm"
+            className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white"
           >
-            <X className="w-4 h-4" />
-          </button>
+            <CheckCircle2 className="w-4 h-4 mr-2" />
+            I'm Done — Import My Listings
+          </Button>
         </div>
 
-        {/* The channel connection iFrame — headless mode hides all channel branding */}
-        <div className="rounded-xl border border-slate-200 overflow-hidden shadow-sm" style={{ height: 560 }}>
+        {/* Step-by-step guidance — the iframe lands on Channex's empty channels list,
+            so we need to tell the user exactly what to click. Channex won't let us
+            skip directly to OAuth without a whitelabel/Channel API account. */}
+        <div className="rounded-xl bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 p-4">
+          <h4 className="font-semibold text-slate-900 text-sm mb-3 flex items-center gap-2">
+            <svg className="w-4 h-4" viewBox="0 0 32 32" fill="none">
+              <path d="M16 2C8.268 2 2 8.268 2 16s6.268 14 14 14 14-6.268 14-14S23.732 2 16 2z" fill="#FF5A5F"/>
+              <path d="M16 8c-1.5 0-2.7 1.2-2.7 2.7 0 1 .56 1.88 1.4 2.34L11 20h10l-3.7-6.96c.84-.46 1.4-1.34 1.4-2.34C18.7 9.2 17.5 8 16 8z" fill="white"/>
+            </svg>
+            Connect your Airbnb in 3 steps
+          </h4>
+          <ol className="text-sm text-slate-700 space-y-1.5 ml-1">
+            <li className="flex gap-2">
+              <span className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full bg-indigo-600 text-white text-xs font-bold">1</span>
+              <span>Click the blue <strong>Create</strong> button (top-right of the panel below)</span>
+            </li>
+            <li className="flex gap-2">
+              <span className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full bg-indigo-600 text-white text-xs font-bold">2</span>
+              <span>Pick <strong>Airbnb</strong> and click <strong>Connect to Airbnb</strong></span>
+            </li>
+            <li className="flex gap-2">
+              <span className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full bg-indigo-600 text-white text-xs font-bold">3</span>
+              <span>Sign in to your Airbnb account and authorize — we'll do the rest</span>
+            </li>
+          </ol>
+          <p className="text-xs text-slate-500 mt-3">
+            When you're done, click <strong className="text-emerald-700">"I'm Done — Import My Listings"</strong> above to bring everything into Channels Connect.
+          </p>
+        </div>
+
+        {/* The channel connection iFrame — headless mode hides Channex's nav bar but
+            the page content still shows their search/create UI. */}
+        <div className="rounded-xl border-2 border-indigo-100 overflow-hidden shadow-md" style={{ height: 600 }}>
           <iframe
             ref={iframeRef}
             src={iframeUrl}
@@ -332,21 +372,6 @@ function AirbnbConnectForm({ onSuccess }) {
             className="w-full h-full border-0"
             allow="same-origin"
           />
-        </div>
-
-        {/* Manual trigger after user completes OAuth */}
-        <div className="text-center space-y-2">
-          <p className="text-xs text-slate-500">
-            Once you've connected your Airbnb account above, click the button below.
-          </p>
-          <Button
-            onClick={runHarvest}
-            variant="outline"
-            className="border-purple-300 text-purple-700 hover:bg-purple-50"
-          >
-            <CheckCircle2 className="w-4 h-4 mr-2" />
-            I've Connected My Airbnb
-          </Button>
         </div>
       </div>
     );
