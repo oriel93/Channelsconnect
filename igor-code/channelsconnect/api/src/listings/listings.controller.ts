@@ -328,5 +328,46 @@ export class ListingsController {
   ) {
     return this.listingsService.remove(id, user.id);
   }
+
+  // ── Property Images ──────────────────────────────────────────────────────────────────
+  // Frontend uploads the FILE bytes directly to Supabase Storage (anon key, allowed
+  // by storage policies). After upload it calls these endpoints to save the
+  // metadata row in property_images using our service-role Prisma client,
+  // bypassing the RLS policy that silently blocked frontend inserts.
+  // ────────────────────────────────────────────────────────────────────────────
+
+  /** POST /listings/:id/images — batch save image records after upload to storage */
+  @Post(':id/images')
+  @HttpCode(HttpStatus.OK)
+  async saveImages(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: CurrentUserData,
+    @Body() body: { records: Array<{ url: string; storagePath?: string; filename?: string; sortOrder?: number; isCover?: boolean; caption?: string }> },
+  ) {
+    const records = Array.isArray(body?.records) ? body.records : [];
+    if (records.length === 0) {
+      throw new BadRequestException('records must be a non-empty array');
+    }
+    return this.listingsService.saveImageRecords(user.id, id, records);
+  }
+
+  /** GET /listings/:id/images — list all images for a listing (sortOrder ASC) */
+  @Get(':id/images')
+  async listImages(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    const images = await this.listingsService.listImages(user.id, id);
+    return { images };
+  }
+
+  /** DELETE /listings/images/:imageId — remove one image record (storage file left intact) */
+  @Delete('images/:imageId')
+  async deleteImage(
+    @Param('imageId', ParseIntPipe) imageId: number,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    return this.listingsService.deleteImage(user.id, imageId);
+  }
 }
 

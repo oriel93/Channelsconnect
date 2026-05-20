@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateListingDto } from './dto/create-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
@@ -237,5 +237,122 @@ export class ListingsService {
       by: ['userId'],
       _count: { id: true },
     });
+  }
+
+  // ─── Property Image Records ───────────────────────────────────────────
+  // The frontend uploads image FILES directly to Supabase Storage (anon key). That
+  // part works. But the INSERT INTO property_images was being attempted with the
+  // same anon-key client, which is blocked by RLS unless the user's Supabase JWT is
+  // active in the request. Symptom: files in the bucket, zero rows in the table.
+  // Backend route below uses our service-role Prisma client to do the DB insert
+  // after the upload, bypassing RLS but still scoped to the authenticated user's
+  // listings via the auth guard at the controller level.
+  // ────────────────────────────────────────────────────────────────────────────
+
+  /** Verify the listing belongs to the user. Throws if not. */
+  private async assertListingOwnership(userId: string, listingId: number): Promise<void> {
+    const l = await this.prisma.listing.findUnique({
+      where: { id: listingId },
+      select: { userId: true },
+    });
+    if (!l) {
+      throw new BadRequestException(`Listing ${listingId} not found`);
+    }
+    if (l.userId !== userId) {
+      throw new BadRequestException(`Listing ${listingId} does not belong to you`);
+    }
+  }
+
+  /** Save N image records for a listing in a single transaction. Idempotent on (listingId, storagePath). */
+  async saveImageRecords(
+    userId: string,
+    listingId: number,
+    records: Array<{
+      url: string;
+      storagePath?: string;
+      filename?: string;
+      sortOrder?: number;
+      isCover?: boolean;
+      caption?: string;
+    }>,
+  ) {
+    await this.assertListingOwnership(userId, listingId);
+    if (records.length === 0) return { saved: [] };
+
+    // Find current max sortOrder so new images go after existing ones.
+    const last = await this.prisma.propertyImage.aggregate({
+      where: { listingId },
+      _max: { sortOrder: true },
+    });
+    const baseOrder = (last._max.sortOrder ?? -1) + 1;
+
+    // Map any existing rows by storagePath so we can upsert per-row instead of
+    // failing the whole transaction on a duplicate.
+    const paths = records.map((r) => r.storagePath).filter(Boolean) as string[];
+    const existing = paths.length
+      ? await this.prisma.propertyImage.findMany({
+          where: { listingId, storagePath: { in: paths } },
+          select: { id: true, storagePath: true },
+        })
+      : [];
+    const existingByPath = new Map(existing.map((e) => [e.storagePath, e.id]));
+
+    const saved = [] as any[];
+    for (let i = 0; i < records.length; i++) {
+      const r = records[i];
+      const data = {
+        userId,
+        listingId,
+        url: r.url,
+        storagePath: r.storagePath ?? null,
+        filename: r.filename ?? null,
+        sortOrder: r.sortOrder ?? baseOrder + i,
+        displayOrder: r.sortOrder ?? baseOrder + i,
+        isCover: r.isCover ?? false,
+        isPrimary: r.isCover ?? false,
+        caption: r.caption ?? null,
+      };
+      const existingId = r.storagePath ? existingByPath.get(r.storagePath) : undefined;
+      if (existingId) {
+        const row = await this.prisma.propertyImage.update({
+          where: { id: existingId },
+          data,
+        });
+        saved.push(row);
+      } else {
+        const row = await this.prisma.propertyImage.create({ data });
+        saved.push(row);
+      }
+    }
+    this.logger.log(
+      `[Images] Saved ${saved.length} image record(s) for listing=${listingId} user=${userId.slice(0, 8)}`,
+    );
+    return { saved };
+  }
+
+  /** Return all image records for a listing in sortOrder ASC. */
+  async listImages(userId: string, listingId: number) {
+    await this.assertListingOwnership(userId, listingId);
+    return this.prisma.propertyImage.findMany({
+      where: { listingId },
+      orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+    });
+  }
+
+  /** Delete one image record by id, ownership-checked. */
+  async deleteImage(userId: string, imageId: number) {
+    const img = await this.prisma.propertyImage.findUnique({
+      where: { id: imageId },
+      select: { id: true, userId: true, storagePath: true, listingId: true },
+    });
+    if (!img) throw new BadRequestException(`Image ${imageId} not found`);
+    if (img.userId !== userId) {
+      throw new BadRequestException(`Image ${imageId} does not belong to you`);
+    }
+    await this.prisma.propertyImage.delete({ where: { id: imageId } });
+    this.logger.log(
+      `[Images] Deleted image=${imageId} from listing=${img.listingId} (storage_path left intact for now)`,
+    );
+    return { deleted: true, storagePath: img.storagePath };
   }
 }

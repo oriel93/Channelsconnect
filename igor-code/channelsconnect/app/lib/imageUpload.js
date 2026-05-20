@@ -201,8 +201,16 @@ export async function uploadImageToSupabase({ file, listingId, userId, onProgres
 }
 
 /**
- * Bulk save: insert multiple image records in a single Supabase call.
- * Used by CloudinaryImageManager after the semaphore worker pool finishes.
+ * Bulk save: insert multiple image records via the BACKEND (service-role).
+ *
+ * The frontend used to insert directly into property_images using the anon key.
+ * That hit RLS (policy requires auth.role()='authenticated') and silently failed
+ * when the Supabase session wasn't propagating on the request — result: file
+ * landed in the bucket, no row in the table, image vanished from the manager.
+ *
+ * Now: POST /listings/:id/images on our backend, which uses service-role Prisma
+ * to insert (and verifies listing ownership against the requesting user). The
+ * controller does its own auth via the global Supabase JWT guard.
  *
  * @param {Array<{listingId, filename, url, storagePath, sortOrder, isCover, userId}>} records
  * @returns {Array} inserted rows
@@ -210,42 +218,32 @@ export async function uploadImageToSupabase({ file, listingId, userId, onProgres
 export async function bulkSaveImageRecords(records) {
   if (records.length === 0) return [];
 
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
-  if (userError || !user) {
-    throw new Error('Not authenticated — cannot save image records');
+  // Group by listingId since the backend endpoint is per-listing.
+  const byListing = new Map();
+  for (const r of records) {
+    if (!byListing.has(r.listingId)) byListing.set(r.listingId, []);
+    byListing.get(r.listingId).push({
+      url: r.url,
+      storagePath: r.storagePath,
+      filename: r.filename,
+      sortOrder: r.sortOrder,
+      isCover: r.isCover,
+      caption: r.caption,
+    });
   }
 
-  const rows = records.map((r, idx) => ({
-    // DBA-specified columns (directive)
-    url:          r.url,
-    storage_path: r.storagePath,
-    listing_id:   null,  // uuid column — integer listingId cannot cast; leave null
+  // Lazy import apiClient to avoid a circular dep at module init.
+  const { default: apiClient } = await import('./apiClient.js');
 
-    // Prisma-managed required columns
-    listingId:    r.listingId,
-    userId:       r.userId || user.id,
-    storagePath:  r.storagePath,
-
-    // Optional metadata
-    filename:     r.filename,
-    sortOrder:    r.sortOrder  ?? idx,
-    isCover:      r.isCover    ?? false,
-    sort_order:   r.sortOrder  ?? idx,
-    is_cover:     r.isCover    ?? false,
-  }));
-
-  const { data, error } = await supabase
-    .from('property_images')
-    .insert(rows)
-    .select();
-
-  if (error) {
-    console.error('[imageUpload] bulkSaveImageRecords — exact Supabase error:', error);
-    console.error('[imageUpload] Row payload (first row):', JSON.stringify(rows[0], null, 2));
-    throw new Error(`Failed to save image records: ${error.message || JSON.stringify(error)}`);
+  const saved = [];
+  for (const [listingId, listingRecords] of byListing) {
+    const res = await apiClient.post(`/listings/${listingId}/images`, {
+      records: listingRecords,
+    });
+    const rows = res?.data?.saved || res?.saved || [];
+    saved.push(...rows);
   }
-
-  return data;
+  return saved;
 }
 
 /**
@@ -265,17 +263,27 @@ export async function saveImageRecord({ listingId, filename, url, storagePath, s
  * Tries camelCase column first (Prisma path), falls back to snake_case.
  */
 export async function fetchListingImages(listingId) {
-  const { data, error } = await supabase
-    .from('property_images')
-    .select('*')
-    .eq('listingId', listingId)
-    .order('sortOrder', { ascending: true });
-
-  if (error) {
-    console.error('[imageUpload] fetchListingImages error:', error);
-    throw new Error(error.message);
+  // Go through the backend (service-role) so RLS can't filter rows out from
+  // under us. Backend verifies ownership before returning.
+  try {
+    const { default: apiClient } = await import('./apiClient.js');
+    const res = await apiClient.get(`/listings/${listingId}/images`);
+    return res?.data?.images || [];
+  } catch (err) {
+    console.error('[imageUpload] fetchListingImages backend error:', err?.response?.data || err?.message || err);
+    // Fallback: try anon-key query so the page doesn't go fully blank if the API
+    // is unreachable. RLS may still hide some rows but it's better than nothing.
+    const { data, error } = await supabase
+      .from('property_images')
+      .select('*')
+      .eq('listingId', listingId)
+      .order('sortOrder', { ascending: true });
+    if (error) {
+      console.error('[imageUpload] fetchListingImages fallback error:', error);
+      throw new Error(error.message);
+    }
+    return data || [];
   }
-  return data || [];
 }
 
 /**
