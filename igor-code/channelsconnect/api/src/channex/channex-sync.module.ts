@@ -33,6 +33,9 @@ import { ChannexServicesModule } from '../services/channex/channex-services.modu
     ChannexSyncService,
     ChannexBookingFeedService, // 15-min feed polling (cert requirement)
     PrismaService,
+    // Also register as a provider so the booking-webhook controller can inject it.
+    // (Controllers aren't injectable into other controllers by default in NestJS.)
+    ChannexChannelWebhookController,
   ],
   controllers: [
     ChannexSyncController,
