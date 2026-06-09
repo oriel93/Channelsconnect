@@ -26,6 +26,9 @@ const ALLOWLISTED_PATH_PREFIXES = [
 ];
 
 function isAllowlisted(path: string): boolean {
+  // The ELB target group health check hits the root path '/' (not /health) and
+  // requires a 200. If we 503 the root, ECS kills the task. Always allowlist '/'.
+  if (path === '/' || path === '') return true;
   for (const prefix of ALLOWLISTED_PATH_PREFIXES) {
     if (path === prefix || path.startsWith(prefix + '/') || path.startsWith(prefix + '?')) {
       return true;
