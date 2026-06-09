@@ -25,6 +25,13 @@ export default $config({
         const channexKey = new sst.Secret("CHANNEX_API_KEY");
         const channexWebhookSecret = new sst.Secret("CHANNEX_WEBHOOK_SECRET");
         const openaiApiKey = new sst.Secret("OPENAI_API_KEY");  // for chatbot InvokeLLM
+        // Maintenance flag. Toggle with:
+        //   sst secret set MAINTENANCE_MODE true  --stage production
+        //   sst secret set MAINTENANCE_MODE false --stage production
+        //   sst deploy --stage production
+        // When 'true' the API returns 503 for every non-allowlisted endpoint.
+        // Health checks, Channex webhooks, and admin routes stay open.
+        const maintenanceMode = new sst.Secret("MAINTENANCE_MODE", "false");
 
         const vpc = new sst.aws.Vpc("Vpc");
         const cluster = new sst.aws.Cluster("Cluster", { vpc });
@@ -65,7 +72,8 @@ export default $config({
                 // CHANNEX_BASE: defaults to https://app.channex.io/api/v1 in code.
                 // Override here to 'https://staging.channex.io/api/v1' if testing against staging.
                 CHANNEX_BASE: "https://app.channex.io/api/v1",
-                FRONTEND_URL: "https://channelsconnect.com"
+                FRONTEND_URL: "https://channelsconnect.com",
+                MAINTENANCE_MODE: maintenanceMode.value
             },
             dev: {
                 command: "npm run start:dev",

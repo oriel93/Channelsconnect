@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
+import { MaintenanceMiddleware } from './maintenance.middleware';
 import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { AppController } from './app.controller';
@@ -67,4 +68,12 @@ import { AdminModule } from './admin/admin.module';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    // Maintenance middleware runs FIRST on every request. It checks the
+    // MAINTENANCE_MODE env var and either passes through or returns 503
+    // depending on the request path. See MaintenanceMiddleware for the
+    // allowlist (health/webhooks/admin stay live).
+    consumer.apply(MaintenanceMiddleware).forRoutes('*');
+  }
+}

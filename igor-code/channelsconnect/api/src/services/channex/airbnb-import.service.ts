@@ -445,8 +445,10 @@ export class AirbnbImportService {
           basePrice: basePriceMajor,
           minNights,
           source: 'airbnb',
-          isActive: false,                   // admin review first
-          reviewStatus: 'pending_admin_review',
+          // Active immediately so users see what they just imported on the calendar.
+          // Admin can still un-activate from the admin dashboard if review is needed.
+          isActive: true,
+          reviewStatus: 'approved',
           channexPropertyId,
           channexRoomId: channexRoomTypeId,
           airbnbListingId: airbnbListingId,

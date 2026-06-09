@@ -5,6 +5,7 @@ import { useLocation } from "react-router-dom";
 import MarketingHeader from "@/components/marketing/MarketingHeader";
 import MarketingFooter from "@/components/marketing/MarketingFooter";
 import PWAInstaller from "@/components/pwa/PWAInstaller";
+import MaintenanceOverlay from "@/components/MaintenanceOverlay";
 import { InvokeLLM } from "@/api/integrations";
 import { X, Bot } from "lucide-react";
 
@@ -1034,6 +1035,7 @@ export default function Layout({ children, currentPageName }) {
       <>
         {children}
         <PWAInstaller />
+        <MaintenanceOverlay />
       </>
     );
   }
@@ -1043,6 +1045,7 @@ export default function Layout({ children, currentPageName }) {
       <>
         <main>{children}</main>
         <PWAInstaller />
+        <MaintenanceOverlay />
       </>
     );
   }
@@ -1731,6 +1734,7 @@ export default function Layout({ children, currentPageName }) {
           />
         </div>
       </div>
+      <MaintenanceOverlay />
     </div>
   );
 }

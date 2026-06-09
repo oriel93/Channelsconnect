@@ -60,6 +60,17 @@ apiClient.interceptors.response.use(
   async (error) => {
     const status = error.response?.status;
 
+    // 503 with body { maintenance: true } means the backend is in maintenance mode.
+    // Surface a global event so the app can render a full-page overlay; swallow
+    // the rejection so individual components don't spam toasts.
+    if (status === 503 && error.response?.data?.maintenance) {
+      try {
+        window.dispatchEvent(new CustomEvent('cc:maintenance', {
+          detail: error.response.data,
+        }));
+      } catch { /* SSR safety */ }
+    }
+
     if (status === 401) {
       // Token expired — attempt a silent refresh before redirecting
       try {
