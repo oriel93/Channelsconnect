@@ -15,7 +15,7 @@
  * Or for a faster toggle without redeploy, set the ECS task definition env
  * variable directly via aws ecs update-service --force-new-deployment.
  */
-import { Injectable, NestMiddleware } from '@nestjs/common';
+import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 
 const ALLOWLISTED_PATH_PREFIXES = [
@@ -39,14 +39,23 @@ function isAllowlisted(path: string): boolean {
 
 @Injectable()
 export class MaintenanceMiddleware implements NestMiddleware {
+  private readonly logger = new Logger(MaintenanceMiddleware.name);
+  private logged = false;
+
   use(req: Request, res: Response, next: NextFunction) {
     const enabled = String(process.env.MAINTENANCE_MODE || '').toLowerCase() === 'true';
+    if (!this.logged) {
+      // Log once on first request so we can confirm middleware actually wired up.
+      this.logger.log(`[Maintenance] middleware active enabled=${enabled} envVar='${process.env.MAINTENANCE_MODE}'`);
+      this.logged = true;
+    }
     if (!enabled) {
       return next();
     }
     if (isAllowlisted(req.path)) {
       return next();
     }
+    this.logger.debug(`[Maintenance] 503 → ${req.method} ${req.path}`);
     res.status(503).json({
       maintenance: true,
       message: "Channels Connect is briefly down for review. We'll be back shortly.",
