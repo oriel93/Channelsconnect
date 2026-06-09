@@ -25,12 +25,14 @@ const ALLOWLISTED_PATH_PREFIXES = [
   '/api/docs',              // Swagger
 ];
 
-function isAllowlisted(path: string): boolean {
-  // The ELB target group health check hits the root path '/' (not /health) and
-  // requires a 200. If we 503 the root, ECS kills the task. Always allowlist '/'.
+function isAllowlisted(urlPath: string): boolean {
+  // Strip querystring if present (we only care about the path part).
+  const qIdx = urlPath.indexOf('?');
+  const path = qIdx >= 0 ? urlPath.slice(0, qIdx) : urlPath;
+  // ELB target group health check hits '/' (not /health) and requires 200.
   if (path === '/' || path === '') return true;
   for (const prefix of ALLOWLISTED_PATH_PREFIXES) {
-    if (path === prefix || path.startsWith(prefix + '/') || path.startsWith(prefix + '?')) {
+    if (path === prefix || path.startsWith(prefix + '/')) {
       return true;
     }
   }
@@ -52,15 +54,14 @@ export class MaintenanceMiddleware implements NestMiddleware {
     if (!enabled) {
       return next();
     }
-    // Always log first 5 paths we see, to diagnose path-matching issues.
-    if (((this as any).debugCount ?? 0) < 5) {
-      (this as any).debugCount = ((this as any).debugCount ?? 0) + 1;
-      this.logger.log(`[Maintenance] req.path='${req.path}' req.originalUrl='${(req as any).originalUrl}' req.url='${req.url}'`);
-    }
-    if (isAllowlisted(req.path)) {
+
+    // NestJS middleware applied via forRoutes('*') sees req.path stripped to '/'
+    // relative to its mount point. The full URL is in req.originalUrl. Use that.
+    const fullUrl = (req as any).originalUrl || req.url || req.path || '/';
+    if (isAllowlisted(fullUrl)) {
       return next();
     }
-    this.logger.log(`[Maintenance] 503 → ${req.method} ${req.path}`);
+    this.logger.log(`[Maintenance] 503 → ${req.method} ${fullUrl}`);
     res.status(503).json({
       maintenance: true,
       message: "Channels Connect is briefly down for review. We'll be back shortly.",
