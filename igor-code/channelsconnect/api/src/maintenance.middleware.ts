@@ -52,10 +52,15 @@ export class MaintenanceMiddleware implements NestMiddleware {
     if (!enabled) {
       return next();
     }
+    // Always log first 5 paths we see, to diagnose path-matching issues.
+    if (((this as any).debugCount ?? 0) < 5) {
+      (this as any).debugCount = ((this as any).debugCount ?? 0) + 1;
+      this.logger.log(`[Maintenance] req.path='${req.path}' req.originalUrl='${(req as any).originalUrl}' req.url='${req.url}'`);
+    }
     if (isAllowlisted(req.path)) {
       return next();
     }
-    this.logger.debug(`[Maintenance] 503 → ${req.method} ${req.path}`);
+    this.logger.log(`[Maintenance] 503 → ${req.method} ${req.path}`);
     res.status(503).json({
       maintenance: true,
       message: "Channels Connect is briefly down for review. We'll be back shortly.",
